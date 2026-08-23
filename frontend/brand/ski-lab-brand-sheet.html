@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ski Lab — Brand Sheet</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --crevasse:#0B1526; --dusk:#141F33; --panel:#182746; --line:#2A3B5C;
+  --snow:#EAF1FB; --snowdim:#9FB3D1;
+  --blue:#4A8FE0; --red:#D64545; --amber:#E8A548;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:
+    radial-gradient(ellipse 900px 400px at 15% -10%, rgba(74,143,224,0.14), transparent),
+    radial-gradient(ellipse 700px 400px at 100% 0%, rgba(232,165,72,0.10), transparent),
+    var(--crevasse);
+  color:var(--snow); font-family:'Inter',sans-serif;
+}
+.wrap{max-width:920px; margin:0 auto; padding:56px 24px 100px;}
+.disp{font-family:'Space Grotesk',sans-serif;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+
+.eyebrow{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--amber); margin-bottom:10px;}
+h1.title{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:44px; margin:0 0 6px; letter-spacing:-0.01em;}
+.deck{color:var(--snowdim); font-size:15px; max-width:520px; margin:0 0 50px;}
+
+section{margin-bottom:56px;}
+h2.sec{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--snowdim); border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:24px;}
+
+/* --- logo mark --- */
+.lockup{display:flex; align-items:center; gap:12px;}
+.mark-icon{flex-shrink:0;}
+.wordmark{display:flex; align-items:baseline; gap:9px;}
+.wordmark .ski{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; letter-spacing:0.01em;}
+.tag{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; padding:3px 9px 2px;
+  border:1px solid var(--amber); border-radius:999px; color:var(--amber);}
+
+.lockup-showcase{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:40px;
+  display:flex; align-items:center; justify-content:center; margin-bottom:20px;}
+.lockup-showcase.big .wordmark .ski{font-size:44px;}
+.lockup-showcase.big .tag{font-size:16px; padding:5px 14px 4px;}
+.lockup-showcase.big .mark-icon svg{width:56px; height:56px;}
+
+.variants{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+.variant-card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:100px;}
+.variant-card .label{font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--snowdim); letter-spacing:0.08em; text-transform:uppercase;}
+.stacked{display:flex; flex-direction:column; align-items:center; gap:6px;}
+
+.icon-sizes{display:flex; align-items:flex-end; gap:24px; background:var(--panel); border:1px solid var(--line);
+  border-radius:14px; padding:30px 34px;}
+.icon-sizes .cell{display:flex; flex-direction:column; align-items:center; gap:8px;}
+.icon-sizes .cell span{font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--snowdim);}
+.favicon-frame{background:var(--dusk); border-radius:6px; display:flex; align-items:center; justify-content:center;}
+
+/* --- color palette --- */
+.palette{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+.swatch{border-radius:12px; padding:18px; border:1px solid var(--line); position:relative; overflow:hidden; min-height:90px;}
+.swatch .name{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; margin-bottom:2px;}
+.swatch .hex{font-family:'IBM Plex Mono',monospace; font-size:11px; opacity:0.85;}
+.swatch .role{font-size:10.5px; opacity:0.7; margin-top:8px; line-height:1.4;}
+
+/* --- type --- */
+.type-row{display:flex; align-items:baseline; justify-content:space-between; padding:18px 0; border-bottom:1px solid var(--line);}
+.type-row:last-child{border-bottom:none;}
+.type-sample{font-size:26px;}
+.type-meta{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--snowdim); text-align:right; line-height:1.6;}
+
+/* --- in context --- */
+.context-frame{background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden;}
+.context-topbar{display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--line);}
+.chip{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+  padding:6px 12px; border:1px solid var(--line); border-radius:999px; color:var(--snowdim);}
+.context-body{padding:22px; display:flex; gap:16px; align-items:center;}
+.mini-ticket{flex:1; background:var(--dusk); border:1px solid var(--line); border-radius:10px; padding:16px; display:flex; justify-content:space-between; align-items:center;}
+.mini-ticket .rn{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px;}
+.mini-ticket .sc{font-family:'IBM Plex Mono',monospace; color:var(--amber); font-weight:600;}
+
+.notes{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+.note-card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px;}
+.note-card.do{border-left:3px solid var(--blue);}
+.note-card.dont{border-left:3px solid var(--red);}
+.note-card .h{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:8px;}
+.note-card.do .h{color:var(--blue);}
+.note-card.dont .h{color:var(--red);}
+.note-card ul{margin:0; padding-left:18px; font-size:12.5px; color:var(--snowdim); line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Brand Reference · v1</div>
+  <h1 class="title disp">Ski Lab</h1>
+  <p class="deck">The mountain, measured. A trip-optimization engine, not a travel blog — the identity
+    should read like an instrument, not a brochure: precise marks, real data, no decoration that
+    isn't also information.</p>
+
+  <section>
+    <h2 class="sec">Primary lockup</h2>
+    <div class="lockup-showcase big">
+      <div class="lockup">
+        <div class="mark-icon">
+          <svg width="56" height="56" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#gradmark)" stroke-width="2" stroke-linejoin="round" fill="rgba(74,143,224,0.06)"/>
+            <line x1="2" y1="25" x2="46" y2="25" stroke="var(--snowdim)" stroke-width="1" stroke-dasharray="1 3"/>
+            <line x1="10" y1="23" x2="10" y2="27" stroke="var(--snowdim)" stroke-width="1"/>
+            <line x1="19" y1="23" x2="19" y2="27" stroke="var(--snowdim)" stroke-width="1"/>
+            <line x1="28" y1="23" x2="28" y2="27" stroke="var(--snowdim)" stroke-width="1"/>
+            <line x1="37" y1="23" x2="37" y2="27" stroke="var(--snowdim)" stroke-width="1"/>
+            <circle cx="32" cy="6" r="2.4" fill="var(--amber)"/>
+            <defs>
+              <linearGradient id="gradmark" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0%" stop-color="#4A8FE0"/>
+                <stop offset="100%" stop-color="#E8A548"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="wordmark">
+          <span class="ski disp">SKI</span>
+          <span class="tag mono">LAB</span>
+        </div>
+      </div>
+    </div>
+    <p style="color:var(--snowdim); font-size:12.5px; max-width:600px;">
+      The mark is a measurement, not a mountain-for-its-own-sake: a peak silhouette crossed by a
+      surveyor's line with tick marks, and an amber sample point at the summit — literally
+      "the mountain, sampled." The <span class="tag mono" style="padding:1px 6px;">LAB</span> tag
+      reuses the same pill/chip shape already used for status indicators throughout the app
+      (see "Guest" chip below), so the logo and the UI share one visual vocabulary instead of two.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="sec">Lockup variants</h2>
+    <div class="variants">
+      <div class="variant-card">
+        <div class="lockup"><div class="mark-icon"><svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+          <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#g2)" stroke-width="2.4" stroke-linejoin="round" fill="rgba(74,143,224,0.06)"/>
+          <circle cx="32" cy="6" r="3" fill="var(--amber)"/>
+          <defs><linearGradient id="g2" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#4A8FE0"/><stop offset="100%" stop-color="#E8A548"/></linearGradient></defs>
+        </svg></div><span class="ski disp" style="font-size:18px;">SKI</span><span class="tag mono" style="font-size:9px;">LAB</span></div>
+        <div class="label">horizontal</div>
+      </div>
+      <div class="variant-card">
+        <div class="stacked">
+          <svg width="30" height="30" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#g3)" stroke-width="2.4" stroke-linejoin="round" fill="rgba(74,143,224,0.06)"/>
+            <circle cx="32" cy="6" r="3" fill="var(--amber)"/>
+            <defs><linearGradient id="g3" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#4A8FE0"/><stop offset="100%" stop-color="#E8A548"/></linearGradient></defs>
+          </svg>
+          <div class="lockup" style="gap:7px;"><span class="ski disp" style="font-size:16px;">SKI</span><span class="tag mono" style="font-size:9px;">LAB</span></div>
+        </div>
+        <div class="label">stacked</div>
+      </div>
+      <div class="variant-card">
+        <svg width="34" height="34" viewBox="0 0 48 48" fill="none">
+          <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#g4)" stroke-width="2.4" stroke-linejoin="round" fill="rgba(74,143,224,0.08)"/>
+          <circle cx="32" cy="6" r="3" fill="var(--amber)"/>
+          <defs><linearGradient id="g4" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#4A8FE0"/><stop offset="100%" stop-color="#E8A548"/></linearGradient></defs>
+        </svg>
+        <div class="label">icon only</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Icon at scale (favicon check)</h2>
+    <div class="icon-sizes">
+      <div class="cell">
+        <div class="favicon-frame" style="width:64px; height:64px;">
+          <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#g5)" stroke-width="2.6" stroke-linejoin="round" fill="rgba(74,143,224,0.08)"/>
+            <circle cx="32" cy="6" r="3.2" fill="var(--amber)"/>
+            <defs><linearGradient id="g5" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#4A8FE0"/><stop offset="100%" stop-color="#E8A548"/></linearGradient></defs>
+          </svg>
+        </div>
+        <span>64px</span>
+      </div>
+      <div class="cell">
+        <div class="favicon-frame" style="width:32px; height:32px;">
+          <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="#4A8FE0" stroke-width="3.2" stroke-linejoin="round" fill="none"/>
+            <circle cx="32" cy="6" r="4" fill="var(--amber)"/>
+          </svg>
+        </div>
+        <span>32px</span>
+      </div>
+      <div class="cell">
+        <div class="favicon-frame" style="width:16px; height:16px;">
+          <svg width="11" height="11" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="#4A8FE0" stroke-width="4.5" stroke-linejoin="round" fill="none"/>
+            <circle cx="32" cy="6" r="5" fill="var(--amber)"/>
+          </svg>
+        </div>
+        <span>16px</span>
+      </div>
+      <div class="cell" style="margin-left:auto; align-self:center;">
+        <span class="mono" style="color:var(--snowdim); font-size:11px; max-width:200px; display:block; text-align:right;">
+          Drop the tick marks below 32px — the peak + amber point alone still reads.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Color</h2>
+    <div class="palette">
+      <div class="swatch" style="background:var(--crevasse); border-color:#22314d;">
+        <div class="name disp">Crevasse</div><div class="hex mono">#0B1526</div>
+        <div class="role">Base background. Never used as text.</div>
+      </div>
+      <div class="swatch" style="background:var(--dusk);">
+        <div class="name disp">Dusk Slope</div><div class="hex mono">#141F33</div>
+        <div class="role">Secondary surface — inputs, nested panels.</div>
+      </div>
+      <div class="swatch" style="background:var(--panel);">
+        <div class="name disp">Panel</div><div class="hex mono">#182746</div>
+        <div class="role">Card / panel surface.</div>
+      </div>
+      <div class="swatch" style="background:var(--blue); color:#0B1526;">
+        <div class="name disp">Piste Blue</div><div class="hex mono">#4A8FE0</div>
+        <div class="role" style="color:#0B1526; opacity:0.75;">Beginner terrain data + primary interactive color. Functional, not decorative.</div>
+      </div>
+      <div class="swatch" style="background:var(--red); color:#0B1526;">
+        <div class="name disp">Piste Red</div><div class="hex mono">#D64545</div>
+        <div class="role" style="color:#0B1526; opacity:0.8;">Intermediate terrain data only. Never used for errors/destructive actions — that would collide with its data meaning.</div>
+      </div>
+      <div class="swatch" style="background:var(--amber); color:#0B1526;">
+        <div class="name disp">Amber Couloir</div><div class="hex mono">#E8A548</div>
+        <div class="role" style="color:#0B1526; opacity:0.8;">Advanced terrain data + the brand's one accent (logo point, score numbers, flagged/estimated data).</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Type</h2>
+    <div class="type-row">
+      <div class="type-sample disp" style="font-weight:700;">Find your run.</div>
+      <div class="type-meta">Space Grotesk<br/>600–700 · headlines, resort names, scores</div>
+    </div>
+    <div class="type-row">
+      <div class="type-sample" style="font-family:'Inter',sans-serif;">Set your budget and we'll price real trips.</div>
+      <div class="type-meta">Inter<br/>400–500 · body copy, descriptions</div>
+    </div>
+    <div class="type-row">
+      <div class="type-sample mono">€1,377 · 38% ADV · SOF→INN</div>
+      <div class="type-meta">IBM Plex Mono<br/>400–500 · prices, labels, data — anything measured</div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">In context</h2>
+    <div class="context-frame">
+      <div class="context-topbar">
+        <div class="lockup">
+          <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
+            <path d="M4,38 L20,12 L26,20 L32,6 L44,38 Z" stroke="url(#g6)" stroke-width="2.6" stroke-linejoin="round" fill="rgba(74,143,224,0.08)"/>
+            <circle cx="32" cy="6" r="3" fill="var(--amber)"/>
+            <defs><linearGradient id="g6" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#4A8FE0"/><stop offset="100%" stop-color="#E8A548"/></linearGradient></defs>
+          </svg>
+          <span class="ski disp" style="font-size:16px;">SKI</span><span class="tag mono" style="font-size:9px;">LAB</span>
+        </div>
+        <span class="chip">Guest</span>
+      </div>
+      <div class="context-body">
+        <div class="mini-ticket">
+          <div><div class="rn">St. Anton am Arlberg</div>
+            <div class="mono" style="font-size:10px; color:var(--snowdim);">AUSTRIA · 305KM PISTE</div></div>
+          <div class="sc mono">0.74</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Usage</h2>
+    <div class="notes">
+      <div class="note-card do">
+        <div class="h">Do</div>
+        <ul>
+          <li>Use the amber point only once per view — it marks the single most important number.</li>
+          <li>Keep the icon's stroke gradient blue→amber; it echoes the elevation line motif used elsewhere.</li>
+          <li>Set "LAB" in the pill tag at minimum 9px mono, always uppercase.</li>
+        </ul>
+      </div>
+      <div class="note-card dont">
+        <div class="h">Don't</div>
+        <ul>
+          <li>Don't recolor Piste Red/Blue for anything except terrain data — they'd stop meaning what they mean.</li>
+          <li>Don't add a drop shadow or bevel to the icon — flat, instrument-panel, not skeuomorphic.</li>
+          <li>Don't set the wordmark in any face but Space Grotesk, even at small sizes.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

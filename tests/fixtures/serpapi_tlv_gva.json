@@ -1,0 +1,111 @@
+{
+  "search_metadata": {
+    "id": "fixture-tlv-gva",
+    "status": "Success",
+    "total_time_taken": 0.81
+  },
+  "search_parameters": {
+    "engine": "google_flights",
+    "departure_id": "TLV",
+    "arrival_id": "GVA,INN",
+    "outbound_date": "2027-01-15",
+    "return_date": "2027-01-20",
+    "currency": "EUR"
+  },
+  "best_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {"name": "Ben Gurion Airport", "id": "TLV", "time": "2027-01-15 06:10"},
+          "arrival_airport": {"name": "Geneva Airport", "id": "GVA", "time": "2027-01-15 09:45"},
+          "duration": 275,
+          "airplane": "Boeing 737",
+          "airline": "easyJet",
+          "travel_class": "Economy",
+          "flight_number": "U2 1854"
+        }
+      ],
+      "total_duration": 275,
+      "carbon_emissions": {"this_flight": 412000},
+      "price": 214,
+      "type": "Round trip",
+      "booking_token": "TOKEN_DIRECT_GVA"
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {"name": "Ben Gurion Airport", "id": "TLV", "time": "2027-01-15 05:20"},
+          "arrival_airport": {"name": "Vienna International Airport", "id": "VIE", "time": "2027-01-15 08:35"},
+          "duration": 195,
+          "airline": "Austrian",
+          "travel_class": "Economy",
+          "flight_number": "OS 858"
+        },
+        {
+          "departure_airport": {"name": "Vienna International Airport", "id": "VIE", "time": "2027-01-15 10:20"},
+          "arrival_airport": {"name": "Innsbruck Airport", "id": "INN", "time": "2027-01-15 11:15"},
+          "duration": 55,
+          "airline": "Austrian",
+          "travel_class": "Economy",
+          "flight_number": "OS 905"
+        }
+      ],
+      "layovers": [{"duration": 105, "name": "Vienna International Airport", "id": "VIE"}],
+      "total_duration": 355,
+      "price": 189,
+      "type": "Round trip",
+      "booking_token": "TOKEN_INN_VIA_VIE"
+    }
+  ],
+  "other_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {"name": "Ben Gurion Airport", "id": "TLV", "time": "2027-01-15 07:00"},
+          "arrival_airport": {"name": "Zurich Airport", "id": "ZRH", "time": "2027-01-15 10:30"},
+          "duration": 270,
+          "airline": "Swiss",
+          "flight_number": "LX 253"
+        },
+        {
+          "departure_airport": {"name": "Zurich Airport", "id": "ZRH", "time": "2027-01-15 12:05"},
+          "arrival_airport": {"name": "Geneva Airport", "id": "GVA", "time": "2027-01-15 12:55"},
+          "duration": 50,
+          "airline": "Edelweiss Air",
+          "flight_number": "WK 2812"
+        }
+      ],
+      "layovers": [{"duration": 95, "name": "Zurich Airport", "id": "ZRH"}],
+      "total_duration": 415,
+      "price": 331,
+      "type": "Round trip",
+      "booking_token": "TOKEN_GVA_VIA_ZRH"
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {"name": "Ben Gurion Airport", "id": "TLV", "time": "2027-01-15 22:40"},
+          "arrival_airport": {"name": "Geneva Airport", "id": "GVA", "time": "2027-01-16 02:15"},
+          "duration": 275,
+          "airline": "Wizz Air",
+          "flight_number": "W6 2371"
+        }
+      ],
+      "total_duration": 275,
+      "price": 167,
+      "type": "Round trip",
+      "booking_token": "TOKEN_WIZZ_GVA"
+    }
+  ],
+  "price_insights": {
+    "lowest_price": 167,
+    "price_level": "low",
+    "typical_price_range": [210, 340],
+    "price_history": [
+      [1766448000, 245],
+      [1766534400, 238],
+      [1766620800, 219],
+      [1766707200, 167]
+    ]
+  }
+}

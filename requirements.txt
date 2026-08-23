@@ -1,0 +1,22 @@
+openpyxl>=3.1
+pytest>=7.0
+
+# --- Auth backend (this session) ---
+# NOTE: none of these are installed in the sandbox this was written in
+# (no network access) -- syntax-checked only, not run. See README.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+sqlalchemy>=2.0
+passlib[argon2]>=1.7
+python-jose[cryptography]>=3.3
+authlib>=1.3
+httpx>=0.27           # required by authlib's Starlette/async OAuth client
+itsdangerous>=2.1        # required by starlette's SessionMiddleware
+python-multipart>=0.0.9  # required by FastAPI for form data
+email-validator>=2.1     # required by pydantic's EmailStr
+
+# --- Not yet needed, listed here for when each phase lands ---
+requests>=2.31           # adapters/flight_adapter.py (SerpApi live search)
+# (requests also covers Phase 5/7 accommodation/weather/snow adapters)
+# alembic                 (once the DB schema needs a migration, not just create_all)
+# anthropic               (Phase 6 -- nlp/preference_parser.py, nlp/explainer.py's LLM version)
