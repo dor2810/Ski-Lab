@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  /* Ski Lab palette -- EXACT hex values from the brand sheet. Do not
+     substitute Tailwind's default blues/greys for these. */
+  --color-navy: #0b1320; /* Deep navy -- primary dark background */
+  --color-midnight: #1c2541; /* Midnight blue -- cards, panels, elevated surfaces */
+  --color-signal: #2563eb; /* Signal blue -- primary actions, links, key emphasis */
+  --color-sky: #38bdf8; /* Sky blue -- secondary accent, highlights, icon strokes */
+  --color-ice: #e2e8f0; /* Ice grey -- body text on dark, muted labels */
+  --color-white: #ffffff;
+
+  /* Piste-grading colors -- ONLY for terrain-difficulty bars. Never
+     reused elsewhere in the UI (see brand spec: no red/green outside
+     this one context). */
+  --color-piste-beginner: #22c55e;
+  --color-piste-easy: #3b82f6;
+  --color-piste-intermediate: #ef4444;
+  --color-piste-advanced: #1e293b;
+}
+
+@theme inline {
+  --color-navy: var(--color-navy);
+  --color-midnight: var(--color-midnight);
+  --color-signal: var(--color-signal);
+  --color-sky: var(--color-sky);
+  --color-ice: var(--color-ice);
+  --color-piste-beginner: var(--color-piste-beginner);
+  --color-piste-easy: var(--color-piste-easy);
+  --color-piste-intermediate: var(--color-piste-intermediate);
+  --color-piste-advanced: var(--color-piste-advanced);
+  --font-sans: var(--font-montserrat);
+}
+
+body {
+  background: var(--color-navy);
+  color: var(--color-white);
+  font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
+  font-feature-settings: "tnum" 1; /* tabular numerals for price columns */
+}
+
+/* Subtle, restrained motion only -- see brand spec section 7. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise-in {
+  animation: rise-in 0.5s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in {
+    animation: none;
+  }
+}
+
+/* Custom range slider styling (priority sliders) -- kept minimal and
+   theme-consistent since browsers give sliders no useful default look. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-midnight);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-sky);
+  cursor: pointer;
+  border: 2px solid var(--color-navy);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-sky);
+  cursor: pointer;
+  border: 2px solid var(--color-navy);
+}

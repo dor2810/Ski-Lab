@@ -258,6 +258,22 @@ def test_top_n_limits_result_count(authed_client):
     assert len(resp.json()["results"]) <= 3
 
 
+def test_preferred_transfer_modes_accepts_real_modes(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "preferred_transfer_modes": ["shared_shuttle", "train"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+
+
+def test_preferred_transfer_modes_rejects_unknown_mode(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "preferred_transfer_modes": ["helicopter"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 422
+
+
 def test_no_returned_trip_has_a_nonpositive_cost(authed_client):
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 3000, "trip_nights": 5,

@@ -30,6 +30,7 @@ from ...models import (
 )
 from ...engine.cost_calculator import live_flight_cost_eur, live_accommodation_cost_eur_per_person
 from ...engine.scoring import rank_trips
+from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates
 from ...nlp.explainer import explain
 from ...db.models import User
@@ -41,6 +42,12 @@ _DEFAULT_WEIGHTS = {
     "ski_quality": 0.30, "price": 0.20, "snow": 0.15,
     "nightlife": 0.15, "convenience": 0.10, "accommodation": 0.10,
 }
+
+# Real modes present in the researched transfer-options data (see
+# engine/transfers.py) -- NOT a fixed enum, so read from the data itself
+# rather than hardcoding a list that could silently drift out of sync
+# (e.g. if a mode is added/removed in a future spreadsheet update).
+_VALID_TRANSFER_MODES = frozenset(o.mode for o in get_transfer_options())
 
 # Loaded once at import time -- see module docstring.
 _resort_cache: List[Resort] = load_resorts()
@@ -94,6 +101,13 @@ class SearchRequest(BaseModel):
     # restores the old "empty means nothing fits" behavior.
     allow_over_budget_fallback: bool = True
     top_n: int = Field(default=6, gt=0, le=30)
+    # None = no preference (every mode considered). Validated against
+    # the REAL modes present in the researched transfer data -- see
+    # _VALID_TRANSFER_MODES above -- so a typo 404s clearly instead of
+    # silently matching nothing (engine/transfers.py's own fallback
+    # behavior for an unmatched preference, which is correct for OTHER
+    # callers but would be a confusing silent no-op for an API client).
+    preferred_transfer_modes: Optional[List[str]] = None
     weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
 
     @field_validator("skill_level")
@@ -124,6 +138,18 @@ class SearchRequest(BaseModel):
     def _valid_equipment(cls, v: str) -> str:
         if v not in VALID_EQUIPMENT_TIERS:
             raise ValueError(f"equipment_tier must be one of {sorted(VALID_EQUIPMENT_TIERS)}")
+        return v
+
+    @field_validator("preferred_transfer_modes")
+    @classmethod
+    def _valid_transfer_modes(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        unknown = set(v) - _VALID_TRANSFER_MODES
+        if unknown:
+            raise ValueError(
+                f"unknown transfer mode(s) {sorted(unknown)}; allowed: {sorted(_VALID_TRANSFER_MODES)}"
+            )
         return v
 
     @field_validator("weights")
@@ -238,6 +264,7 @@ def search_trips(payload: SearchRequest, current_user: User = Depends(get_curren
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
             outbound_date=payload.outbound_date,
+            preferred_transfer_modes=payload.preferred_transfer_modes,
             weights=full_weights,
         )
     except ValueError as e:
@@ -344,6 +371,8 @@ class SearchDateRangeRequest(BaseModel):
     allow_over_budget_fallback: bool = True
     step_days: int = Field(default=1, gt=0, le=14)
     top_n: int = Field(default=10, gt=0, le=100)
+    # See SearchRequest.preferred_transfer_modes -- same contract.
+    preferred_transfer_modes: Optional[List[str]] = None
     weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
 
     @field_validator("skill_level")
@@ -372,6 +401,18 @@ class SearchDateRangeRequest(BaseModel):
     def _valid_equipment(cls, v: str) -> str:
         if v not in VALID_EQUIPMENT_TIERS:
             raise ValueError(f"equipment_tier must be one of {sorted(VALID_EQUIPMENT_TIERS)}")
+        return v
+
+    @field_validator("preferred_transfer_modes")
+    @classmethod
+    def _valid_transfer_modes(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        unknown = set(v) - _VALID_TRANSFER_MODES
+        if unknown:
+            raise ValueError(
+                f"unknown transfer mode(s) {sorted(unknown)}; allowed: {sorted(_VALID_TRANSFER_MODES)}"
+            )
         return v
 
     @field_validator("weights")
@@ -440,6 +481,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: User = Depe
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
+            preferred_transfer_modes=payload.preferred_transfer_modes,
             weights=full_weights,
         )
     except ValueError as e:
@@ -482,6 +524,12 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: User = Depe
         step_days=payload.step_days, top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
         allow_over_budget_fallback=payload.allow_over_budget_fallback,
+        # Caps live pricing to a fast, quota-sane number of (resort, date)
+        # pairs -- measured over 20s and dozens of SerpApi calls per
+        # request without this (see search_date_range's live_reprice_n
+        # docstring). Only matters when live pricing is actually active;
+        # harmless/unused otherwise.
+        live_reprice_n=6 if live_key_present else None,
     )
 
     if payload.min_budget_eur_per_person is not None:

@@ -246,6 +246,45 @@ def test_unavailable_flight_date_is_skipped_not_estimated():
     assert all(o.start_date.day % 2 == 1 for o in results)
 
 
+def test_live_reprice_n_caps_the_number_of_live_calls():
+    # The whole point of the cap: with a grid far larger than
+    # live_reprice_n, only that many (resort, date) pairs should ever
+    # reach the cost_fn -- not every pair in the shortlist x dates grid.
+    call_count = {"flight": 0, "accom": 0}
+
+    def flight_fn(resort, start, end, prefs):
+        call_count["flight"] += 1
+        return 200.0
+
+    def accom_fn(resort, start, end, prefs):
+        call_count["accom"] += 1
+        return 100.0
+
+    search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
+                      datetime.date(2027, 3, 1), top_n=500,
+                      flight_cost_fn=flight_fn, accommodation_cost_fn=accom_fn,
+                      live_reprice_n=5)
+    assert call_count["flight"] == 5
+    assert call_count["accom"] == 5
+
+
+def test_live_reprice_n_none_preserves_unbounded_behavior():
+    # Default (None) must reprice EVERY evaluated pair, matching the
+    # behaviour every existing caller/test was written against.
+    call_count = {"flight": 0}
+
+    def flight_fn(resort, start, end, prefs):
+        call_count["flight"] += 1
+        return 200.0
+
+    search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
+                      datetime.date(2027, 1, 20), top_n=500,
+                      flight_cost_fn=flight_fn)
+    # Shortlist (up to 8 resorts) x candidate dates (several) -- far
+    # more than any small cap would allow through.
+    assert call_count["flight"] > 5
+
+
 def test_search_responds_to_date_varying_accommodation_prices():
     # Same point as the flight-price test, for the other live-priceable
     # leg: a live accommodation quote that's dramatically cheaper on one

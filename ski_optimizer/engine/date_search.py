@@ -170,20 +170,6 @@ def shortlist_resorts(resorts: List[Resort], prefs: UserPreferences,
     return [r for _, r in scored[:top_n]]
 
 
-def _default_flight_cost_for_date(resort: Resort, start_date: datetime.date,
-                                  end_date: datetime.date, prefs: UserPreferences) -> float:
-    """
-    Static fallback: the flat per-country estimate, ignoring the date.
-
-    This is a PLACEHOLDER and it is deliberately date-blind, which means
-    with it the search cannot actually find a cheaper week -- it will
-    rank dates only on season-banded pass and accommodation. That is
-    enough to test the funnel, and nothing more. Real date-driven deals
-    require passing a live flight_cost_fn (see adapters/flight_adapter).
-    """
-    return flight_cost_eur(resort)
-
-
 def search_date_range(
     resorts: List[Resort],
     prefs: UserPreferences,
@@ -195,6 +181,7 @@ def search_date_range(
     flight_cost_fn: Optional[Callable] = None,
     accommodation_cost_fn: Optional[Callable] = None,
     allow_over_budget_fallback: bool = True,
+    live_reprice_n: Optional[int] = None,
 ) -> List[DatedTripOption]:
     """
     Full funnel: shortlist resorts, then evaluate each across every
@@ -215,6 +202,31 @@ def search_date_range(
     good flight date). Defaults to None, which reproduces the previous
     accommodation-is-always-static behaviour exactly.
 
+    live_reprice_n CAPS how many (resort, date) pairs actually get
+    live-priced -- mirrors scoring.rank_trips' own live_reprice_n
+    exactly, added for the same reason: this function's search SPACE is
+    shortlist_size resorts x every candidate date, which is easily 30-50+
+    pairs, and live-pricing ALL of them (this function's original,
+    uncapped behaviour) means 30-50+ sequential SerpApi calls PER
+    endpoint PER FLIGHT, doubled again for accommodation -- measured at
+    over 20 seconds and a large chunk of a 250-call/month quota for ONE
+    page interaction once this was actually wired into a live-key
+    deployment (see PROJECT_STATE.md). Default None preserves the exact
+    prior unbounded behaviour (every existing caller/test assumed every
+    pair gets priced); callers wiring in a REAL cost_fn against a live,
+    metered API should pass a real cap (the API layer does).
+
+    Mechanically: EVERY (resort, date) pair is still scored with the
+    STATIC estimate first (cheap, no network calls) -- exactly like
+    rank_trips scores every resort statically before repricing. Only
+    the top `live_reprice_n` of those BY STATIC SCORE then get live
+    re-priced; the rest keep their static estimate. This is a real
+    behavioural difference from the uncapped path (a date that's mediocre
+    on the static estimate but would have been great live is not
+    reachable when capped -- same accepted tradeoff rank_trips already
+    makes), not a free win; it exists specifically to make live pricing
+    for this endpoint actually affordable and fast.
+
     OVER-BUDGET FALLBACK (allow_over_budget_fallback, default True): see
     scoring.rank_trips' docstring for the full rationale -- same contract
     here. If NOTHING in the window fits the stated budget, this returns
@@ -227,8 +239,6 @@ def search_date_range(
     something to report as "the cheapest we found" rather than an empty
     result caused by pruning before pricing even ran.
     """
-    flight_cost_fn = flight_cost_fn or _default_flight_cost_for_date
-
     starts = candidate_start_dates(earliest_date, latest_date, prefs.trip_nights, step_days)
     if not starts:
         return []
@@ -254,56 +264,70 @@ def search_date_range(
         "accom": (min(accom_vals), max(accom_vals)),
     }
 
-    all_evaluated = []  # every (resort, date) actually priced, regardless of budget
-    results = []
+    def score_it(resort, start, end, cost):
+        piste_score = _normalize(resort.piste_km, *ranges["piste"])
+        accom_pct = _normalize(resort.accommodation_eur_per_night, *ranges["accom"])
+        target = {"budget": 0.15, "standard": 0.5, "luxury": 0.85}.get(
+            prefs.accommodation_tier, 0.5)
+        components = {
+            "ski_quality": _ski_quality_score(resort, prefs, piste_score),
+            "price": max(0.0, min(1.0, 1.0 - cost.total_eur / prefs.budget_eur_per_person)),
+            "snow": resort.snow_reliability / 5.0,
+            "nightlife": resort.nightlife_rating / 5.0,
+            "convenience": 1.0 - _normalize(resort.transfer_time_minutes, *ranges["transfer"]),
+            "accommodation": 1.0 - abs(accom_pct - target),
+        }
+        score = sum(components[k] * w for k, w in prefs.weights.items())
+        return DatedTripOption(
+            resort=resort, start_date=start, end_date=end, cost=cost,
+            score=round(score, 4),
+            score_components={k: round(v, 3) for k, v in components.items()},
+            season=season_band(start),
+        )
+
+    # STAGE 1: static cost + score for EVERY (resort, date) pair. No
+    # network calls, however large the grid -- see live_reprice_n above.
+    all_static = []
     for resort in shortlist:
         for start in starts:
             end = start + datetime.timedelta(days=prefs.trip_nights)
-
             cost = compute_trip_cost(resort, prefs, start_date=start)
-
-            live_flight = flight_cost_fn(resort, start, end, prefs)
-            if live_flight is None:
-                # No price for this date -- skip it rather than silently
-                # substituting an estimate and presenting it as a real deal.
-                continue
-            if live_flight != cost.flight_eur:
-                cost = apply_live_flight_price(cost, live_flight)
-
-            if accommodation_cost_fn is not None:
-                live_accom = accommodation_cost_fn(resort, start, end, prefs)
-                # None means "no live quote for this date" -- keep the
-                # static estimate rather than dropping an otherwise good
-                # flight date, per this function's docstring.
-                if live_accom is not None and live_accom != cost.accommodation_eur:
-                    cost = apply_live_accommodation_price(cost, live_accom)
-
             if not (0 < cost.total_eur):
                 continue  # nonsensical cost, never a real result
+            all_static.append(score_it(resort, start, end, cost))
+    all_static.sort(key=lambda t: t.score, reverse=True)
 
-            piste_score = _normalize(resort.piste_km, *ranges["piste"])
-            accom_pct = _normalize(resort.accommodation_eur_per_night, *ranges["accom"])
-            target = {"budget": 0.15, "standard": 0.5, "luxury": 0.85}.get(
-                prefs.accommodation_tier, 0.5)
-            components = {
-                "ski_quality": _ski_quality_score(resort, prefs, piste_score),
-                "price": max(0.0, min(1.0, 1.0 - cost.total_eur / prefs.budget_eur_per_person)),
-                "snow": resort.snow_reliability / 5.0,
-                "nightlife": resort.nightlife_rating / 5.0,
-                "convenience": 1.0 - _normalize(resort.transfer_time_minutes, *ranges["transfer"]),
-                "accommodation": 1.0 - abs(accom_pct - target),
-            }
-            score = sum(components[k] * w for k, w in prefs.weights.items())
+    # STAGE 2: live-reprice only the top `live_reprice_n` (or ALL of
+    # them when live_reprice_n is None -- the original, uncapped path).
+    live_active = flight_cost_fn is not None or accommodation_cost_fn is not None
+    if live_active:
+        cutoff = len(all_static) if live_reprice_n is None else live_reprice_n
+        to_reprice, rest = all_static[:cutoff], all_static[cutoff:]
+        repriced = []
+        for opt in to_reprice:
+            cost = opt.cost
+            if flight_cost_fn is not None:
+                live_flight = flight_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)
+                if live_flight is None:
+                    # Flight IS the primary search axis for this mode --
+                    # no live price means no real answer for this date,
+                    # so it's dropped rather than shown on a stale estimate.
+                    continue
+                if live_flight != cost.flight_eur:
+                    cost = apply_live_flight_price(cost, live_flight)
+            if accommodation_cost_fn is not None:
+                live_accom = accommodation_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)
+                # None here just keeps the static estimate -- see this
+                # function's docstring on why accommodation degrades
+                # differently than flight.
+                if live_accom is not None and live_accom != cost.accommodation_eur:
+                    cost = apply_live_accommodation_price(cost, live_accom)
+            repriced.append(score_it(opt.resort, opt.start_date, opt.end_date, cost))
+        all_evaluated = repriced + rest
+    else:
+        all_evaluated = all_static
 
-            option = DatedTripOption(
-                resort=resort, start_date=start, end_date=end, cost=cost,
-                score=round(score, 4),
-                score_components={k: round(v, 3) for k, v in components.items()},
-                season=season_band(start),
-            )
-            all_evaluated.append(option)
-            if cost.total_eur <= prefs.budget_eur_per_person:
-                results.append(option)
+    results = [t for t in all_evaluated if t.cost.total_eur <= prefs.budget_eur_per_person]
 
     if results or not allow_over_budget_fallback:
         results.sort(key=lambda t: t.score, reverse=True)

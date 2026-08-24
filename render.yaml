@@ -36,5 +36,12 @@ services:
     # tried live. Static sites are served over Render's CDN with no
     # paid-tier compute concept the way web services have, so the field
     # doesn't apply; omitting it is the fix, not a different plan value.
-    staticPublishPath: frontend/app
-    buildCommand: ""
+    #
+    # This builds the real Next.js app in frontend/web (see its own
+    # README) -- NOT frontend/app (the earlier plain-HTML page, kept in
+    # the repo but no longer deployed) and NOT frontend/prototype (the
+    # much older JS-engine-port demo, never deployed). `next build` with
+    # `output: "export"` in next.config.ts produces static HTML/CSS/JS
+    # in frontend/web/out, which is what gets published.
+    buildCommand: cd frontend/web && npm ci && npm run build
+    staticPublishPath: frontend/web/out
