@@ -1,5 +1,7 @@
 # Ski Lab
 
+Deploys automatically to Render on every push to `main` — see `render.yaml`.
+
 AI-powered ski vacation planning and optimization system, initially for
 Israeli travelers going to European ski resorts. See `project-structure.md`
 in the original chat output for the full phase-by-phase rationale behind
