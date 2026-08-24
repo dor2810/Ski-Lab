@@ -15,6 +15,8 @@ only changes when someone edits the spreadsheet and restarts the
 server. See reload_resorts() below for how to pick up spreadsheet edits
 without a full restart (useful during a verification pass).
 """
+import datetime
+import os
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,7 +28,9 @@ from ...models import (
     VALID_SKILL_LEVELS, VALID_ACCOMMODATION_TIERS,
     VALID_FOOD_PROFILES, VALID_EQUIPMENT_TIERS, VALID_WEIGHT_KEYS,
 )
+from ...engine.cost_calculator import live_flight_cost_eur, live_accommodation_cost_eur_per_person
 from ...engine.scoring import rank_trips
+from ...engine.date_search import search_date_range, candidate_start_dates
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user
@@ -58,6 +62,13 @@ def reload_resorts() -> int:
 
 class SearchRequest(BaseModel):
     budget_eur_per_person: float = Field(gt=0)
+    # Optional floor for "price range" requests: results cheaper than
+    # this are dropped. None (default) = no floor, matching every prior
+    # caller's behavior exactly. Unlike the budget ceiling, there is
+    # deliberately no fallback when this empties the result set -- "I
+    # don't want anything under X" is a real preference, not a feasibility
+    # problem to work around the way "nothing fits my budget" is.
+    min_budget_eur_per_person: Optional[float] = Field(default=None, ge=0)
     trip_nights: int = Field(gt=0, le=30)
     group_size: int = Field(default=2, gt=0, le=20)
     skill_level: str = "intermediate"
@@ -65,6 +76,24 @@ class SearchRequest(BaseModel):
     food_profile: str = "normal"
     equipment_tier: str = "standard"
     target_resort: Optional[str] = None
+    # Optional: enables season-band cost adjustment, and live flight +
+    # accommodation repricing for the top candidates when SERPAPI_API_KEY
+    # is configured (see search_trips() below). Omitting it reproduces
+    # the previous date-agnostic behavior exactly.
+    outbound_date: Optional[datetime.date] = None
+    # Connections preference for live flight pricing. 0 = nonstop only,
+    # 1 = up to 1 stop, 2 = up to 2 stops, None = no preference (any
+    # number of stops -- the only way to express "willing to take 2+
+    # stops", since SerpApi has no "at least N" filter, only "at most N"
+    # or "any"; see flight_adapter._stops_param). Has no effect unless
+    # outbound_date is also set and a SerpApi key is configured.
+    max_connections: Optional[int] = Field(default=None, ge=0, le=2)
+    # See rank_trips' over-budget-fallback docstring. True (default): if
+    # NOTHING fits budget_eur_per_person, return the cheapest option(s)
+    # found instead of an empty list, flagged within_budget=False. False
+    # restores the old "empty means nothing fits" behavior.
+    allow_over_budget_fallback: bool = True
+    top_n: int = Field(default=6, gt=0, le=30)
     weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
 
     @field_validator("skill_level")
@@ -141,6 +170,8 @@ class CostBreakdownOut(BaseModel):
     food_eur: float
     misc_eur: float
     total_eur: float
+    flight_price_is_live: bool
+    accommodation_price_is_live: bool
 
 
 class TripResultOut(BaseModel):
@@ -149,10 +180,15 @@ class TripResultOut(BaseModel):
     score: float
     score_components: Dict[str, float]
     explanation: str
+    # False only for over-budget-fallback results (see SearchRequest's
+    # allow_over_budget_fallback) -- the frontend MUST show this
+    # honestly rather than presenting a flagged result as a normal one.
+    within_budget: bool
 
 
 class SearchResponse(BaseModel):
     query_resort_count: int
+    live_pricing_active: bool
     results: List[TripResultOut]
 
 
@@ -201,6 +237,7 @@ def search_trips(payload: SearchRequest, current_user: User = Depends(get_curren
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
+            outbound_date=payload.outbound_date,
             weights=full_weights,
         )
     except ValueError as e:
@@ -225,7 +262,31 @@ def search_trips(payload: SearchRequest, current_user: User = Depends(get_curren
                 f"See GET /trips/resorts for valid names.",
             )
 
-    trip_options = rank_trips(_resort_cache, prefs, top_n=6)
+    # Live flight/accommodation repricing only kicks in when the client
+    # gave a date AND a SerpApi key is actually configured -- a date
+    # without a key is a degraded-but-valid request (falls back to the
+    # static estimate), not an error. Origin is hardcoded to TLV,
+    # matching the product's current Israeli-traveler-only scope.
+    live_pricing_active = payload.outbound_date is not None and bool(os.environ.get("SERPAPI_API_KEY"))
+    flight_cost_fn = accommodation_cost_fn = None
+    if live_pricing_active:
+        def flight_cost_fn(resort, start_date, end_date, _prefs):
+            return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV",
+                                        max_connections=payload.max_connections)
+
+        def accommodation_cost_fn(resort, start_date, end_date, _prefs):
+            return live_accommodation_cost_eur_per_person(
+                resort, start_date, nights=payload.trip_nights,
+                group_size=payload.group_size, rooms_needed=prefs.rooms_needed)
+
+    trip_options = rank_trips(
+        _resort_cache, prefs, top_n=payload.top_n,
+        flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
+        allow_over_budget_fallback=payload.allow_over_budget_fallback,
+    )
+
+    if payload.min_budget_eur_per_person is not None:
+        trip_options = [t for t in trip_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
 
     results = [
         TripResultOut(
@@ -235,18 +296,225 @@ def search_trips(payload: SearchRequest, current_user: User = Depends(get_curren
                 accommodation_eur=t.cost.accommodation_eur, ski_pass_eur=t.cost.ski_pass_eur,
                 equipment_eur=t.cost.equipment_eur, food_eur=t.cost.food_eur,
                 misc_eur=t.cost.misc_eur, total_eur=t.cost.total_eur,
+                flight_price_is_live=t.cost.flight_price_is_live,
+                accommodation_price_is_live=t.cost.accommodation_price_is_live,
             ),
             score=t.score,
             score_components=t.score_components,
             explanation=explain(t, skill_level=payload.skill_level),
+            within_budget=t.within_budget,
         )
         for t in trip_options
     ]
 
-    return SearchResponse(query_resort_count=len(_resort_cache), results=results)
+    return SearchResponse(query_resort_count=len(_resort_cache),
+                          live_pricing_active=live_pricing_active, results=results)
 
 
 @router.get("/resorts", response_model=List[str])
 def list_resort_names(current_user: User = Depends(get_current_user)):
     """Lets an authenticated client populate a 'fixed resort' dropdown without guessing names."""
     return sorted(r.name for r in _resort_cache)
+
+
+# ---------------------------------------------------------------------------
+# Date-range search: "give me a window, tell me the best week(s) in it."
+# Wraps engine/date_search.search_date_range, the same way search_trips()
+# above wraps rank_trips -- no scoring/funnel logic is reimplemented here.
+# ---------------------------------------------------------------------------
+
+class SearchDateRangeRequest(BaseModel):
+    budget_eur_per_person: float = Field(gt=0)
+    # See SearchRequest.min_budget_eur_per_person -- same contract.
+    min_budget_eur_per_person: Optional[float] = Field(default=None, ge=0)
+    trip_nights: int = Field(gt=0, le=30)
+    earliest_date: datetime.date
+    latest_date: datetime.date
+    group_size: int = Field(default=2, gt=0, le=20)
+    skill_level: str = "intermediate"
+    accommodation_tier: str = "standard"
+    food_profile: str = "normal"
+    equipment_tier: str = "standard"
+    # None = search across resorts (like search_trips); set this to pin
+    # the search to one resort and just find the best DATES for it.
+    target_resort: Optional[str] = None
+    # See SearchRequest.max_connections -- same contract.
+    max_connections: Optional[int] = Field(default=None, ge=0, le=2)
+    # See rank_trips'/search_date_range's over-budget-fallback docstring.
+    allow_over_budget_fallback: bool = True
+    step_days: int = Field(default=1, gt=0, le=14)
+    top_n: int = Field(default=10, gt=0, le=100)
+    weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
+
+    @field_validator("skill_level")
+    @classmethod
+    def _valid_skill(cls, v: str) -> str:
+        if v not in VALID_SKILL_LEVELS:
+            raise ValueError(f"skill_level must be one of {sorted(VALID_SKILL_LEVELS)}")
+        return v
+
+    @field_validator("accommodation_tier")
+    @classmethod
+    def _valid_accom_tier(cls, v: str) -> str:
+        if v not in VALID_ACCOMMODATION_TIERS:
+            raise ValueError(f"accommodation_tier must be one of {sorted(VALID_ACCOMMODATION_TIERS)}")
+        return v
+
+    @field_validator("food_profile")
+    @classmethod
+    def _valid_food(cls, v: str) -> str:
+        if v not in VALID_FOOD_PROFILES:
+            raise ValueError(f"food_profile must be one of {sorted(VALID_FOOD_PROFILES)}")
+        return v
+
+    @field_validator("equipment_tier")
+    @classmethod
+    def _valid_equipment(cls, v: str) -> str:
+        if v not in VALID_EQUIPMENT_TIERS:
+            raise ValueError(f"equipment_tier must be one of {sorted(VALID_EQUIPMENT_TIERS)}")
+        return v
+
+    @field_validator("weights")
+    @classmethod
+    def _valid_weight_keys(cls, v: Dict[str, float]) -> Dict[str, float]:
+        unknown = set(v) - VALID_WEIGHT_KEYS
+        if unknown:
+            raise ValueError(f"unknown weight key(s) {sorted(unknown)}; allowed: {sorted(VALID_WEIGHT_KEYS)}")
+        if any(w < 0 for w in v.values()):
+            raise ValueError("weights must be non-negative")
+        if sum(v.values()) <= 0:
+            raise ValueError("at least one weight must be positive")
+        return v
+
+
+class DatedTripResultOut(BaseModel):
+    resort: ResortOut
+    start_date: datetime.date
+    end_date: datetime.date
+    season: str
+    cost: CostBreakdownOut
+    score: float
+    score_components: Dict[str, float]
+    explanation: str
+    within_budget: bool
+
+
+class SearchDateRangeResponse(BaseModel):
+    query_resort_count: int
+    candidate_dates_per_resort: int
+    live_pricing_active: bool
+    results: List[DatedTripResultOut]
+
+
+@router.post("/search-dates", response_model=SearchDateRangeResponse)
+def search_trip_dates(payload: SearchDateRangeRequest, current_user: User = Depends(get_current_user)):
+    """
+    "I want to go to resort X (or: anywhere), sometime in this window,
+    for N nights -- find me the best deal(s)." Evaluates every valid
+    N-night start date inside [earliest_date, latest_date] (e.g. a
+    10-day window with a 7-night trip yields 4 candidate start dates:
+    day 1, 2, 3, 4) and, for each, prices flight + accommodation live
+    when SERPAPI_API_KEY is configured, falling back to the static
+    season-banded estimate for any date/resort where a live quote isn't
+    available -- never silently for the WHOLE search, only per missing
+    quote, matching search_trips()'s existing degrade-visibly contract.
+    """
+    if payload.latest_date <= payload.earliest_date:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "latest_date must be after earliest_date")
+
+    weight_sum = sum(payload.weights.values())
+    normalized_weights = {k: v / weight_sum for k, v in payload.weights.items()}
+    full_weights = dict(_DEFAULT_WEIGHTS)
+    full_weights.update(normalized_weights)
+    weight_sum_full = sum(full_weights.values())
+    full_weights = {k: v / weight_sum_full for k, v in full_weights.items()}
+
+    try:
+        prefs = UserPreferences(
+            budget_eur_per_person=payload.budget_eur_per_person,
+            trip_nights=payload.trip_nights,
+            group_size=payload.group_size,
+            skill_level=payload.skill_level,
+            accommodation_tier=payload.accommodation_tier,
+            food_profile=payload.food_profile,
+            equipment_tier=payload.equipment_tier,
+            target_resort=payload.target_resort,
+            weights=full_weights,
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+
+    # Same "choose a resort" contract as search_trips: if given, it must
+    # be a real resort -- pin the search space to it. If omitted, the
+    # funnel searches (and shortlists) across every resort, same as
+    # search_trips does when target_resort is None.
+    search_pool = _resort_cache
+    if payload.target_resort:
+        target = payload.target_resort.strip().lower()
+        matches = [r for r in _resort_cache if r.name.strip().lower() == target]
+        if not matches:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                f"Unknown resort {payload.target_resort!r}. "
+                f"See GET /trips/resorts for valid names.",
+            )
+        search_pool = matches
+
+    live_key_present = bool(os.environ.get("SERPAPI_API_KEY"))
+
+    flight_cost_fn = None
+    accommodation_cost_fn = None
+    if live_key_present:
+        def flight_cost_fn(resort, start_date, end_date, _prefs):
+            return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV",
+                                        max_connections=payload.max_connections)
+
+        def accommodation_cost_fn(resort, start_date, end_date, _prefs):
+            return live_accommodation_cost_eur_per_person(
+                resort, start_date, nights=payload.trip_nights,
+                group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
+            )
+
+    dated_options = search_date_range(
+        search_pool, prefs, payload.earliest_date, payload.latest_date,
+        shortlist_size=len(search_pool) if payload.target_resort else 8,
+        step_days=payload.step_days, top_n=payload.top_n,
+        flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
+        allow_over_budget_fallback=payload.allow_over_budget_fallback,
+    )
+
+    if payload.min_budget_eur_per_person is not None:
+        dated_options = [t for t in dated_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
+
+    candidate_dates = len(candidate_start_dates(
+        payload.earliest_date, payload.latest_date, payload.trip_nights, payload.step_days))
+
+    results = [
+        DatedTripResultOut(
+            resort=_to_resort_out(t.resort),
+            start_date=t.start_date,
+            end_date=t.end_date,
+            season=t.season,
+            cost=CostBreakdownOut(
+                flight_eur=t.cost.flight_eur, transfer_eur=t.cost.transfer_eur,
+                accommodation_eur=t.cost.accommodation_eur, ski_pass_eur=t.cost.ski_pass_eur,
+                equipment_eur=t.cost.equipment_eur, food_eur=t.cost.food_eur,
+                misc_eur=t.cost.misc_eur, total_eur=t.cost.total_eur,
+                flight_price_is_live=t.cost.flight_price_is_live,
+                accommodation_price_is_live=t.cost.accommodation_price_is_live,
+            ),
+            score=t.score,
+            score_components=t.score_components,
+            explanation=explain(t, skill_level=payload.skill_level),
+            within_budget=t.within_budget,
+        )
+        for t in dated_options
+    ]
+
+    return SearchDateRangeResponse(
+        query_resort_count=len(search_pool),
+        candidate_dates_per_resort=candidate_dates,
+        live_pricing_active=live_key_present,
+        results=results,
+    )

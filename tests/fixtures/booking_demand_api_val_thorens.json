@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": "prop-001",
+      "name": "Chalet des Cimes",
+      "review_score": 8.7,
+      "distance_to_centre": 0.3,
+      "block": [
+        {
+          "price": {"amount": 145.0, "currency": "EUR"},
+          "cancellation": {"type": "free_cancellation"}
+        },
+        {
+          "price": {"amount": 189.0, "currency": "EUR"},
+          "cancellation": {"type": "free_cancellation"}
+        }
+      ]
+    },
+    {
+      "id": "prop-002",
+      "name": "Residence Alpina",
+      "review_score": 7.9,
+      "distance_to_centre": 1.1,
+      "block": [
+        {
+          "price": {"amount": 98.5, "currency": "EUR"},
+          "cancellation": {"type": "non_refundable"}
+        }
+      ]
+    },
+    {
+      "id": "prop-003",
+      "name": "No Price Lodge",
+      "review_score": 6.2,
+      "distance_to_centre": 2.0,
+      "block": []
+    },
+    {
+      "id": "prop-004",
+      "name": "Wrong Currency Inn",
+      "review_score": 8.0,
+      "distance_to_centre": 0.8,
+      "block": [
+        {
+          "price": {"amount": 120.0, "currency": "USD"},
+          "cancellation": {"type": "free_cancellation"}
+        }
+      ]
+    }
+  ]
+}

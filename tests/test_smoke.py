@@ -39,8 +39,18 @@ def test_cost_breakdown_totals_are_positive():
 def test_hard_budget_constraint_is_enforced():
     resorts = load_resorts()
     prefs = UserPreferences(budget_eur_per_person=50, trip_nights=5, group_size=2)
+    # No resort fits a 50 EUR/person budget -- rank_trips no longer returns
+    # an empty list for this (see its over-budget-fallback docstring), it
+    # returns the cheapest option(s) it found, honestly flagged as not
+    # fitting. The constraint is still enforced: nothing claims to fit.
     results = rank_trips(resorts, prefs)
-    assert results == []  # no resort should fit a 50 EUR/person budget
+    assert results
+    assert all(not t.within_budget for t in results)
+
+    # The old "empty means nothing fits" behavior is still available
+    # explicitly, for a caller that wants it.
+    strict_results = rank_trips(resorts, prefs, allow_over_budget_fallback=False)
+    assert strict_results == []
 
 
 def test_ranking_is_sorted_descending_by_score():

@@ -12,6 +12,7 @@ Run with:  cd ski-trip-optimizer && python -m pytest tests/test_validation.py -v
 (or the no-pytest runner in the repo README, since this sandbox has no
 network access to install pytest.)
 """
+import datetime
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ski_optimizer.data.resort_repository import load_resorts, _parse_transfer_minutes
 from ski_optimizer.models import UserPreferences
-from ski_optimizer.engine.cost_calculator import compute_trip_cost, ski_pass_cost
+from ski_optimizer.engine.cost_calculator import compute_trip_cost, ski_pass_cost, apply_live_flight_price
 from ski_optimizer.engine.scoring import rank_trips
 from ski_optimizer.engine.terrain import TerrainMix
 
@@ -502,3 +503,120 @@ def test_target_resort_matching_tolerates_surrounding_whitespace():
         results = rank_trips(resorts, _valid(budget_eur_per_person=3000,
                                              target_resort=probe), top_n=1)
         assert len(results) == 1, f"{probe!r} failed to match"
+
+
+# --- live flight repricing ---
+
+def test_apply_live_flight_price_replaces_flight_and_flags_live():
+    resorts = load_resorts()
+    cost = compute_trip_cost(resorts[0], _valid())
+    assert cost.flight_price_is_live is False
+
+    live = cost.flight_eur + 37.5
+    repriced = apply_live_flight_price(cost, live)
+
+    assert repriced.flight_eur == live
+    assert repriced.flight_price_is_live is True
+    # Returns a NEW object -- the original must be untouched.
+    assert cost.flight_price_is_live is False
+    assert cost.flight_eur != live
+
+
+def test_apply_live_flight_price_adjusts_misc_proportionally():
+    resorts = load_resorts()
+    cost = compute_trip_cost(resorts[0], _valid())
+    delta = 100.0
+    repriced = apply_live_flight_price(cost, cost.flight_eur + delta)
+    # misc_eur is a 5% buffer on the subtotal (MISC_COST_RATE) -- a EUR100
+    # flight increase should raise misc by EUR5, not stay fixed.
+    assert repriced.misc_eur == round(cost.misc_eur + delta * 0.05, 2)
+
+
+def test_rank_trips_without_flight_cost_fn_is_unaffected():
+    # Backward compatibility: every call site that doesn't opt in (which is
+    # every caller that existed before this feature) must behave exactly
+    # as before.
+    resorts = load_resorts()
+    prefs = _valid(budget_eur_per_person=3000)
+    for trip in rank_trips(resorts, prefs, top_n=len(resorts)):
+        assert trip.cost.flight_price_is_live is False
+
+
+def test_rank_trips_ignores_flight_cost_fn_without_outbound_date():
+    resorts = load_resorts()
+    prefs = _valid(budget_eur_per_person=3000)  # outbound_date defaults to None
+    calls = []
+
+    def fn(resort, start, end, p):
+        calls.append(resort.name)
+        return 1.0
+
+    results = rank_trips(resorts, prefs, top_n=5, flight_cost_fn=fn)
+    assert calls == [], "flight_cost_fn must not be called without an outbound_date"
+    assert all(not t.cost.flight_price_is_live for t in results)
+
+
+def test_rank_trips_uses_live_price_when_date_and_fn_are_given():
+    resorts = load_resorts()
+    prefs = _valid(budget_eur_per_person=3000, outbound_date=datetime.date(2027, 1, 2))
+
+    def fn(resort, start, end, p):
+        return 1.0  # absurdly cheap and distinct from any real estimate
+
+    results = rank_trips(resorts, prefs, top_n=3, flight_cost_fn=fn)
+    assert results, "expected at least one result"
+    for trip in results:
+        assert trip.cost.flight_eur == 1.0
+        assert trip.cost.flight_price_is_live is True
+
+
+def test_rank_trips_drops_a_candidate_that_busts_budget_once_live_priced():
+    resorts = load_resorts()
+    target = resorts[0]
+    outbound = datetime.date(2027, 1, 2)
+    # Baseline computed with the SAME start_date rank_trips uses internally
+    # (season-band adjusted) -- using a date-less baseline here would set
+    # the wrong budget and make this test pass for the wrong reason.
+    baseline = compute_trip_cost(target, _valid(target_resort=target.name), start_date=outbound)
+    prefs = _valid(budget_eur_per_person=baseline.total_eur + 1,
+                   target_resort=target.name, outbound_date=outbound)
+
+    def fn(resort, start, end, p):
+        return baseline.flight_eur + 100000  # affordable statically, not once live-priced
+
+    # Old "drop it" behavior is still available explicitly.
+    strict = rank_trips(resorts, prefs, top_n=1, flight_cost_fn=fn, allow_over_budget_fallback=False)
+    assert strict == []
+
+    # Default behavior: the fixed-resort candidate busts budget once live
+    # flight-priced, so it falls back rather than returning empty -- shown
+    # honestly flagged, with the REAL (live) price, not the stale static one.
+    fallback = rank_trips(resorts, prefs, top_n=1, flight_cost_fn=fn)
+    assert len(fallback) == 1
+    assert fallback[0].within_budget is False
+    assert fallback[0].cost.flight_eur == baseline.flight_eur + 100000
+
+
+def test_rank_trips_keeps_static_estimate_when_fn_returns_none():
+    resorts = load_resorts()
+    prefs = _valid(budget_eur_per_person=3000, outbound_date=datetime.date(2027, 1, 2))
+
+    def fn(resort, start, end, p):
+        return None  # simulates an adapter error / no route found
+
+    results = rank_trips(resorts, prefs, top_n=5, flight_cost_fn=fn)
+    assert results
+    assert all(not t.cost.flight_price_is_live for t in results)
+
+
+def test_rank_trips_only_reprices_up_to_live_reprice_n_candidates():
+    resorts = load_resorts()
+    prefs = _valid(budget_eur_per_person=5000, outbound_date=datetime.date(2027, 1, 2))
+    calls = []
+
+    def fn(resort, start, end, p):
+        calls.append(resort.name)
+        return 200.0
+
+    rank_trips(resorts, prefs, top_n=5, flight_cost_fn=fn, live_reprice_n=3)
+    assert len(calls) == 3, f"expected exactly 3 live-price calls, got {len(calls)}"

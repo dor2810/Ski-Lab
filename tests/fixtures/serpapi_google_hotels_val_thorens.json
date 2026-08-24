@@ -1,0 +1,61 @@
+{
+  "search_metadata": {"status": "Success"},
+  "search_information": {"total_results": 4},
+  "properties": [
+    {
+      "type": "hotel",
+      "name": "Chalet des Cimes",
+      "property_token": "ChcIrpjT-46QjrEnGgsvZy8xMWJ3M3o5eBAB",
+      "overall_rating": 4.6,
+      "reviews": 812,
+      "hotel_class": 4,
+      "free_cancellation": true,
+      "rate_per_night": {
+        "lowest": "€145",
+        "extracted_lowest": 145.0,
+        "before_taxes_fees": "€130",
+        "extracted_before_taxes_fees": 130.0
+      },
+      "total_rate": {
+        "lowest": "€725",
+        "extracted_lowest": 725.0
+      }
+    },
+    {
+      "type": "hotel",
+      "name": "Residence Alpina",
+      "property_token": "ChcIrpjT-46QjrEnGgsvZy8xMWJ3M3o5eXk",
+      "overall_rating": 4.1,
+      "reviews": 340,
+      "hotel_class": 3,
+      "rate_per_night": {
+        "lowest": "€98.5",
+        "extracted_lowest": 98.5,
+        "before_taxes_fees": "€89",
+        "extracted_before_taxes_fees": 89.0
+      },
+      "total_rate": {
+        "lowest": "€492.5",
+        "extracted_lowest": 492.5
+      }
+    },
+    {
+      "type": "hotel",
+      "name": "No Price Lodge",
+      "property_token": "ChcIrpjT-46QjrEnGgsvZy8xMWJ3M3o5eno",
+      "overall_rating": 3.9,
+      "reviews": 22,
+      "hotel_class": 2
+    },
+    {
+      "type": "hotel",
+      "name": "Bad Data Inn",
+      "property_token": "ChcIrpjT-46QjrEnGgsvZy8xMWJ3M3o5ejE",
+      "overall_rating": 4.0,
+      "rate_per_night": {
+        "lowest": "€0",
+        "extracted_lowest": 0
+      }
+    }
+  ]
+}

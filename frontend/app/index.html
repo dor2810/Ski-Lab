@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ski Lab</title>
+<style>
+  :root {
+    --crevasse: #0B1526;
+    --piste-blue: #4A8FE0;
+    --amber: #E8A548;
+    --ink: #1c2733;
+    --muted: #6b7684;
+    --border: #dbe1e8;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --warn-bg: #fff4e5;
+    --warn-border: #E8A548;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  header {
+    background: var(--crevasse); color: #fff; padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .wordmark { font-weight: 800; letter-spacing: 0.5px; font-size: 20px; }
+  .wordmark .pill {
+    background: var(--amber); color: var(--crevasse); font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px; margin-left: 8px; vertical-align: middle;
+  }
+  .authbar { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .authbar input {
+    padding: 6px 8px; border-radius: 6px; border: none; font-size: 13px; width: 150px;
+  }
+  .authbar button {
+    background: var(--piste-blue); color: #fff; border: none; padding: 7px 14px;
+    border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  .authbar button:hover { opacity: 0.9; }
+  .authbar .err { color: #ffb4b4; font-size: 12px; max-width: 220px; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .tab {
+    padding: 10px 18px; border-radius: 8px 8px 0 0; background: #e7ebef; cursor: pointer;
+    font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-bottom: none;
+  }
+  .tab.active { background: var(--card); color: var(--crevasse); }
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 0 8px 8px 8px;
+    padding: 22px; margin-bottom: 24px;
+  }
+  .panel.hidden { display: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+  label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+  input, select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+    background: #fff; color: var(--ink);
+  }
+  .field { margin-bottom: 4px; }
+  .actions { margin-top: 20px; display: flex; align-items: center; gap: 14px; }
+  .go-btn {
+    background: var(--crevasse); color: #fff; border: none; padding: 12px 26px;
+    border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .go-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .go-btn:hover:not(:disabled) { background: #16233b; }
+  .status-note { font-size: 13px; color: var(--muted); }
+  .error-banner {
+    background: #fdeaea; border: 1px solid #e6a3a3; color: #7a1f1f;
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;
+  }
+  .results-meta { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 14px;
+  }
+  .card.over-budget { background: var(--warn-bg); border-color: var(--warn-border); }
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .resort-name { font-size: 18px; font-weight: 700; color: var(--crevasse); }
+  .resort-sub { font-size: 13px; color: var(--muted); }
+  .total { font-size: 22px; font-weight: 800; color: var(--crevasse); }
+  .total .per { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .badge.live { background: #dff3e3; color: #1e6b34; }
+  .badge.est { background: #eceff2; color: var(--muted); }
+  .badge.over { background: var(--amber); color: var(--crevasse); }
+  .breakdown { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 12px 0; font-size: 13px; color: var(--ink); }
+  .breakdown span b { color: var(--muted); font-weight: 600; }
+  .explanation { font-size: 13.5px; color: var(--ink); line-height: 1.4; margin-top: 8px; }
+  .dates { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  footer { text-align: center; padding: 30px; color: var(--muted); font-size: 12px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">SKI LAB <span class="pill">LAB</span></div>
+  <div class="authbar" id="authbar"></div>
+</header>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" data-mode="dates">Best deals in a window</div>
+    <div class="tab" data-mode="exact">Exact vacation dates</div>
+  </div>
+
+  <!-- MODE: flexible window -->
+  <div class="panel" id="panel-dates">
+    <div class="grid">
+      <div class="field">
+        <label>Earliest start date</label>
+        <input type="date" id="d-earliest" value="2027-01-10">
+      </div>
+      <div class="field">
+        <label>Latest possible return</label>
+        <input type="date" id="d-latest" value="2027-01-20">
+      </div>
+      <div class="field">
+        <label>Trip length (nights)</label>
+        <input type="number" id="d-nights" value="7" min="1" max="30">
+      </div>
+      <div class="field">
+        <label>Resort (optional)</label>
+        <select id="d-resort"><option value="">Search all resorts</option></select>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="field">
+        <label>Max budget (EUR / person)</label>
+        <input type="number" id="d-budget-max" value="2000" min="1">
+      </div>
+      <div class="field">
+        <label>Min budget (optional)</label>
+        <input type="number" id="d-budget-min" placeholder="no floor" min="0">
+      </div>
+      <div class="field">
+        <label>Group size</label>
+        <input type="number" id="d-group" value="2" min="1" max="20">
+      </div>
+      <div class="field">
+        <label>Flight connections</label>
+        <select id="d-connections">
+          <option value="">No preference</option>
+          <option value="0">Nonstop only</option>
+          <option value="1">Up to 1 stop</option>
+          <option value="2">2+ stops OK</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go-btn" id="d-go">Find deals</button>
+      <span class="status-note" id="d-status"></span>
+    </div>
+    <div class="hint">A 10-day window with a 7-night trip searches every valid start date inside it (day 1, 2, 3, 4...).</div>
+  </div>
+
+  <!-- MODE: exact dates -->
+  <div class="panel hidden" id="panel-exact">
+    <div class="grid">
+      <div class="field">
+        <label>Departure date</label>
+        <input type="date" id="e-start" value="2027-01-10">
+      </div>
+      <div class="field">
+        <label>Return date</label>
+        <input type="date" id="e-end" value="2027-01-17">
+      </div>
+      <div class="field">
+        <label>Resort (optional)</label>
+        <select id="e-resort"><option value="">Rank top 3 across all resorts</option></select>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="field">
+        <label>Max budget (EUR / person)</label>
+        <input type="number" id="e-budget-max" value="2000" min="1">
+      </div>
+      <div class="field">
+        <label>Min budget (optional)</label>
+        <input type="number" id="e-budget-min" placeholder="no floor" min="0">
+      </div>
+      <div class="field">
+        <label>Group size</label>
+        <input type="number" id="e-group" value="2" min="1" max="20">
+      </div>
+      <div class="field">
+        <label>Flight connections</label>
+        <select id="e-connections">
+          <option value="">No preference</option>
+          <option value="0">Nonstop only</option>
+          <option value="1">Up to 1 stop</option>
+          <option value="2">2+ stops OK</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go-btn" id="e-go">Find resorts</button>
+      <span class="status-note" id="e-status"></span>
+    </div>
+    <div class="hint">Fixed dates -- ranks resorts for exactly this trip and returns the top 3.</div>
+  </div>
+
+  <div id="error-slot"></div>
+  <div id="results"></div>
+</main>
+
+<footer>Ski Lab -- results price flights and accommodation live via SerpApi when a key is configured; otherwise season-banded static estimates. Always says which.</footer>
+
+<script>
+// Production backend URL -- update this if the deployed ski-lab-api
+// service ends up at a different Render URL than expected (Render
+// appends a suffix if "ski-lab-api" is already taken by someone else;
+// check the actual URL in the Render dashboard after first deploy).
+// Falls back to localhost automatically for local dev, so this file
+// works unmodified in both places.
+const PROD_API_BASE = "https://ski-lab-api.onrender.com";
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://localhost:8000"
+  : PROD_API_BASE;
+const CSRF_HEADER = "X-Requested-With";
+const CSRF_VALUE = "SkiLab";
+
+let currentUser = null;
+
+function jsonHeaders(withCsrf) {
+  const h = { "Content-Type": "application/json" };
+  if (withCsrf) h[CSRF_HEADER] = CSRF_VALUE;
+  return h;
+}
+
+async function api(path, { method = "GET", body } = {}) {
+  const resp = await fetch(API_BASE + path, {
+    method,
+    credentials: "include",
+    headers: jsonHeaders(method !== "GET"),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* no body */ }
+  if (!resp.ok) {
+    const detail = (data && (data.detail || JSON.stringify(data))) || resp.statusText;
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  return data;
+}
+
+function renderAuthBar() {
+  const el = document.getElementById("authbar");
+  if (currentUser) {
+    el.innerHTML = `<span>${currentUser.email}</span> <button id="logout-btn">Log out</button>`;
+    document.getElementById("logout-btn").onclick = async () => {
+      try { await api("/auth/logout", { method: "POST" }); } catch (e) {}
+      currentUser = null;
+      renderAuthBar();
+    };
+  } else {
+    el.innerHTML = `
+      <input id="auth-email" type="email" placeholder="email">
+      <input id="auth-pw" type="password" placeholder="password (12+ chars)">
+      <button id="login-btn">Log in</button>
+      <button id="register-btn">Sign up</button>
+      <span class="err" id="auth-err"></span>
+    `;
+    document.getElementById("login-btn").onclick = () => doAuth("/auth/login");
+    document.getElementById("register-btn").onclick = () => doAuth("/auth/register");
+  }
+}
+
+async function doAuth(path) {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-pw").value;
+  const errEl = document.getElementById("auth-err");
+  errEl.textContent = "";
+  try {
+    currentUser = await api(path, { method: "POST", body: { email, password } });
+    renderAuthBar();
+    await loadResortNames();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function loadResortNames() {
+  if (!currentUser) return;
+  try {
+    const names = await api("/trips/resorts");
+    for (const sel of [document.getElementById("d-resort"), document.getElementById("e-resort")]) {
+      const keep = sel.options[0];
+      sel.innerHTML = "";
+      sel.appendChild(keep);
+      for (const n of names) {
+        const opt = document.createElement("option");
+        opt.value = n; opt.textContent = n;
+        sel.appendChild(opt);
+      }
+    }
+  } catch (e) { /* not logged in yet, or transient -- ignored */ }
+}
+
+// --- tabs ---
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const mode = tab.dataset.mode;
+    document.getElementById("panel-dates").classList.toggle("hidden", mode !== "dates");
+    document.getElementById("panel-exact").classList.toggle("hidden", mode !== "exact");
+    document.getElementById("results").innerHTML = "";
+    document.getElementById("error-slot").innerHTML = "";
+  };
+});
+
+function showError(msg) {
+  document.getElementById("error-slot").innerHTML = `<div class="error-banner">${msg}</div>`;
+}
+function clearError() { document.getElementById("error-slot").innerHTML = ""; }
+
+function connectionsValue(id) {
+  const v = document.getElementById(id).value;
+  return v === "" ? null : parseInt(v, 10);
+}
+function minBudgetValue(id) {
+  const v = document.getElementById(id).value;
+  return v === "" ? null : parseFloat(v);
+}
+
+function costLine(cost) {
+  return `
+    <span><b>Flight</b> &euro;${Math.round(cost.flight_eur)}${cost.flight_price_is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge est">est.</span>'}</span>
+    <span><b>Stay</b> &euro;${Math.round(cost.accommodation_eur)}${cost.accommodation_price_is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge est">est.</span>'}</span>
+    <span><b>Transfer</b> &euro;${Math.round(cost.transfer_eur)}</span>
+    <span><b>Ski pass</b> &euro;${Math.round(cost.ski_pass_eur)}</span>
+    <span><b>Equipment</b> &euro;${Math.round(cost.equipment_eur)}</span>
+    <span><b>Food</b> &euro;${Math.round(cost.food_eur)}</span>
+  `;
+}
+
+function renderResults(results, { dated, livePricingActive, candidateDates }) {
+  const el = document.getElementById("results");
+  if (!results.length) {
+    el.innerHTML = `<div class="results-meta">No results.</div>`;
+    return;
+  }
+  let meta = `<div class="results-meta">${results.length} result(s)`;
+  if (candidateDates != null) meta += ` &middot; ${candidateDates} candidate start date(s) searched`;
+  meta += livePricingActive ? ` &middot; live pricing active (SerpApi)` : ` &middot; static estimates (no live pricing key configured)`;
+  meta += `</div>`;
+
+  const cards = results.map(r => {
+    const overBadge = r.within_budget === false ? '<span class="badge over">OVER BUDGET -- CHEAPEST FOUND</span>' : "";
+    const dateLine = dated
+      ? `<div class="dates">${r.start_date} &rarr; ${r.end_date} &middot; ${r.season} season</div>`
+      : "";
+    return `
+      <div class="card ${r.within_budget === false ? 'over-budget' : ''}">
+        <div class="card-top">
+          <div>
+            <span class="resort-name">${r.resort.name}</span>
+            <span class="resort-sub">${r.resort.country} &middot; ${r.resort.nearest_airport}</span>
+            ${overBadge}
+            ${dateLine}
+          </div>
+          <div class="total">&euro;${Math.round(r.cost.total_eur).toLocaleString()} <span class="per">/ person total</span></div>
+        </div>
+        <div class="breakdown">${costLine(r.cost)}</div>
+        <div class="explanation">${r.explanation}</div>
+      </div>
+    `;
+  }).join("");
+
+  el.innerHTML = meta + cards;
+}
+
+document.getElementById("d-go").onclick = async () => {
+  clearError();
+  const statusEl = document.getElementById("d-status");
+  const btn = document.getElementById("d-go");
+  if (!currentUser) { showError("Log in or sign up first."); return; }
+  btn.disabled = true; statusEl.textContent = "Searching...";
+  document.getElementById("results").innerHTML = "";
+  try {
+    const payload = {
+      budget_eur_per_person: parseFloat(document.getElementById("d-budget-max").value),
+      min_budget_eur_per_person: minBudgetValue("d-budget-min"),
+      trip_nights: parseInt(document.getElementById("d-nights").value, 10),
+      earliest_date: document.getElementById("d-earliest").value,
+      latest_date: document.getElementById("d-latest").value,
+      group_size: parseInt(document.getElementById("d-group").value, 10),
+      target_resort: document.getElementById("d-resort").value || null,
+      max_connections: connectionsValue("d-connections"),
+      top_n: 10,
+    };
+    const data = await api("/trips/search-dates", { method: "POST", body: payload });
+    renderResults(data.results, {
+      dated: true, livePricingActive: data.live_pricing_active, candidateDates: data.candidate_dates_per_resort,
+    });
+    statusEl.textContent = "";
+  } catch (e) {
+    showError(e.message);
+    statusEl.textContent = "";
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById("e-go").onclick = async () => {
+  clearError();
+  const statusEl = document.getElementById("e-status");
+  const btn = document.getElementById("e-go");
+  if (!currentUser) { showError("Log in or sign up first."); return; }
+
+  const start = document.getElementById("e-start").value;
+  const end = document.getElementById("e-end").value;
+  const nights = Math.round((new Date(end) - new Date(start)) / 86400000);
+  if (!(nights > 0)) { showError("Return date must be after departure date."); return; }
+
+  btn.disabled = true; statusEl.textContent = "Searching...";
+  document.getElementById("results").innerHTML = "";
+  try {
+    const payload = {
+      budget_eur_per_person: parseFloat(document.getElementById("e-budget-max").value),
+      min_budget_eur_per_person: minBudgetValue("e-budget-min"),
+      trip_nights: nights,
+      outbound_date: start,
+      group_size: parseInt(document.getElementById("e-group").value, 10),
+      target_resort: document.getElementById("e-resort").value || null,
+      max_connections: connectionsValue("e-connections"),
+      top_n: 3,
+    };
+    const data = await api("/trips/search", { method: "POST", body: payload });
+    renderResults(data.results, { dated: false, livePricingActive: data.live_pricing_active, candidateDates: null });
+    statusEl.textContent = "";
+  } catch (e) {
+    showError(e.message);
+    statusEl.textContent = "";
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+renderAuthBar();
+</script>
+</body>
+</html>

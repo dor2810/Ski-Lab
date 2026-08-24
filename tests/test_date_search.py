@@ -195,9 +195,19 @@ def test_search_results_are_sorted_by_score():
     assert scores == sorted(scores, reverse=True)
 
 
-def test_search_with_impossible_budget_returns_nothing():
-    assert search_date_range(load_resorts(), _prefs(budget_eur_per_person=150),
-                             datetime.date(2027, 1, 10), datetime.date(2027, 2, 28)) == []
+def test_search_with_impossible_budget_falls_back_to_cheapest_flagged():
+    # Nothing fits 150 EUR/person -- search_date_range no longer returns
+    # an empty list for this (see its over-budget-fallback docstring),
+    # it returns the cheapest option(s) it found, honestly flagged.
+    results = search_date_range(load_resorts(), _prefs(budget_eur_per_person=150),
+                                datetime.date(2027, 1, 10), datetime.date(2027, 2, 28))
+    assert results
+    assert all(not t.within_budget for t in results)
+
+    strict = search_date_range(load_resorts(), _prefs(budget_eur_per_person=150),
+                               datetime.date(2027, 1, 10), datetime.date(2027, 2, 28),
+                               allow_over_budget_fallback=False)
+    assert strict == []
 
 
 def test_search_responds_to_date_varying_flight_prices():
@@ -234,6 +244,41 @@ def test_unavailable_flight_date_is_skipped_not_estimated():
                                 flight_cost_fn=flight_fn)
     assert results
     assert all(o.start_date.day % 2 == 1 for o in results)
+
+
+def test_search_responds_to_date_varying_accommodation_prices():
+    # Same point as the flight-price test, for the other live-priceable
+    # leg: a live accommodation quote that's dramatically cheaper on one
+    # date must be able to move the ranking, not be ignored.
+    def accom_fn(resort, start, end, prefs):
+        if start.month == 1 and start.day >= 20:
+            return 50.0  # a steal, per person for the whole stay
+        return 2000.0    # deliberately awful everywhere else
+
+    results = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
+                                datetime.date(2027, 2, 28), top_n=500,
+                                accommodation_cost_fn=accom_fn)
+    best = best_date_per_resort(results)[0]
+    assert best.start_date.month == 1 and best.start_date.day >= 20, (
+        f"expected the cheap late-January accommodation window, got {best.start_date}"
+    )
+    assert best.cost.accommodation_eur == 50.0
+
+
+def test_unavailable_accommodation_date_keeps_the_static_estimate():
+    # Unlike flight (dropped when unavailable), a missing accommodation
+    # quote must NOT sink an otherwise good date -- it falls back to the
+    # static estimate rather than discarding the candidate. See
+    # search_date_range's accommodation_cost_fn docstring for why.
+    def accom_fn(resort, start, end, prefs):
+        return None
+
+    with_fn = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
+                                datetime.date(2027, 2, 28), top_n=500,
+                                accommodation_cost_fn=accom_fn)
+    without_fn = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
+                                   datetime.date(2027, 2, 28), top_n=500)
+    assert len(with_fn) == len(without_fn)
 
 
 # --- output helpers ---

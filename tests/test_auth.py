@@ -46,14 +46,20 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-
-
 @pytest.fixture(autouse=True)
 def _fresh_db():
+    # Scoped to setup/teardown, not module import: test_search.py defines its
+    # own get_db override on the same shared `app` singleton, and pytest
+    # imports every test module before running any test. Assigning this at
+    # import time meant whichever file was imported last silently won the
+    # override for the ENTIRE session, including this file's tests -- which
+    # is how every test here ended up querying test_search.py's (tableless,
+    # from this file's perspective) engine instead of its own.
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    del app.dependency_overrides[get_db]
 
 
 CSRF_HEADERS = {security.CSRF_HEADER_NAME: security.CSRF_HEADER_VALUE}
@@ -61,7 +67,7 @@ CSRF_HEADERS = {security.CSRF_HEADER_NAME: security.CSRF_HEADER_VALUE}
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, base_url="https://testserver")
 
 
 def test_register_creates_user_and_sets_cookies(client):

@@ -7,6 +7,7 @@ version later (Section 6 of the project blueprint) without touching the
 calculation/scoring logic.
 """
 from dataclasses import dataclass, field
+from datetime import date as _date
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoids a circular import at runtime (terrain.py imports nothing from here)
@@ -109,6 +110,11 @@ class UserPreferences:
     equipment_tier: str = "standard"       # standard | premium
     rooms_needed: Optional[int] = None     # defaults to ceil(group_size / 2) if not set
     target_resort: Optional[str] = None    # set this to evaluate ONE resort only ("fixed resort" mode)
+    # When set, enables season-band cost adjustment (see cost_calculator.py)
+    # and, when a flight_cost_fn is also supplied to rank_trips(), live
+    # flight repricing for the top candidates. None reproduces the
+    # previous date-agnostic behavior exactly.
+    outbound_date: Optional[_date] = None
     # Transfer modes the user is willing to take. None = no preference.
     # Real constraints, not fussiness: some people won't drive abroad in
     # winter, some won't share a shuttle with strangers. Applied as a
@@ -262,6 +268,34 @@ class FlightSearchResult:
 
 
 # ---------------------------------------------------------------------------
+# Accommodation data (from adapters/accommodation_adapter.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class AccommodationOption:
+    """
+    A real, priced accommodation listing. Same BOUNDARY TYPE role as
+    FlightOption: whatever provider we're on (Booking.com Demand API is
+    the target; Expedia Rapid/Hotelbeds are the alternatives if that
+    doesn't pan out -- see PROJECT_STATE.md), the adapter normalizes into
+    this, and engine/ never sees a provider-specific response shape.
+    """
+    price_eur_per_night: float
+    property_name: str
+    rating: Optional[float] = None                 # provider's own scale, not normalized
+    distance_to_lifts_km: Optional[float] = None
+    cancellation_policy: Optional[str] = None       # free text, e.g. "free_cancellation", "non_refundable"
+    booking_token: Optional[str] = None             # opaque, provider-specific; see FlightOption's docstring
+
+
+@dataclass
+class AccommodationSearchResult:
+    """What an accommodation search returns."""
+    options: list                                # List[AccommodationOption]
+    from_cache: bool = False
+
+
+# ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
 
@@ -274,6 +308,16 @@ class CostBreakdown:
     equipment_eur: float
     food_eur: float
     misc_eur: float
+    # Data-quality tag for flight_eur specifically, matching the project's
+    # sourced/estimated convention elsewhere (Resort.terrain_data_quality,
+    # TransferOption.data_quality). False = the flat per-country estimate;
+    # True = a real quote from adapters/flight_adapter.py.
+    flight_price_is_live: bool = False
+    # Same idea for accommodation_eur -- False = the seed spreadsheet's
+    # season-banded estimate; True = a real quote from
+    # adapters/serpapi_hotel_adapter.py via
+    # cost_calculator.apply_live_accommodation_price.
+    accommodation_price_is_live: bool = False
 
     @property
     def total_eur(self) -> float:
@@ -287,3 +331,9 @@ class TripOption:
     cost: CostBreakdown
     score: float                 # 0-1, weighted composite
     score_components: dict       # per-dimension 0-1 scores, for the explanation
+    # True unless this is a FALLBACK result: nothing fit the stated budget,
+    # so rank_trips() returned the cheapest option(s) it found anyway
+    # rather than an empty list -- see rank_trips' docstring. The caller
+    # (API/frontend) must show this honestly, not silently present an
+    # over-budget trip as if it fit.
+    within_budget: bool = True

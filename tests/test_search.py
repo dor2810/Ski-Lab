@@ -31,22 +31,26 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-
 CSRF_HEADERS = {security.CSRF_HEADER_NAME: security.CSRF_HEADER_VALUE}
 
 
 @pytest.fixture(autouse=True)
 def _fresh_db():
+    # See the matching comment in test_auth.py's _fresh_db: this override
+    # must be scoped to setup/teardown, not assigned at module-import time,
+    # or whichever test file pytest imports last wins the override for the
+    # whole session -- including the other file's tests.
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    del app.dependency_overrides[get_db]
 
 
 @pytest.fixture
 def authed_client():
     """A TestClient that's already registered + logged in (cookies persist across requests)."""
-    client = TestClient(app)
+    client = TestClient(app, base_url="https://testserver")
     client.post("/auth/register", json={
         "email": "searcher@example.com", "password": "correcthorsebattery",
     }, headers=CSRF_HEADERS)
@@ -54,7 +58,7 @@ def authed_client():
 
 
 def test_search_requires_authentication():
-    client = TestClient(app)
+    client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
     }, headers=CSRF_HEADERS)
@@ -84,9 +88,38 @@ def test_search_returns_ranked_results_within_budget(authed_client):
     assert scores == sorted(scores, reverse=True)
 
 
-def test_search_with_tiny_budget_returns_empty_results(authed_client):
+def test_search_with_outbound_date_falls_back_to_static_without_a_serpapi_key(authed_client, monkeypatch):
+    # CI/test environment has no SERPAPI_API_KEY (see test_auth.py/test_search.py's
+    # setdefault calls -- neither sets it, and .env is never auto-loaded).
+    # Passing outbound_date must degrade to the static estimate, not error.
+    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "outbound_date": "2027-01-02",
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["results"]) > 0
+    for result in body["results"]:
+        assert result["cost"]["flight_price_is_live"] is False
+
+
+def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(authed_client):
+    # Nothing fits 10 EUR/person -- the API no longer returns an empty
+    # list for this (see rank_trips' over-budget-fallback docstring), it
+    # returns the cheapest option(s) it found, honestly flagged.
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 10, "trip_nights": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert results
+    assert all(r["within_budget"] is False for r in results)
+
+
+def test_search_can_opt_out_of_the_over_budget_fallback(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 10, "trip_nights": 5, "allow_over_budget_fallback": False,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["results"] == []
@@ -136,7 +169,7 @@ def test_search_with_valid_target_resort_returns_only_that_one(authed_client):
 
 
 def test_list_resort_names_requires_auth():
-    client = TestClient(app)
+    client = TestClient(app, base_url="https://testserver")
     resp = client.get("/trips/resorts")
     assert resp.status_code == 401
 
@@ -185,6 +218,44 @@ def test_search_rejects_zero_group_size(authed_client):
         "budget_eur_per_person": 1500, "trip_nights": 5, "group_size": 0,
     }, headers=CSRF_HEADERS)
     assert resp.status_code in (400, 422)
+
+
+def test_min_budget_filters_out_cheaper_results(authed_client):
+    baseline = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+    }, headers=CSRF_HEADERS).json()["results"]
+    assert baseline  # sanity: something exists below the floor we're about to set
+    cheapest = min(r["cost"]["total_eur"] for r in baseline)
+    floor = cheapest + 1
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+        "min_budget_eur_per_person": floor,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    for r in resp.json()["results"]:
+        assert r["cost"]["total_eur"] >= floor
+
+
+def test_max_connections_accepts_valid_values_and_rejects_others(authed_client):
+    for value in (0, 1, 2):
+        resp = authed_client.post("/trips/search", json={
+            "budget_eur_per_person": 1500, "trip_nights": 5, "max_connections": value,
+        }, headers=CSRF_HEADERS)
+        assert resp.status_code == 200, value
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5, "max_connections": 3,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 422
+
+
+def test_top_n_limits_result_count(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 3,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    assert len(resp.json()["results"]) <= 3
 
 
 def test_no_returned_trip_has_a_nonpositive_cost(authed_client):

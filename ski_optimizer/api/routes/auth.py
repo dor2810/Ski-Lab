@@ -4,11 +4,26 @@ Auth routes. Every state-changing endpoint requires the CSRF header
 not per-route, so a route can't accidentally be added without it.
 
 Cookie strategy: access_token and refresh_token are both httpOnly,
-Secure, SameSite=Lax cookies -- never returned in a JSON body, never
+Secure, SameSite=None cookies -- never returned in a JSON body, never
 touchable by JS. Secure=True means these cookies won't be sent at all
 over plain HTTP; the dev server needs to run over https (or a
 localhost exception, which browsers grant automatically) for cookies
 to work at all. That's intentional friction, not an oversight.
+
+WHY SameSite=None, NOT Lax (changed this session, deploying to Render):
+the frontend and API are deployed to DIFFERENT `*.onrender.com`
+subdomains. `onrender.com` is on the Public Suffix List (verified
+directly against publicsuffix.org's data, not assumed), which means
+those two subdomains are different SITES to a browser, not just
+different origins -- SameSite=Lax cookies are never sent on cross-site
+fetch()/XHR (Lax only permits top-level navigations), so login would
+silently appear to work (the Set-Cookie response is fine) while every
+following "authenticated" request came back 401, no matter how correct
+the CORS config was. None is the standard fix for a legitimate
+cross-site cookie-auth setup and requires Secure=True, which was
+already set. Locally (frontend and API both on `localhost`, different
+ports only) this is a no-op -- same-site cross-port requests were never
+restricted by SameSite in the first place.
 """
 import datetime
 
@@ -29,11 +44,11 @@ REFRESH_COOKIE = "refresh_token"
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     response.set_cookie(
-        ACCESS_COOKIE, access_token, httponly=True, secure=True, samesite="lax",
+        ACCESS_COOKIE, access_token, httponly=True, secure=True, samesite="none",
         max_age=security.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/",
     )
     response.set_cookie(
-        REFRESH_COOKIE, refresh_token, httponly=True, secure=True, samesite="lax",
+        REFRESH_COOKIE, refresh_token, httponly=True, secure=True, samesite="none",
         max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600, path="/auth",
         # scoped to /auth, not /: the refresh token has no business being
         # sent on every API call, only on the refresh/logout requests.

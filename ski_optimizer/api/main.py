@@ -14,8 +14,9 @@ cookie-based auth to work at all.
 """
 import os
 
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from ..db.database import init_db
@@ -65,7 +66,14 @@ async def enforce_csrf_header(request: Request, call_next):
     is_protected_prefix = request.url.path.startswith("/auth") or request.url.path.startswith("/trips")
     if is_state_changing and is_protected_prefix and not is_oauth_route:
         if request.headers.get(security.CSRF_HEADER_NAME) != security.CSRF_HEADER_VALUE:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing required header.")
+            # Raising HTTPException here wouldn't work: this middleware sits
+            # outside Starlette's ExceptionMiddleware, which only wraps the
+            # router/endpoints, not @app.middleware("http") functions -- a
+            # raised HTTPException would propagate as an unhandled error
+            # instead of becoming a 403 response.
+            return JSONResponse(
+                {"detail": "Missing required header."}, status_code=status.HTTP_403_FORBIDDEN,
+            )
     return await call_next(request)
 
 

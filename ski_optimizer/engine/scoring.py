@@ -10,10 +10,11 @@ Nothing here is machine learning. It's plain, explainable weighted scoring
 on purpose — see the blueprint's Section 3 rationale (transparency of "why"
 matters, and there's no training data yet to justify anything fancier).
 """
-from typing import List, Optional
+import datetime
+from typing import Callable, List, Optional
 
 from ..models import Resort, UserPreferences, TripOption
-from .cost_calculator import compute_trip_cost
+from .cost_calculator import compute_trip_cost, apply_live_flight_price, apply_live_accommodation_price
 
 
 def passes_hard_constraints(resort: Resort, prefs: UserPreferences, total_cost: float) -> bool:
@@ -133,7 +134,45 @@ def score_resort(resort: Resort, prefs: UserPreferences, total_cost: float,
     }
 
 
-def rank_trips(resorts: List[Resort], prefs: UserPreferences, top_n: int = 5) -> List[TripOption]:
+def rank_trips(resorts: List[Resort], prefs: UserPreferences, top_n: int = 5,
+               flight_cost_fn: Optional[Callable] = None,
+               accommodation_cost_fn: Optional[Callable] = None,
+               live_reprice_n: int = 10,
+               allow_over_budget_fallback: bool = True) -> List[TripOption]:
+    """
+    flight_cost_fn / accommodation_cost_fn, when given, enable live
+    repricing for discovery mode's cost ranking:
+    (resort, start_date, end_date, prefs) -> Optional[float], matching
+    date_search.search_date_range()'s injection pattern. Both default to
+    None, a NO-OP -- zero behavior change from static-only ranking for
+    any existing caller that doesn't pass them.
+
+    Only the top `live_reprice_n` candidates by STATIC score get
+    live-priced (default 10, more than top_n so a resort whose live
+    price undercuts its static estimate can still surface) -- repricing
+    every resort on every search would spend an unacceptable fraction of
+    a metered API quota on one request. Requires prefs.outbound_date to
+    be set; without it there's no date to price against, so live pricing
+    is skipped even if the functions are provided.
+
+    A resort whose live price pushes it over budget is dropped, matching
+    the hard-budget-constraint rule applied everywhere else -- an
+    estimate that happens to fit is not grounds to show a trip that
+    doesn't really fit. A resort a cost_fn can't price (returns None --
+    adapter error, no route/property) keeps its static estimate rather
+    than being dropped over an API hiccup.
+
+    OVER-BUDGET FALLBACK (allow_over_budget_fallback, default True): if
+    NOTHING fits the stated budget -- static estimate or live price --
+    this does NOT return an empty list. It returns the cheapest
+    option(s) it found instead, live-repriced the same way, each tagged
+    TripOption.within_budget=False. An empty list reads as "the engine
+    found nothing," which is misleading when the truth is "everything
+    here costs more than you said" -- the caller (API/frontend) must
+    show the within_budget flag honestly, never silently present a
+    flagged result as a normal one. Pass allow_over_budget_fallback=False
+    to get the old "empty means nothing fits" behavior back.
+    """
     # "Fixed resort" mode: the user already knows where they want to go —
     # evaluate that one resort's cost/fit instead of competing it against
     # everything else. Score components (esp. 'price') are still computed
@@ -160,19 +199,84 @@ def rank_trips(resorts: List[Resort], prefs: UserPreferences, top_n: int = 5) ->
     transfer_range = (min(transfer_values), max(transfer_values))
     accom_range = (min(accom_values), max(accom_values))
 
-    candidates = []
+    # Cost every resort ONCE up front (not just the affordable ones) --
+    # the over-budget fallback needs the full priced set even when the
+    # hard filter below drops every single one of them.
+    all_priced = []
     for resort in resorts:
-        cost = compute_trip_cost(resort, prefs)
-        if not passes_hard_constraints(resort, prefs, cost.total_eur):
-            continue
+        cost = compute_trip_cost(resort, prefs, start_date=prefs.outbound_date)
         components = score_resort(resort, prefs, cost.total_eur, piste_range, transfer_range, accom_range)
         weighted_score = sum(components[dim] * weight for dim, weight in prefs.weights.items())
-        candidates.append(TripOption(
-            resort=resort,
-            cost=cost,
-            score=round(weighted_score, 4),
+        all_priced.append(TripOption(
+            resort=resort, cost=cost, score=round(weighted_score, 4),
             score_components=components,
         ))
 
+    candidates = [t for t in all_priced if passes_hard_constraints(t.resort, prefs, t.cost.total_eur)]
     candidates.sort(key=lambda t: t.score, reverse=True)
-    return candidates[:top_n]
+
+    live_active = (flight_cost_fn is not None or accommodation_cost_fn is not None) and prefs.outbound_date is not None
+    if live_active:
+        candidates = (_reprice_with_live_prices(candidates[:live_reprice_n], prefs,
+                                                 flight_cost_fn, accommodation_cost_fn)
+                      + candidates[live_reprice_n:])
+        candidates.sort(key=lambda t: t.score, reverse=True)
+
+    if candidates or not allow_over_budget_fallback:
+        return candidates[:top_n]
+
+    # FALLBACK: nothing fit, even statically. Take the cheapest overall
+    # (not score-sorted -- there's no "best fit" once nothing fits, only
+    # "least bad"), live-reprice those few, and return them flagged.
+    fallback_n = max(top_n, 3)
+    fallback = sorted(all_priced, key=lambda t: t.cost.total_eur)[:fallback_n]
+    if live_active:
+        fallback = _reprice_with_live_prices(fallback, prefs, flight_cost_fn,
+                                             accommodation_cost_fn, enforce_budget=False)
+    fallback = [TripOption(resort=t.resort, cost=t.cost, score=t.score,
+                           score_components=t.score_components, within_budget=False)
+                for t in fallback]
+    fallback.sort(key=lambda t: t.cost.total_eur)
+    return fallback[:top_n]
+
+
+def _reprice_with_live_prices(candidates: List[TripOption], prefs: UserPreferences,
+                              flight_cost_fn: Optional[Callable],
+                              accommodation_cost_fn: Optional[Callable],
+                              enforce_budget: bool = True) -> List[TripOption]:
+    """
+    Re-quotes flight and/or accommodation cost for each candidate,
+    dropping any that no longer fit the budget once the real price is
+    known -- UNLESS enforce_budget=False (used by rank_trips' over-budget
+    fallback path, where dropping every repriced candidate would just
+    reproduce the empty result the fallback exists to avoid; the point
+    there is to show the true live price, not to re-filter by it).
+    """
+    end_date = prefs.outbound_date + datetime.timedelta(days=prefs.trip_nights)
+    repriced = []
+    for trip in candidates:
+        cost = trip.cost
+        if flight_cost_fn is not None:
+            live_flight = flight_cost_fn(trip.resort, prefs.outbound_date, end_date, prefs)
+            if live_flight is not None and live_flight != cost.flight_eur:
+                cost = apply_live_flight_price(cost, live_flight)
+        if accommodation_cost_fn is not None:
+            live_accom = accommodation_cost_fn(trip.resort, prefs.outbound_date, end_date, prefs)
+            if live_accom is not None and live_accom != cost.accommodation_eur:
+                cost = apply_live_accommodation_price(cost, live_accom)
+
+        if cost is trip.cost:  # neither leg actually changed
+            repriced.append(trip)
+            continue
+        if enforce_budget and not passes_hard_constraints(trip.resort, prefs, cost.total_eur):
+            continue
+        new_components = dict(trip.score_components)
+        new_components["price"] = round(
+            max(0.0, min(1.0, 1.0 - cost.total_eur / prefs.budget_eur_per_person)), 3)
+        new_score = sum(new_components[dim] * weight for dim, weight in prefs.weights.items())
+        repriced.append(TripOption(
+            resort=trip.resort, cost=cost,
+            score=round(new_score, 4), score_components=new_components,
+            within_budget=trip.within_budget,
+        ))
+    return repriced

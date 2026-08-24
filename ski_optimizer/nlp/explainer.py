@@ -64,6 +64,13 @@ def explain(trip: TripOption, top_n: int = 3, skill_level: str = None) -> str:
         out += _terrain_note(trip, skill_level)
     if trip.resort.needs_verification:
         out += " (NOTE: some data for this resort is flagged NEEDS VERIFICATION in the seed DB)"
+    if trip.cost.flight_price_is_live:
+        out += " Flight price is live, checked just now."
+    if trip.cost.accommodation_price_is_live:
+        out += " Accommodation price is live, checked just now."
+    if not trip.within_budget:
+        out += (" NOTE: this is OVER your stated budget -- it's the cheapest option "
+                "found, shown because nothing fit within budget.")
     return out
 
 

@@ -39,6 +39,7 @@ from ..models import Resort, UserPreferences, CostBreakdown
 from .cost_calculator import (
     compute_trip_cost, flight_cost_eur, transfer_cost_eur_per_person,
     ski_pass_cost, food_cost_eur, season_band, EQUIPMENT_EUR_PER_DAY,
+    apply_live_flight_price, apply_live_accommodation_price,
 )
 from .scoring import rank_trips, _normalize, _ski_quality_score
 
@@ -53,6 +54,8 @@ class DatedTripOption:
     score: float
     score_components: dict
     season: str
+    # See models.TripOption.within_budget -- same contract, same reason.
+    within_budget: bool = True
 
     @property
     def total_eur(self) -> float:
@@ -190,6 +193,8 @@ def search_date_range(
     step_days: int = 1,
     top_n: int = 10,
     flight_cost_fn: Optional[Callable] = None,
+    accommodation_cost_fn: Optional[Callable] = None,
+    allow_over_budget_fallback: bool = True,
 ) -> List[DatedTripOption]:
     """
     Full funnel: shortlist resorts, then evaluate each across every
@@ -199,6 +204,28 @@ def search_date_range(
     (resort, start_date, end_date, prefs) -> float, or None if no price
     is available for that date. Defaults to the static estimate, which
     keeps this fully runnable and testable without an API key.
+
+    accommodation_cost_fn is the same idea for accommodation: signature
+    (resort, start_date, end_date, prefs) -> Optional[float] (EUR per
+    person for the whole stay), or None if no live price is available
+    for that date -- in which case the static season-banded estimate is
+    kept rather than the date being dropped (accommodation, unlike
+    flight, is not the primary search axis this product optimizes for
+    date-shifting on; a missing hotel quote shouldn't sink an otherwise
+    good flight date). Defaults to None, which reproduces the previous
+    accommodation-is-always-static behaviour exactly.
+
+    OVER-BUDGET FALLBACK (allow_over_budget_fallback, default True): see
+    scoring.rank_trips' docstring for the full rationale -- same contract
+    here. If NOTHING in the window fits the stated budget, this returns
+    the cheapest (resort, date) combination(s) found instead of an empty
+    list, each tagged DatedTripOption.within_budget=False. This also
+    overrides Stage 1's affordability pruning (shortlist_resorts): if
+    literally nothing passes that optimistic floor, a small fallback
+    shortlist (the resorts with the lowest optimistic floor, not
+    necessarily the best FIT) is searched instead, so there's still
+    something to report as "the cheapest we found" rather than an empty
+    result caused by pruning before pricing even ran.
     """
     flight_cost_fn = flight_cost_fn or _default_flight_cost_for_date
 
@@ -208,7 +235,13 @@ def search_date_range(
 
     shortlist = shortlist_resorts(resorts, prefs, top_n=shortlist_size)
     if not shortlist:
-        return []
+        if not (allow_over_budget_fallback and resorts):
+            return []
+        # Nothing passed Stage 1's optimistic affordability floor -- fall
+        # back to the resorts CLOSEST to affordable, so pricing still has
+        # something to search rather than reporting empty over a pruning
+        # decision made before any real cost was even computed.
+        shortlist = sorted(resorts, key=lambda r: cheapest_possible_cost(r, prefs))[:max(3, shortlist_size // 2)]
 
     # Normalization ranges come from the FULL dataset, not the shortlist,
     # so scores stay comparable with the fixed-date engine's output.
@@ -221,6 +254,7 @@ def search_date_range(
         "accom": (min(accom_vals), max(accom_vals)),
     }
 
+    all_evaluated = []  # every (resort, date) actually priced, regardless of budget
     results = []
     for resort in shortlist:
         for start in starts:
@@ -234,19 +268,18 @@ def search_date_range(
                 # substituting an estimate and presenting it as a real deal.
                 continue
             if live_flight != cost.flight_eur:
-                delta = live_flight - cost.flight_eur
-                cost = CostBreakdown(
-                    flight_eur=live_flight,
-                    transfer_eur=cost.transfer_eur,
-                    accommodation_eur=cost.accommodation_eur,
-                    ski_pass_eur=cost.ski_pass_eur,
-                    equipment_eur=cost.equipment_eur,
-                    food_eur=cost.food_eur,
-                    misc_eur=round(cost.misc_eur + delta * 0.05, 2),
-                )
+                cost = apply_live_flight_price(cost, live_flight)
 
-            if not (0 < cost.total_eur <= prefs.budget_eur_per_person):
-                continue
+            if accommodation_cost_fn is not None:
+                live_accom = accommodation_cost_fn(resort, start, end, prefs)
+                # None means "no live quote for this date" -- keep the
+                # static estimate rather than dropping an otherwise good
+                # flight date, per this function's docstring.
+                if live_accom is not None and live_accom != cost.accommodation_eur:
+                    cost = apply_live_accommodation_price(cost, live_accom)
+
+            if not (0 < cost.total_eur):
+                continue  # nonsensical cost, never a real result
 
             piste_score = _normalize(resort.piste_km, *ranges["piste"])
             accom_pct = _normalize(resort.accommodation_eur_per_night, *ranges["accom"])
@@ -262,15 +295,32 @@ def search_date_range(
             }
             score = sum(components[k] * w for k, w in prefs.weights.items())
 
-            results.append(DatedTripOption(
+            option = DatedTripOption(
                 resort=resort, start_date=start, end_date=end, cost=cost,
                 score=round(score, 4),
                 score_components={k: round(v, 3) for k, v in components.items()},
                 season=season_band(start),
-            ))
+            )
+            all_evaluated.append(option)
+            if cost.total_eur <= prefs.budget_eur_per_person:
+                results.append(option)
 
-    results.sort(key=lambda t: t.score, reverse=True)
-    return results[:top_n]
+    if results or not allow_over_budget_fallback:
+        results.sort(key=lambda t: t.score, reverse=True)
+        return results[:top_n]
+
+    if not all_evaluated:
+        return []  # genuinely nothing could be priced at all -- not a budget question
+
+    # FALLBACK: real dates were priced, but none fit -- report the
+    # cheapest (resort, date) combination(s) found, flagged honestly.
+    fallback = sorted(all_evaluated, key=lambda t: t.cost.total_eur)[:max(top_n, 3)]
+    fallback = [DatedTripOption(
+        resort=t.resort, start_date=t.start_date, end_date=t.end_date, cost=t.cost,
+        score=t.score, score_components=t.score_components, season=t.season,
+        within_budget=False,
+    ) for t in fallback]
+    return fallback[:top_n]
 
 
 def best_date_per_resort(options: List[DatedTripOption]) -> List[DatedTripOption]:

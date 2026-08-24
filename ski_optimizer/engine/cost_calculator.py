@@ -22,6 +22,7 @@ here should silently become load-bearing for an actual purchase decision
 without first being replaced by a real data source.
 """
 import re
+from typing import Optional
 
 from ..models import Resort, UserPreferences, CostBreakdown
 
@@ -213,6 +214,102 @@ def live_flight_cost_eur(
         # the trip estimate, not take down a whole search. The caller
         # sees None and falls back visibly.
         return None
+
+
+def live_accommodation_cost_eur_per_person(
+    resort: Resort,
+    checkin_date,
+    nights: int,
+    group_size: int,
+    rooms_needed: int,
+) -> Optional[float]:
+    """
+    Real per-person accommodation cost for a dated stay, or None if live
+    data is unavailable for any reason. Same contract as
+    live_flight_cost_eur: never raises, never substitutes the static
+    estimate itself -- the caller decides how to degrade, and whether to
+    tell the user the number is estimated.
+
+    Uses adapters/serpapi_hotel_adapter, NOT adapters/accommodation_adapter
+    (the Booking.com one) -- see serpapi_hotel_adapter's module docstring
+    for why: Booking.com's Demand API needs Managed Affiliate Partner
+    approval that isn't available yet, while SerpApi already works today
+    with the same key as flight pricing.
+
+    SerpApi has no "N rooms" request parameter (see the adapter's
+    limitation #1), so the price it returns is ONE room's cheapest
+    nightly rate. This function multiplies by rooms_needed and nights
+    itself, matching exactly how the static estimate
+    (accommodation_cost_eur_per_person, below) turns a per-night,
+    per-room rate into a per-person trip cost -- so the two are directly
+    comparable/swappable.
+    """
+    try:
+        from ..adapters import serpapi_hotel_adapter
+        result = serpapi_hotel_adapter.search_accommodation(
+            resort, checkin_date, nights, rooms_needed,
+        )
+        nightly = serpapi_hotel_adapter.cheapest_price_eur_per_night(result)
+        if nightly is None:
+            return None
+        return round((nightly * nights * rooms_needed) / group_size, 2)
+    except Exception:
+        # Deliberately broad, matching live_flight_cost_eur: a hotel-
+        # provider outage should degrade the trip estimate, not take
+        # down a whole search.
+        return None
+
+
+def apply_live_accommodation_price(cost: CostBreakdown, live_price_per_person: float) -> CostBreakdown:
+    """
+    Replaces a CostBreakdown's static accommodation estimate with a real
+    quote, preserving the misc-buffer's proportionality to the rest of
+    the trip rather than leaving it sized for the old total. Returns a
+    NEW CostBreakdown (does not mutate the input).
+
+    Mirrors apply_live_flight_price exactly -- see that docstring.
+    """
+    delta = live_price_per_person - cost.accommodation_eur
+    return CostBreakdown(
+        flight_eur=cost.flight_eur,
+        transfer_eur=cost.transfer_eur,
+        accommodation_eur=live_price_per_person,
+        ski_pass_eur=cost.ski_pass_eur,
+        equipment_eur=cost.equipment_eur,
+        food_eur=cost.food_eur,
+        misc_eur=round(cost.misc_eur + delta * MISC_COST_RATE, 2),
+        flight_price_is_live=cost.flight_price_is_live,
+        accommodation_price_is_live=True,
+    )
+
+
+def apply_live_flight_price(cost: CostBreakdown, live_price: float) -> CostBreakdown:
+    """
+    Replaces a CostBreakdown's static flight estimate with a real quote,
+    preserving the misc-buffer's proportionality to the rest of the trip
+    rather than leaving it sized for the old total. Returns a NEW
+    CostBreakdown (does not mutate the input) with flight_price_is_live=True.
+
+    Shared by date_search.search_date_range() and scoring.rank_trips() so
+    the "swap in a live price" arithmetic exists in exactly one place.
+    """
+    delta = live_price - cost.flight_eur
+    return CostBreakdown(
+        flight_eur=live_price,
+        transfer_eur=cost.transfer_eur,
+        accommodation_eur=cost.accommodation_eur,
+        ski_pass_eur=cost.ski_pass_eur,
+        equipment_eur=cost.equipment_eur,
+        food_eur=cost.food_eur,
+        misc_eur=round(cost.misc_eur + delta * MISC_COST_RATE, 2),
+        flight_price_is_live=True,
+        # Preserved explicitly, not left to the dataclass default -- if a
+        # caller ever applies accommodation pricing BEFORE flight pricing
+        # (neither engine module does today, but nothing enforces the
+        # order), relying on the default would silently reset an
+        # already-live accommodation flag back to False.
+        accommodation_price_is_live=cost.accommodation_price_is_live,
+    )
 
 
 def transfer_cost_eur_per_person(resort: Resort, group_size: int,
