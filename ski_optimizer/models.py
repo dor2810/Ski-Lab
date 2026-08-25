@@ -257,7 +257,9 @@ class FlightOption:
     Deliberately provider-neutral -- no SerpApi tokens, no Duffel offer
     IDs at this level. `booking_token` is the one concession: an opaque
     provider-specific handle the adapter can pass back to ITSELF later
-    to fetch booking options. engine/ should treat it as meaningless.
+    to fetch booking options. engine/ should treat it as meaningless --
+    only the adapter that produced it (google_flights_adapter.py's
+    booking_url()) knows how to use it.
     """
     price_eur: float
     origin_airport: str          # IATA, e.g. "TLV"

@@ -248,7 +248,7 @@ def test_search_url_with_dates_switches_to_search_path_and_carries_a_ts_param():
     assert url == (
         "https://www.google.com/travel/search?q=Hotels%20in%20Val%20Thorens%2C%20France"
         "&hl=en&curr=EUR&gl=us&ts="
-        "CAESCgoCCAMKAggDEAAaOQobEhcyADoTVmFsIFRob3JlbnMsIEZyYW5jZRoAEhoSFAoHCOsPEAEYChIHCOsPEAEYEBgFMgIIASoJCgU6A0VVUhoA"
+        "CAESCgoCCAMKAggDEAAaOQobEhcyADoTVmFsIFRob3JlbnMsIEZyYW5jZRoAEhoSFAoHCOsPEAEYChIHCOsPEAEYEBgGMgIIASoJCgU6A0VVUhoA"
     )
 
 
@@ -257,3 +257,62 @@ def test_search_url_omits_ts_when_only_one_date_is_given():
     with_only_checkout = gha.search_url("Val Thorens, France", checkout_date=date(2027, 1, 16))
     assert "ts=" not in with_only_checkin
     assert "ts=" not in with_only_checkout
+
+
+# --- specific_property_url / _resolve_hotel_mid / _build_qs ---
+#
+# UNVERIFIED end to end (see specific_property_url's own docstring): no
+# real GOOGLE_KG_API_KEY was available while writing this. These tests
+# cover what IS testable offline -- the graceful no-key/no-match
+# degrade, and _build_qs's own wire-format encoding -- not a live
+# Knowledge Graph API round trip.
+
+def test_build_qs_embeds_the_mid():
+    qs = gha._build_qs("/g/11cn3169b8")
+    raw = base64.urlsafe_b64decode(qs + "=" * (-len(qs) % 4))
+    assert b"/g/11cn3169b8" in raw
+
+
+def test_specific_property_url_is_none_without_an_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_KG_API_KEY", raising=False)
+    url = gha.specific_property_url("Hotel Marielle", "Val Thorens, France",
+                                    date(2027, 1, 10), date(2027, 1, 16))
+    assert url is None
+
+
+def test_specific_property_url_is_none_when_no_mid_is_resolved(monkeypatch):
+    monkeypatch.setenv("GOOGLE_KG_API_KEY", "fake-key")
+    monkeypatch.setattr(gha, "_resolve_hotel_mid", lambda *a, **k: None)
+    url = gha.specific_property_url("Hotel Marielle", "Val Thorens, France",
+                                    date(2027, 1, 10), date(2027, 1, 16))
+    assert url is None
+
+
+def test_specific_property_url_builds_a_dated_link_with_qs_when_mid_resolves(monkeypatch):
+    monkeypatch.setenv("GOOGLE_KG_API_KEY", "fake-key")
+    monkeypatch.setattr(gha, "_resolve_hotel_mid", lambda *a, **k: "/g/11cn3169b8")
+    url = gha.specific_property_url("Hotel Marielle", "Val Thorens, France",
+                                    date(2027, 1, 10), date(2027, 1, 16))
+    assert url is not None
+    assert url.startswith("https://www.google.com/travel/search?q=")
+    assert "&ts=" in url and "&qs=" in url
+
+
+def test_resolve_hotel_mid_is_none_for_a_response_with_no_match(monkeypatch):
+    class _FakeResp:
+        def json(self):
+            return {"itemListElement": []}
+
+    import primp
+    monkeypatch.setattr(primp.Client, "get", lambda self, *a, **k: _FakeResp())
+    assert gha._resolve_hotel_mid("Nonexistent Hotel", "Nowhere", "fake-key") is None
+
+
+def test_resolve_hotel_mid_extracts_the_id_from_a_real_shaped_response(monkeypatch):
+    class _FakeResp:
+        def json(self):
+            return {"itemListElement": [{"result": {"@id": "kg:/g/11cn3169b8", "name": "Hotel Marielle"}}]}
+
+    import primp
+    monkeypatch.setattr(primp.Client, "get", lambda self, *a, **k: _FakeResp())
+    assert gha._resolve_hotel_mid("Hotel Marielle", "Val Thorens", "fake-key") == "/g/11cn3169b8"

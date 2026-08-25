@@ -179,6 +179,114 @@ def test_search_with_outbound_date_falls_back_to_static_when_live_pricing_is_una
         assert result["cost"]["flight_price_is_live"] is False
 
 
+def test_flight_search_url_uses_the_booking_link_when_available(authed_client, monkeypatch):
+    # When live pricing succeeds AND a specific-flight booking link can
+    # be built (adapters/google_flights_adapter.booking_url()), the API
+    # should surface THAT, not the generic route/date search link -- a
+    # real improvement, not just "still works."
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    def fake_search_flights(**_kwargs):
+        return FlightSearchResult(options=[
+            FlightOption(price_eur=250.0, origin_airport="TLV", destination_airport="BGY",
+                        airline="Test Air", total_duration_minutes=200, stops=0,
+                        booking_token="fake-token"),
+        ])
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", fake_search_flights)
+    monkeypatch.setattr(google_flights_adapter, "booking_url",
+                        lambda *a, **k: "https://www.google.com/travel/flights/booking?tfs=FAKE&tfu=FAKE")
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    result = body["results"][0]
+    assert result["cost"]["flight_price_is_live"] is True
+    assert result["flight_search_url"] == "https://www.google.com/travel/flights/booking?tfs=FAKE&tfu=FAKE"
+
+
+def test_flight_search_url_falls_back_to_the_search_link_when_booking_url_is_unavailable(authed_client, monkeypatch):
+    # This is the safety net: live pricing succeeding does NOT guarantee
+    # a booking link can be built (expired token, round-trip return-leg
+    # fetch failing, etc. -- see booking_url()'s own docstring). The
+    # result must still carry a real, working link -- the same reliable
+    # route/date search link this always fell back to -- never None and
+    # never a broken URL.
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    def fake_search_flights(**_kwargs):
+        return FlightSearchResult(options=[
+            FlightOption(price_eur=250.0, origin_airport="TLV", destination_airport="BGY",
+                        airline="Test Air", total_duration_minutes=200, stops=0,
+                        booking_token="fake-token"),
+        ])
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", fake_search_flights)
+    monkeypatch.setattr(google_flights_adapter, "booking_url", lambda *a, **k: None)
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    result = body["results"][0]
+    assert result["cost"]["flight_price_is_live"] is True
+    assert result["flight_search_url"].startswith("https://www.google.com/travel/flights/search?tfs=")
+
+
+def test_accommodation_search_url_uses_the_specific_property_link_when_available(authed_client, monkeypatch):
+    # Mirrors test_flight_search_url_uses_the_booking_link_when_available
+    # for the accommodation side -- see that test's docstring.
+    from ski_optimizer.adapters import google_hotels_adapter
+    from ski_optimizer.models import AccommodationOption, AccommodationSearchResult
+
+    def fake_search_accommodation(*_args, **_kwargs):
+        return AccommodationSearchResult(options=[
+            AccommodationOption(price_eur_per_night=100.0, property_name="Test Hotel"),
+        ])
+
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", fake_search_accommodation)
+    monkeypatch.setattr(google_hotels_adapter, "specific_property_url",
+                        lambda *a, **k: "https://www.google.com/travel/search?q=FAKE&ts=FAKE&qs=FAKE")
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    result = body["results"][0]
+    assert result["cost"]["accommodation_price_is_live"] is True
+    assert result["accommodation_search_url"] == "https://www.google.com/travel/search?q=FAKE&ts=FAKE&qs=FAKE"
+
+
+def test_accommodation_search_url_falls_back_when_specific_property_url_is_unavailable(authed_client, monkeypatch):
+    # The realistic default state (no GOOGLE_KG_API_KEY configured) --
+    # must still carry a real, working resort-level link.
+    from ski_optimizer.adapters import google_hotels_adapter
+    from ski_optimizer.models import AccommodationOption, AccommodationSearchResult
+
+    def fake_search_accommodation(*_args, **_kwargs):
+        return AccommodationSearchResult(options=[
+            AccommodationOption(price_eur_per_night=100.0, property_name="Test Hotel"),
+        ])
+
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", fake_search_accommodation)
+    monkeypatch.setattr(google_hotels_adapter, "specific_property_url", lambda *a, **k: None)
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    result = body["results"][0]
+    assert result["cost"]["accommodation_price_is_live"] is True
+    assert result["accommodation_search_url"].startswith("https://www.google.com/travel/search?q=")
+
+
 def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(authed_client):
     # Nothing fits 10 EUR/person -- the API no longer returns an empty
     # list for this (see rank_trips' over-budget-fallback docstring), it

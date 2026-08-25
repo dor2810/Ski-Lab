@@ -90,6 +90,7 @@ from typing import List, Optional
 from ..models import AccommodationOption, AccommodationSearchResult, Resort
 from .base import AdapterError
 from .response_cache import get_cache
+from ._wire_format import field_bytes, field_str, field_varint
 
 SEARCH_URL = "https://www.google.com/travel/hotels"
 
@@ -117,66 +118,39 @@ def _cache_key(resort_name: str, checkin_date: date, nights: int, rooms_needed: 
 
 
 # ---------------------------------------------------------------------------
-# Minimal hand-rolled protobuf wire-format encoder. No .proto schema is
-# public for this endpoint (unlike Flights, whose author extracted and
-# published one) -- these are generic wire-format primitives, not
-# Hotels-specific, assembled per the exact structure found in step 2
-# of the module docstring.
+# `ts` encoding. No .proto schema is public for this endpoint (unlike
+# Flights, whose author extracted and published one) -- built from the
+# generic wire-format primitives in _wire_format.py, per the exact
+# structure found in step 2 of the module docstring.
 # ---------------------------------------------------------------------------
 
-def _varint(n: int) -> bytes:
-    out = bytearray()
-    while True:
-        b = n & 0x7F
-        n >>= 7
-        if n:
-            out.append(b | 0x80)
-        else:
-            out.append(b)
-            break
-    return bytes(out)
-
-
-def _tag(field_num: int, wire_type: int) -> bytes:
-    return _varint((field_num << 3) | wire_type)
-
-
-def _field_varint(field_num: int, value: int) -> bytes:
-    return _tag(field_num, 0) + _varint(value)
-
-
-def _field_bytes(field_num: int, data: bytes) -> bytes:
-    return _tag(field_num, 2) + _varint(len(data)) + data
-
-
-def _field_str(field_num: int, s: str) -> bytes:
-    return _field_bytes(field_num, s.encode("utf-8"))
-
-
 def _date_message(d: date) -> bytes:
-    return _field_varint(1, d.year) + _field_varint(2, d.month) + _field_varint(3, d.day)
+    return field_varint(1, d.year) + field_varint(2, d.month) + field_varint(3, d.day)
 
 
 def _build_ts(place_id: str, place_name: str, checkin_date: date, checkout_date: date,
              currency: str = "EUR") -> str:
     """Builds the opaque `ts` param Google Hotels' real search UI sends. See module docstring."""
-    part1 = _field_varint(1, 1)
-    part2 = _field_bytes(
-        2, _field_bytes(1, _field_varint(1, 3)) + _field_bytes(1, _field_varint(1, 3)) + _field_varint(2, 0)
+    part1 = field_varint(1, 1)
+    part2 = field_bytes(
+        2, field_bytes(1, field_varint(1, 3)) + field_bytes(1, field_varint(1, 3)) + field_varint(2, 0)
     )
-    location = _field_str(6, place_id) + _field_str(7, place_name)
-    field3_1 = _field_bytes(1, _field_bytes(2, location) + _field_str(3, ""))
+    location = field_str(6, place_id) + field_str(7, place_name)
+    field3_1 = field_bytes(1, field_bytes(2, location) + field_str(3, ""))
+    nights = (checkout_date - checkin_date).days
     dates = (
-        _field_bytes(1, _date_message(checkin_date))
-        + _field_bytes(2, _date_message(checkout_date))
-        # Occupancy-related; observed as a constant "5" across every
-        # real capture regardless of guest count actually selected in
-        # the browser -- not yet mapped to adults/rooms, left as-is.
-        + _field_varint(3, 5)
+        field_bytes(1, _date_message(checkin_date))
+        + field_bytes(2, _date_message(checkout_date))
+        # Night count. Earlier captures all happened to be 5-night
+        # stays and this was mislabeled "occupancy, constant 5" --
+        # corrected after a 7-night reference capture showed the value
+        # tracking nights, not guest count (still not mapped to actual
+        # occupancy; Google may ignore/derive that separately).
+        + field_varint(3, nights)
     )
-    field3_2 = _field_bytes(2, _field_bytes(2, dates) + _field_bytes(6, _field_varint(1, 1)))
-    part3 = _field_bytes(3, field3_1 + field3_2)
-    part5 = _field_bytes(5, _field_bytes(1, _field_str(7, currency)) + _field_str(3, ""))
+    field3_2 = field_bytes(2, field_bytes(2, dates) + field_bytes(6, field_varint(1, 1)))
+    part3 = field_bytes(3, field3_1 + field3_2)
+    part5 = field_bytes(5, field_bytes(1, field_str(7, currency)) + field_str(3, ""))
     raw = part1 + part2 + part3 + part5
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -207,6 +181,124 @@ def search_url(place_name: str, checkin_date: Optional[date] = None,
         ts = _build_ts("", place_name, checkin_date, checkout_date, currency=currency)
         url = url.replace("/hotels?", "/search?") + f"&ts={ts}"
     return url
+
+
+# ---------------------------------------------------------------------------
+# specific_property_url() -- a deep link to Google Hotels' page for ONE
+# named property (search_url() above only reaches a resort-level results
+# LIST -- the user still has to find and click the right one there).
+#
+# MECHANISM: the extra `qs=` query param that gets Google Hotels to land
+# on one property needs that property's Knowledge Graph MID (a `/g/xxxx`
+# id) -- reverse-engineered from a real captured example the same way
+# `ts` was (see this module's top-level docstring): decoded the protobuf
+# wire format, found a nested string in exactly that shape. This is a
+# DIFFERENT id namespace than the `0x:0x` per-hotel place ID this module
+# already scrapes off the listing page (see _iter_hotel_entries) --
+# confirmed NOT interchangeable: substituting the scraped CID directly
+# into qs= in place of a MID produced a hard Google-side 500, not a
+# silent wrong match. No amount of scraping this module's existing
+# listing-page fetch surfaced a per-property MID either (checked: only
+# shared, region-level KG ids are present there, e.g. the resort's own
+# admin-area entity, not any individual hotel's).
+#
+# So MID resolution here goes through Google's own PUBLIC, DOCUMENTED
+# Knowledge Graph Search API (kgsearch.googleapis.com) instead of
+# scraping -- see _resolve_hotel_mid()'s docstring. This is the one
+# function in this module that isn't reverse-engineered.
+#
+# UNVERIFIED END TO END: written to the documented request/response
+# shape and the reverse-engineered qs wire format, but no real
+# GOOGLE_KG_API_KEY was available to test this against while writing it
+# (see .env.example). If hotel-specific links aren't appearing in
+# practice, this -- not search_url(), which IS live-verified -- is
+# where to look first. Every failure mode (missing key, no KG match,
+# request error) returns None, never raises -- callers fall back to
+# search_url()'s resort-level link, exactly the same "degrade to what's
+# proven to work" contract every other function in this module follows.
+# ---------------------------------------------------------------------------
+
+def _resolve_hotel_mid(hotel_name: str, area_name: str, api_key: str) -> Optional[str]:
+    """
+    Resolves a specific hotel's Knowledge Graph MID via Google's public
+    Knowledge Graph Search API (developers.google.com/knowledge-graph) --
+    see this section's module comment for why this needs a real API call
+    to a DOCUMENTED endpoint rather than more scraping. Returns None
+    (never raises) for no match, a malformed response, or a request
+    failure -- an unresolved MID is exactly as safe as a missing one to
+    the caller.
+    """
+    import primp
+
+    try:
+        client = primp.Client(impersonate="chrome_145", impersonate_os="macos")
+        resp = client.get(
+            "https://kgsearch.googleapis.com/v1/entities:search",
+            params={"query": f"{hotel_name} {area_name}", "key": api_key,
+                   "limit": "1", "types": "Hotel", "languages": "en"},
+        )
+        data = resp.json()
+    except Exception:
+        return None
+
+    items = data.get("itemListElement") or []
+    if not items:
+        return None
+    kg_id = (items[0].get("result") or {}).get("@id", "")
+    if not kg_id.startswith("kg:/g/"):
+        return None
+    return kg_id[len("kg:"):]
+
+
+def _build_qs(mid: str) -> str:
+    """
+    Builds the opaque `qs` param that, alongside `ts`, gets Google
+    Hotels to land on one specific property. See this section's module
+    comment for how the shape was found.
+
+    The leading numeric field (paired with the MID in the real captured
+    example) is UNVERIFIED -- hardcoded to 0 here since no real MID was
+    available to test whether Google actually requires a specific
+    value. If specific_property_url() stops working, this is the next
+    thing to check (capture a fresh real example and compare).
+    """
+    inner = field_varint(1, 0) + field_str(3, mid)
+    wrapped = field_bytes(1, inner) + field_varint(2, 1)
+    outer = field_bytes(6, wrapped) + field_varint(7, 13)
+    return base64.urlsafe_b64encode(outer).decode("ascii").rstrip("=")
+
+
+def specific_property_url(
+    property_name: str, area_place_name: str, checkin_date: date, checkout_date: date,
+    area_place_id: str = "", currency: str = "EUR",
+) -> Optional[str]:
+    """
+    A deep link to Google Hotels' page for THIS ONE property, dated --
+    see this section's module comment for the full mechanism and what's
+    verified vs. not.
+
+    Returns None (never raises) when GOOGLE_KG_API_KEY isn't set (see
+    .env.example) or MID resolution fails for any reason -- the caller
+    falls back to search_url()'s resort-level link.
+    """
+    import os
+    from urllib.parse import quote
+
+    api_key = os.environ.get("GOOGLE_KG_API_KEY")
+    if not api_key:
+        return None
+
+    mid = _resolve_hotel_mid(property_name, area_place_name, api_key)
+    if mid is None:
+        return None
+
+    ts = _build_ts(area_place_id, area_place_name, checkin_date, checkout_date, currency=currency)
+    qs = _build_qs(mid)
+    query = f"Hotels in {area_place_name}"
+    return (
+        f"{SEARCH_URL.replace('/hotels', '/search')}?q={quote(query)}"
+        f"&hl=en&curr={currency}&gl=us&ts={ts}&qs={qs}"
+    )
 
 
 # ---------------------------------------------------------------------------

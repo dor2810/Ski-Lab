@@ -22,6 +22,7 @@ here should silently become load-bearing for an actual purchase decision
 without first being replaced by a real data source.
 """
 import re
+from datetime import timedelta
 from typing import Optional
 
 from ..models import Resort, UserPreferences, CostBreakdown
@@ -227,6 +228,53 @@ def live_flight_cost_eur(
         return None
 
 
+def live_flight_booking_url(
+    resort: Resort,
+    outbound_date,
+    return_date,
+    origin_airport: str = "TLV",
+    adults: int = 1,
+    max_connections: int = 1,
+) -> Optional[str]:
+    """
+    A deep link to Google Flights' own booking page for the SAME
+    cheapest flight live_flight_cost_eur() just priced, or None if
+    unavailable for any reason -- see
+    adapters/google_flights_adapter.booking_url()'s own docstring for
+    what "unavailable" covers (missing booking ingredients, an expired
+    selection token, a failed second fetch for round trip) and why
+    every one of those degrades to None rather than a broken link.
+
+    Re-runs search_flights() rather than taking a FlightOption in --
+    deliberately, so callers don't have to thread one through. This
+    costs no extra network call in the common case: search_flights()
+    is response-cached (see adapters/response_cache.py), so calling it
+    again with identical parameters right after live_flight_cost_eur()
+    already did is a cache hit.
+    """
+    codes = airport_codes_for(resort)
+    if not codes:
+        return None
+    try:
+        from ..adapters import google_flights_adapter as flight_adapter
+        result = flight_adapter.search_flights(
+            origin_airport=origin_airport,
+            destination_airports=codes,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            max_connections=max_connections,
+        )
+        if not result.options:
+            return None
+        cheapest = min(result.options, key=lambda o: o.price_eur)
+        return flight_adapter.booking_url(cheapest, outbound_date, return_date)
+    except Exception:
+        # Same "degrade visibly, never break" contract as
+        # live_flight_cost_eur -- see that function's docstring.
+        return None
+
+
 def live_accommodation_cost_eur_per_person(
     resort: Resort,
     checkin_date,
@@ -274,6 +322,42 @@ def live_accommodation_cost_eur_per_person(
         # Deliberately broad, matching live_flight_cost_eur: a hotel-
         # provider outage should degrade the trip estimate, not take
         # down a whole search.
+        return None
+
+
+def live_accommodation_booking_url(
+    resort: Resort, checkin_date, nights: int, rooms_needed: int, area_place_name: str,
+) -> Optional[str]:
+    """
+    A deep link to Google Hotels' page for the SAME cheapest property
+    live_accommodation_cost_eur_per_person() just priced, or None if
+    unavailable -- see
+    adapters/google_hotels_adapter.specific_property_url()'s own
+    docstring for what "unavailable" covers (no GOOGLE_KG_API_KEY
+    configured, no Knowledge Graph match, a request failure) and why
+    every one of those degrades to None, never a broken link.
+
+    UNVERIFIED end to end -- see specific_property_url()'s docstring.
+
+    Re-runs search_accommodation() rather than taking an
+    AccommodationOption in, mirroring live_flight_booking_url()'s same
+    choice and for the same reason: response-cached (see
+    adapters/response_cache.py), so calling it again right after
+    live_accommodation_cost_eur_per_person() already did is a cache
+    hit, not a second live scrape.
+    """
+    try:
+        from ..adapters import google_hotels_adapter
+        result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
+        if not result.options:
+            return None
+        cheapest = min(result.options, key=lambda o: o.price_eur_per_night)
+        checkout_date = checkin_date + timedelta(days=nights)
+        return google_hotels_adapter.specific_property_url(
+            cheapest.property_name, area_place_name, checkin_date, checkout_date)
+    except Exception:
+        # Same "degrade visibly, never break" contract as every other
+        # live_* function in this module.
         return None
 
 

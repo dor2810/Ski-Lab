@@ -30,7 +30,10 @@ from ...models import (
     VALID_SKILL_LEVELS, VALID_ACCOMMODATION_TIERS,
     VALID_FOOD_PROFILES, VALID_EQUIPMENT_TIERS, VALID_WEIGHT_KEYS,
 )
-from ...engine.cost_calculator import live_flight_cost_eur, live_accommodation_cost_eur_per_person
+from ...engine.cost_calculator import (
+    live_flight_cost_eur, live_flight_booking_url,
+    live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
+)
 from ...engine.links import google_flights_url, google_hotels_url
 from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
@@ -280,6 +283,56 @@ def _to_resort_out(r: Resort) -> ResortOut:
     )
 
 
+def _flight_search_url(resort: Resort, outbound_date, return_date, flight_price_is_live: bool,
+                       max_connections: int) -> Optional[str]:
+    """
+    A booking-page deep link for the specific flight that was just
+    live-priced, when available -- falling back to the plain,
+    reliable route/date search-results link (google_flights_url())
+    for every case that isn't: no live price for this result
+    (flight_price_is_live False -- nothing to build a booking link
+    FROM), no outbound_date, or live_flight_booking_url() itself
+    returning None (its own docstring covers every reason: no booking
+    ingredients, an expired selection token, a failed round-trip
+    return-leg fetch). This fallback is deliberate and automatic, not
+    just a git-revert safety net -- see
+    adapters/google_flights_adapter.booking_url()'s module comment on
+    what's verified vs. not about the booking link's long-term
+    reliability.
+
+    Only attempted when flight_price_is_live is True: that means
+    live_flight_cost_eur() already ran search_flights() for this exact
+    (resort, dates) combination moments ago, so live_flight_booking_url()
+    re-running the same search is a response-cache hit, not a second
+    live scrape (see that function's own docstring).
+    """
+    if flight_price_is_live and outbound_date is not None:
+        booking = live_flight_booking_url(resort, outbound_date, return_date, origin_airport="TLV",
+                                          max_connections=max_connections)
+        if booking:
+            return booking
+    return google_flights_url(resort, outbound_date, return_date)
+
+
+def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, nights: int,
+                              rooms_needed: int, accommodation_price_is_live: bool) -> str:
+    """
+    A deep link to ONE specific property that was just live-priced,
+    when available -- falling back to the resort-level, dated search
+    link (google_hotels_url()) otherwise. Same shape and same
+    "automatic, not just git-revert" fallback contract as
+    _flight_search_url() above -- see that function's docstring, and
+    adapters/google_hotels_adapter.specific_property_url()'s own
+    docstring on what's unverified about the specific-property link.
+    """
+    if accommodation_price_is_live and checkin_date is not None:
+        booking = live_accommodation_booking_url(
+            resort, checkin_date, nights, rooms_needed, f"{resort.name}, {resort.country}")
+        if booking:
+            return booking
+    return google_hotels_url(resort, checkin_date, checkout_date)
+
+
 @router.post("/search", response_model=SearchResponse, dependencies=[Depends(enforce_search_rate_limit)])
 def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     # Auto-normalize weights (divide by sum) rather than require the
@@ -382,8 +435,11 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             score_components=t.score_components,
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
-            flight_search_url=google_flights_url(t.resort, payload.outbound_date, return_date),
-            accommodation_search_url=google_hotels_url(t.resort, payload.outbound_date, return_date),
+            flight_search_url=_flight_search_url(t.resort, payload.outbound_date, return_date,
+                                                 t.cost.flight_price_is_live, payload.max_connections),
+            accommodation_search_url=_accommodation_search_url(
+                t.resort, payload.outbound_date, return_date, prefs.nights, prefs.rooms_needed,
+                t.cost.accommodation_price_is_live),
         )
         for t in trip_options
     ]
@@ -644,8 +700,11 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             score_components=t.score_components,
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
-            flight_search_url=google_flights_url(t.resort, t.start_date, t.end_date),
-            accommodation_search_url=google_hotels_url(t.resort, t.start_date, t.end_date),
+            flight_search_url=_flight_search_url(t.resort, t.start_date, t.end_date,
+                                                 t.cost.flight_price_is_live, payload.max_connections),
+            accommodation_search_url=_accommodation_search_url(
+                t.resort, t.start_date, t.end_date, prefs.nights, prefs.rooms_needed,
+                t.cost.accommodation_price_is_live),
         )
         for t in dated_options
     ]

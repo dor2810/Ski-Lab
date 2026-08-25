@@ -17,13 +17,20 @@ warn about, now applied to a CI/dev machine hammering it on every test
 run.
 
 Patched at each adapter's actual THIRD-PARTY network boundary --
-`fast_flights.get_flights` and `primp.Client.get` -- rather than
-anything in this project's own adapter modules, so tests that
-monkeypatch THIS project's own functions (e.g.
-test_google_flights_adapter.py patching _search_one_airport,
+`fast_flights.get_flights`, `fast_flights.fetcher.fetch_flights_html`,
+and `primp.Client.get` -- rather than anything in this project's own
+adapter modules, so tests that monkeypatch THIS project's own functions
+(e.g. test_google_flights_adapter.py patching _search_one_airport,
 test_google_hotels_adapter.py patching _fetch_html, to test each
 adapter's own orchestration) are unaffected; they never reach these
 patched calls at all.
+
+fetch_flights_html is patched IN ADDITION TO get_flights: google_flights_
+adapter.booking_url()'s round-trip path (see that module's own docstring)
+needs the raw JSON payload get_flights() itself discards, so
+_search_one_airport calls fetch_flights_html directly rather than going
+through get_flights() -- get_flights() alone no longer covers every real
+network path this adapter can take.
 """
 import pytest
 
@@ -31,14 +38,16 @@ import pytest
 @pytest.fixture(autouse=True)
 def _no_real_flight_scraping(monkeypatch):
     import fast_flights
+    import fast_flights.fetcher
 
     def _blocked(*_args, **_kwargs):
         raise RuntimeError(
-            "fast_flights.get_flights was called for real during a test run -- "
+            "fast_flights made a real network call during a test run -- "
             "mock the adapter boundary instead (see conftest.py's docstring)."
         )
 
     monkeypatch.setattr(fast_flights, "get_flights", _blocked)
+    monkeypatch.setattr(fast_flights.fetcher, "fetch_flights_html", _blocked)
     yield
 
 
