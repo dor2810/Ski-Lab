@@ -170,7 +170,7 @@ export function SearchCard({
             <input value="Tel Aviv (TLV)" disabled className={`${fieldClass()} opacity-60`} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="earliest" className={labelClass()}>Earliest date</label>
               <input
@@ -189,7 +189,7 @@ export function SearchCard({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="nights" className={labelClass()}>Trip length (nights)</label>
               <input
@@ -225,7 +225,7 @@ export function SearchCard({
             onModeChange={setResortMode}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="travellers" className={labelClass()}>Travellers</label>
               <input
@@ -273,7 +273,7 @@ export function SearchCard({
 
             {prefsOpen && (
               <div className="mt-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label htmlFor="accom" className={labelClass()}>Accommodation tier</label>
                     <select
