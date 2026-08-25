@@ -63,5 +63,24 @@ class UserOut(BaseModel):
         from_attributes = True  # lets this build directly from a User ORM instance
 
 
+class AuthResponse(BaseModel):
+    """
+    Returned by register/login/refresh. Both tokens travel in the JSON
+    body, not a cookie -- see routes/auth.py's module docstring for why
+    (a cross-site cookie between the two onrender.com subdomains is
+    silently blocked by an increasing number of browsers, regardless of
+    SameSite). The client is responsible for holding access_token in
+    memory and refresh_token in its own persistent storage, and
+    attaching access_token as an Authorization: Bearer header itself.
+    """
+    user: UserOut
+    access_token: str
+    refresh_token: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class MessageResponse(BaseModel):
     message: str

@@ -11,10 +11,12 @@ import { WhySkiLab } from "@/components/WhySkiLab";
 import { Footer } from "@/components/Footer";
 import { searchFixedDates, ApiError, type TripResult } from "@/lib/api";
 import { DEFAULT_RAW_WEIGHTS, normalizeWeights } from "@/components/PrioritySliders";
+import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/i18n/context";
 
 export default function Home() {
   const { t } = useTranslation();
+  const { accessToken, isLoading: authLoading } = useAuth();
   // Real search results from the form below (SearchCard always calls
   // /trips/search-dates -- see its own comment on why there's no
   // separate "fixed date" mode any more: a date range no wider than the
@@ -46,21 +48,36 @@ export default function Home() {
   // slow (~20s, measured) AND spends real, metered SerpApi quota on
   // every visitor before they've asked for anything. Omitting the date
   // gives a fast, free, static-estimate preview instead.
+  //
+  // Also gated on accessToken now: search requires a signed-in user
+  // (see api/routes/auth.get_current_user_for_search), so there's
+  // nothing to preview until sign-in resolves. Waits for authLoading to
+  // settle first -- otherwise a returning visitor whose session is
+  // still being silently restored would flash a "sign in" prompt for a
+  // moment before their preview loads.
   useEffect(() => {
+    if (authLoading) return;
+    if (!accessToken) {
+      setPreviewLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const data = await searchFixedDates({
-          budget_eur_per_person: 1500,
-          group_size: 2,
-          skill_level: "intermediate",
-          accommodation_tier: "standard",
-          food_profile: "normal",
-          equipment_tier: "standard",
-          trip_nights: 5,
-          top_n: 4,
-          weights: normalizeWeights(DEFAULT_RAW_WEIGHTS),
-        });
+        const data = await searchFixedDates(
+          {
+            budget_eur_per_person: 1500,
+            group_size: 2,
+            skill_level: "intermediate",
+            accommodation_tier: "standard",
+            food_profile: "normal",
+            equipment_tier: "standard",
+            trip_nights: 5,
+            top_n: 4,
+            weights: normalizeWeights(DEFAULT_RAW_WEIGHTS),
+          },
+          accessToken
+        );
         if (!cancelled) setPreview(data.results);
       } catch (err) {
         if (!cancelled) {
@@ -73,7 +90,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, accessToken]);
 
   function scrollToSearch() {
     document.getElementById("search")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -109,6 +126,10 @@ export default function Home() {
               ? t("previewErrorGeneric")
               : t("previewErrorApi", { message: previewError.apiMessage })}
           </p>
+        )}
+
+        {!authLoading && !accessToken && !showingRealSearch && (
+          <p className="text-center text-sm text-ice/50">{t("signInToSeeExamples")}</p>
         )}
 
         {displayedResults && !searching && (

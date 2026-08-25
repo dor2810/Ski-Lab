@@ -27,6 +27,20 @@ services:
       # match ski-lab-app's actual URL below, scheme included.
       - key: FRONTEND_URL
         value: https://ski-lab-app.onrender.com
+      # From a Google Cloud Console OAuth 2.0 Client ID (Web application
+      # type) -- doesn't exist yet, enter these in the Render dashboard
+      # once it does (see .env.example for the full setup note). Google
+      # sign-in returns a clean 503 ("not configured yet") until both
+      # are set, it doesn't break anything else.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Must exactly match the redirect URI registered in Google Cloud
+      # Console, including scheme. Fixed here (not sync: false) since
+      # it's not a secret -- just the API's own real callback URL.
+      - key: GOOGLE_REDIRECT_URI
+        value: https://ski-lab-api.onrender.com/auth/google/callback
 
   - name: ski-lab-app
     type: web

@@ -1,22 +1,19 @@
 /**
  * Client for the real Ski Lab FastAPI backend (ski_optimizer/api/).
  *
- * SESSION STRATEGY: none, deliberately. Search
- * (/trips/search, /trips/search-dates, /trips/resorts) is anonymous by
- * default on the backend now (see api/routes/auth.get_current_user_for_search)
- * -- no cookie, no session, no register call needed. This file used to
- * silently self-register a disposable guest account before every
- * search to work around an auth requirement; that machinery is gone
- * because the requirement itself is gone, not just hidden. It was also
- * the likely cause of real, hard-to-diagnose failures: the frontend and
- * API live on different onrender.com subdomains, and a growing number
- * of browsers block or restrict third-party (cross-site) cookies by
- * default (Safari has for years; others are moving the same way) --
- * SameSite=None doesn't help with THAT restriction, only with the
- * SameSite mechanism itself. Removing the cookie dependency for search
- * removes that whole failure class, not just papers over one symptom
- * of it. The backend's real cost control for live pricing is now
- * api/rate_limit.py, not auth.
+ * AUTH STRATEGY: bearer token, not cookies. Search
+ * (/trips/search, /trips/search-dates, /trips/resorts) requires a
+ * signed-in user (see api/routes/auth.get_current_user_for_search) --
+ * every authenticated call here takes an explicit accessToken and
+ * sends it as `Authorization: Bearer <token>`. This project already
+ * tried cookie-based sessions and hit a structural wall: the frontend
+ * and API live on different onrender.com subdomains (onrender.com is
+ * on the Public Suffix List, so they're different SITES to a browser),
+ * and a growing number of browsers block or restrict third-party
+ * (cross-site) cookies by default regardless of SameSite. A bearer
+ * token the client attaches explicitly sidesteps that whole failure
+ * class. See lib/auth/context.tsx for where accessToken actually comes
+ * from and how it's kept fresh.
  */
 
 const PROD_API_BASE = "https://ski-lab-api.onrender.com";
@@ -42,11 +39,12 @@ export class ApiError extends Error {
 
 async function apiFetch<T>(
   path: string,
-  init: { method?: string; body?: unknown } = {}
+  init: { method?: string; body?: unknown; accessToken?: string | null } = {}
 ): Promise<T> {
-  const { method = "GET", body } = init;
+  const { method = "GET", body, accessToken } = init;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (method !== "GET") headers[CSRF_HEADER] = CSRF_VALUE;
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
 
   const resp = await fetch(apiBase() + path, {
     method,
@@ -188,16 +186,68 @@ export interface FlexibleWindowSearchParams extends CommonSearchFields {
   start_weekday?: WeekdayName | null;
 }
 
-export async function searchFixedDates(params: FixedDateSearchParams): Promise<SearchResponse> {
-  return apiFetch<SearchResponse>("/trips/search", { method: "POST", body: params });
+export async function searchFixedDates(
+  params: FixedDateSearchParams,
+  accessToken: string
+): Promise<SearchResponse> {
+  return apiFetch<SearchResponse>("/trips/search", { method: "POST", body: params, accessToken });
 }
 
 export async function searchFlexibleWindow(
-  params: FlexibleWindowSearchParams
+  params: FlexibleWindowSearchParams,
+  accessToken: string
 ): Promise<SearchDateRangeResponse> {
-  return apiFetch<SearchDateRangeResponse>("/trips/search-dates", { method: "POST", body: params });
+  return apiFetch<SearchDateRangeResponse>("/trips/search-dates", {
+    method: "POST", body: params, accessToken,
+  });
 }
 
-export async function listResortNames(): Promise<string[]> {
-  return apiFetch<string[]>("/trips/resorts");
+export async function listResortNames(accessToken: string): Promise<string[]> {
+  return apiFetch<string[]>("/trips/resorts", { accessToken });
+}
+
+// --- Auth (see api/routes/auth.py + lib/auth/context.tsx) ---
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  is_email_verified: boolean;
+}
+
+export interface AuthResult {
+  user: AuthUser;
+  access_token: string;
+  refresh_token: string;
+}
+
+export async function registerAccount(
+  email: string,
+  password: string,
+  display_name?: string
+): Promise<AuthResult> {
+  return apiFetch<AuthResult>("/auth/register", { method: "POST", body: { email, password, display_name } });
+}
+
+export async function loginAccount(email: string, password: string): Promise<AuthResult> {
+  return apiFetch<AuthResult>("/auth/login", { method: "POST", body: { email, password } });
+}
+
+export async function getCurrentUser(accessToken: string): Promise<AuthUser> {
+  return apiFetch<AuthUser>("/auth/me", { accessToken });
+}
+
+export async function refreshAccessToken(refresh_token: string): Promise<AuthResult> {
+  return apiFetch<AuthResult>("/auth/refresh", { method: "POST", body: { refresh_token } });
+}
+
+export async function logoutAccount(refresh_token: string): Promise<void> {
+  await apiFetch<{ message: string }>("/auth/logout", { method: "POST", body: { refresh_token } });
+}
+
+// A plain browser navigation (not a fetch), so the backend's redirect
+// chain to Google and back can set no cookie and rely on nothing but
+// the URL fragment it appends on return -- see google_oauth.py.
+export function googleLoginUrl(): string {
+  return apiBase() + "/auth/google/login";
 }

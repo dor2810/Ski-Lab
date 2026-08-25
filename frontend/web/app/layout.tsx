@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Montserrat, Rubik } from "next/font/google";
 import { LanguageProvider } from "@/lib/i18n/context";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AuthProvider } from "@/lib/auth/context";
+import { AuthWidget } from "@/components/AuthWidget";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -33,10 +35,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${montserrat.variable} ${rubik.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-navy text-white">
         <LanguageProvider>
-          <div className="fixed top-4 end-4 z-50">
-            <LanguageSwitcher />
-          </div>
-          {children}
+          <AuthProvider>
+            <div className="fixed top-4 end-4 z-50 flex items-center gap-3">
+              <AuthWidget />
+              <LanguageSwitcher />
+            </div>
+            {children}
+          </AuthProvider>
         </LanguageProvider>
       </body>
     </html>

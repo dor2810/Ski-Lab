@@ -13,6 +13,7 @@ import {
   type TripResult,
 } from "@/lib/api";
 import { todayPlusDays } from "@/lib/format";
+import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
 import {
@@ -76,6 +77,7 @@ export function SearchCard({
   onSearchStart: () => void;
 }) {
   const { t } = useTranslation();
+  const { accessToken } = useAuth();
 
   // One unified date range: if latest - earliest == trip_nights, this is
   // effectively "exact dates" (a single candidate start date); wider than
@@ -106,10 +108,11 @@ export function SearchCard({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listResortNames().then(setResortNames).catch(() => {
+    if (!accessToken) return;
+    listResortNames(accessToken).then(setResortNames).catch(() => {
       /* resort picker just stays empty/loading -- not fatal to the rest of the form */
     });
-  }, []);
+  }, [accessToken]);
 
   function toggleResort(name: string) {
     setSelectedResorts((prev) => {
@@ -131,6 +134,11 @@ export function SearchCard({
     e.preventDefault();
     setError(null);
 
+    if (!accessToken) {
+      setError(t("signInToSearch"));
+      return;
+    }
+
     if (!(tripNights > 0)) {
       setError(t("errorTripLength"));
       return;
@@ -148,24 +156,27 @@ export function SearchCard({
     setLoading(true);
     onSearchStart();
     try {
-      const data = await searchFlexibleWindow({
-        budget_eur_per_person: budget,
-        group_size: travellers,
-        skill_level: skillLevel,
-        accommodation_tier: accomTier,
-        food_profile: foodProfile,
-        equipment_tier: "standard",
-        max_connections: maxConnections === "" ? null : Number(maxConnections),
-        preferred_transfer_modes: transferModes.size > 0 ? [...transferModes] : null,
-        include_resorts: resortMode === "include" ? resortList : null,
-        exclude_resorts: resortMode === "exclude" ? resortList : null,
-        start_weekday: startWeekday === "" ? null : startWeekday,
-        weights: normalizeWeights(weights),
-        trip_nights: tripNights,
-        earliest_date: earliest,
-        latest_date: latest,
-        top_n: 12,
-      });
+      const data = await searchFlexibleWindow(
+        {
+          budget_eur_per_person: budget,
+          group_size: travellers,
+          skill_level: skillLevel,
+          accommodation_tier: accomTier,
+          food_profile: foodProfile,
+          equipment_tier: "standard",
+          max_connections: maxConnections === "" ? null : Number(maxConnections),
+          preferred_transfer_modes: transferModes.size > 0 ? [...transferModes] : null,
+          include_resorts: resortMode === "include" ? resortList : null,
+          exclude_resorts: resortMode === "exclude" ? resortList : null,
+          start_weekday: startWeekday === "" ? null : startWeekday,
+          weights: normalizeWeights(weights),
+          trip_nights: tripNights,
+          earliest_date: earliest,
+          latest_date: latest,
+          top_n: 12,
+        },
+        accessToken
+      );
       onOutcome({
         results: data.results,
         livePricingActive: data.live_pricing_active,

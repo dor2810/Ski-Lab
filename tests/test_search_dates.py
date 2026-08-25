@@ -50,10 +50,15 @@ def _fresh_db():
 
 @pytest.fixture
 def authed_client():
+    # Bearer-token auth (see api/routes/auth.py) -- set as a persistent
+    # per-client header rather than relying on TestClient's automatic
+    # cookie jar, since there's no cookie in this flow at all.
     client = TestClient(app, base_url="https://testserver")
-    client.post("/auth/register", json={
+    resp = client.post("/auth/register", json={
         "email": "dateseeker@example.com", "password": "correcthorsebattery",
     }, headers=CSRF_HEADERS)
+    access_token = resp.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {access_token}"
     return client
 
 
@@ -65,18 +70,19 @@ BASE_PAYLOAD = {
 }
 
 
-def test_search_dates_works_without_authentication_by_default():
-    # Anonymous is the default now -- see routes/auth.get_current_user_for_search.
-    client = TestClient(app, base_url="https://testserver")
-    resp = client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
-    assert resp.status_code == 200
-
-
-def test_search_dates_can_require_authentication_explicitly(monkeypatch):
-    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "false")
+def test_search_dates_requires_authentication_by_default(monkeypatch):
+    # See routes/auth.get_current_user_for_search's docstring.
+    monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
     assert resp.status_code == 401
+
+
+def test_search_dates_allows_anonymous_when_explicitly_enabled(monkeypatch):
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
 
 
 def test_search_dates_without_csrf_header_is_rejected(authed_client):

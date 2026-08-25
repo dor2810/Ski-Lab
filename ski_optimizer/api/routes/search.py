@@ -1,10 +1,10 @@
 """
 The first real, protected use of the engine over HTTP: POST /trips/search
 wraps engine.scoring.rank_trips exactly as the CLI demo does, but behind
-Depends(get_current_user_for_search) -- no valid access_token cookie, no
-results, UNLESS ALLOW_ANONYMOUS_SEARCH=true is set (dev-only convenience;
-see that function's docstring in routes/auth.py -- production default is
-unchanged, still requires auth).
+Depends(get_current_user_for_search) -- no valid Authorization: Bearer
+access token, no results, UNLESS ALLOW_ANONYMOUS_SEARCH=true is set
+(dev-only convenience; see that function's docstring in routes/auth.py
+-- production default requires auth).
 
 This is deliberately the search wrapped in the SAME hard/soft
 constraint pipeline the CLI and the frontend prototype's ported JS use

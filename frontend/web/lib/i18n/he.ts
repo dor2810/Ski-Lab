@@ -159,6 +159,22 @@ const he: Record<keyof typeof en, string> = {
 
   // --- Language switcher ---
   languageLabel: "שפה",
+
+  // --- Auth ---
+  signIn: "התחברות",
+  signOut: "התנתקות",
+  createAccount: "יצירת חשבון",
+  continueWithGoogle: "המשך עם Google",
+  orDivider: "או",
+  emailLabel: "אימייל",
+  passwordLabel: "סיסמה",
+  authSwitchToRegister: "אין לכם חשבון? צרו אחד",
+  authSwitchToLogin: "כבר יש לכם חשבון? התחברו",
+  authWorking: "טוען…",
+  authPasswordTooShort: "הסיסמה חייבת להכיל לפחות 12 תווים.",
+  authErrorGeneric: "משהו השתבש. נסו שוב.",
+  signInToSearch: "התחברו כדי לחפש טיולים.",
+  signInToSeeExamples: "התחברו כדי לראות טיולים לדוגמה.",
 };
 
 export default he;

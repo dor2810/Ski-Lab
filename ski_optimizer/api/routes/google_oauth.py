@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from ...db.database import get_db
 from ...db.models import User
 from .. import security
-from .auth import _issue_session
+from .auth import _issue_tokens
 
 router = APIRouter(prefix="/auth/google", tags=["auth"])
 
@@ -92,6 +92,14 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    redirect = RedirectResponse(url=FRONTEND_URL)
-    _issue_session(db, user, redirect)
-    return redirect
+    access_token, refresh_token = _issue_tokens(db, user)
+    # Tokens travel in the URL FRAGMENT (#...), not a query string or a
+    # cookie: a fragment is never sent to any server (including this
+    # one, on the next request) and doesn't appear in server access
+    # logs, but the frontend's own JS can read it via
+    # window.location.hash immediately after this redirect lands. See
+    # auth.py's module docstring for why this whole flow avoids cookies
+    # in the first place. The frontend is responsible for reading these
+    # once, storing them, and stripping the fragment from the URL.
+    redirect_url = f"{FRONTEND_URL}#access_token={access_token}&refresh_token={refresh_token}"
+    return RedirectResponse(url=redirect_url)

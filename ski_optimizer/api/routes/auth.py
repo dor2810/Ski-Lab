@@ -3,61 +3,47 @@ Auth routes. Every state-changing endpoint requires the CSRF header
 (see security.CSRF_HEADER_NAME) -- enforced in main.py as middleware,
 not per-route, so a route can't accidentally be added without it.
 
-Cookie strategy: access_token and refresh_token are both httpOnly,
-Secure, SameSite=None cookies -- never returned in a JSON body, never
-touchable by JS. Secure=True means these cookies won't be sent at all
-over plain HTTP; the dev server needs to run over https (or a
-localhost exception, which browsers grant automatically) for cookies
-to work at all. That's intentional friction, not an oversight.
+TOKEN STRATEGY: bearer tokens in the JSON body, not cookies (changed
+this session). access_token and refresh_token are both returned
+directly to the client on register/login/refresh/Google callback; the
+client holds access_token in memory and sends it as
+`Authorization: Bearer <token>` on every request, and persists
+refresh_token itself (e.g. localStorage) to call POST /auth/refresh
+silently on future visits.
 
-WHY SameSite=None, NOT Lax (changed this session, deploying to Render):
-the frontend and API are deployed to DIFFERENT `*.onrender.com`
-subdomains. `onrender.com` is on the Public Suffix List (verified
-directly against publicsuffix.org's data, not assumed), which means
-those two subdomains are different SITES to a browser, not just
-different origins -- SameSite=Lax cookies are never sent on cross-site
-fetch()/XHR (Lax only permits top-level navigations), so login would
-silently appear to work (the Set-Cookie response is fine) while every
-following "authenticated" request came back 401, no matter how correct
-the CORS config was. None is the standard fix for a legitimate
-cross-site cookie-auth setup and requires Secure=True, which was
-already set. Locally (frontend and API both on `localhost`, different
-ports only) this is a no-op -- same-site cross-port requests were never
-restricted by SameSite in the first place.
+WHY NOT COOKIES (this project already tried it and it broke in
+production): the frontend and API are deployed to DIFFERENT
+`*.onrender.com` subdomains. `onrender.com` is on the Public Suffix
+List (verified directly against publicsuffix.org's data), so those two
+subdomains are different SITES to a browser -- and a growing number of
+browsers (Safari's ITP for years, others moving the same way) restrict
+or drop cookies set/read across a cross-site fetch() regardless of the
+SameSite attribute. That's not a config mistake to fix, it's a
+structural mismatch between "session lives in a cookie" and "frontend
+and API are on different sites" -- a bearer token the client explicitly
+attaches sidesteps it entirely, at the cost of the token being
+readable by JS (mitigated by the access token's short 15-minute
+lifetime; XSS is the real threat model to defend against separately,
+not this auth mechanism).
 """
 import datetime
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from ...db.database import get_db
 from ...db.models import User, RefreshToken
 from ...adapters import email_adapter
 from .. import security
-from ..schemas import RegisterRequest, LoginRequest, UserOut, MessageResponse
+from ..schemas import RegisterRequest, LoginRequest, UserOut, AuthResponse, RefreshRequest, MessageResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-ACCESS_COOKIE = "access_token"
-REFRESH_COOKIE = "refresh_token"
 
-
-def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
-    response.set_cookie(
-        ACCESS_COOKIE, access_token, httponly=True, secure=True, samesite="none",
-        max_age=security.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/",
-    )
-    response.set_cookie(
-        REFRESH_COOKIE, refresh_token, httponly=True, secure=True, samesite="none",
-        max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600, path="/auth",
-        # scoped to /auth, not /: the refresh token has no business being
-        # sent on every API call, only on the refresh/logout requests.
-    )
-
-
-def _issue_session(db: Session, user: User, response: Response) -> None:
+def _issue_tokens(db: Session, user: User) -> Tuple[str, str]:
+    """Returns (access_token, raw_refresh_token). Commits the new refresh token row."""
     access_token = security.create_access_token(user.id)
     raw_refresh = security.generate_refresh_token()
     db.add(RefreshToken(
@@ -66,11 +52,18 @@ def _issue_session(db: Session, user: User, response: Response) -> None:
         expires_at=security.refresh_token_expiry(),
     ))
     db.commit()
-    _set_auth_cookies(response, access_token, raw_refresh)
+    return access_token, raw_refresh
+
+
+def _bearer_token(request: Request) -> Optional[str]:
+    header = request.headers.get("authorization")
+    if not header or not header.lower().startswith("bearer "):
+        return None
+    return header[len("bearer "):].strip() or None
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.cookies.get(ACCESS_COOKIE)
+    token = _bearer_token(request)
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     user_id = security.decode_access_token(token)
@@ -85,43 +78,32 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 def get_current_user_for_search(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     """
     Same as get_current_user, EXCEPT: a request with no valid session is
-    let through as anonymous (returns None) rather than raising 401,
-    unless ALLOW_ANONYMOUS_SEARCH is explicitly set to "false". Used
+    let through as anonymous (returns None) rather than raising 401, but
+    ONLY if ALLOW_ANONYMOUS_SEARCH is explicitly set to "true". Used
     ONLY by routes/search.py's search endpoints, which never actually
     read the returned User -- it exists purely as an auth gate, so
     swapping it here doesn't touch any search logic.
 
-    ANONYMOUS BY DEFAULT, ON PURPOSE (changed 2026-08-25, was opt-in
-    before): the product itself shows no login/account UI at all (see
-    frontend/web's brand spec, "No user accounts, login, or dashboard
-    in this pass") -- requiring auth here was fighting the product's
-    own design, not protecting anything a real user could see or work
-    around anyway (the frontend already silently self-registers a
-    throwaway account per visitor; requiring auth just added a fragile
-    cross-site-cookie dependency between it and this API, with no
-    actual accountability benefit since the "account" was never a real
-    identity to begin with).
-
-    The REAL cost control for live, metered SerpApi search is now
-    routes/search.py's rate limiting (api/rate_limit.py) -- a per-IP
-    burst limit plus a global daily cap specifically on live pricing --
-    not this auth check. Set ALLOW_ANONYMOUS_SEARCH=false explicitly to
-    restore the old auth-required behavior if that's ever wanted again.
+    AUTH-REQUIRED BY DEFAULT (restored 2026-08-25 -- was briefly
+    anonymous-by-default while accounts/Google sign-in weren't wired up
+    on the frontend; now that real sign-in exists, search goes back to
+    requiring it). Set ALLOW_ANONYMOUS_SEARCH=true explicitly to bypass
+    this for local dev/testing without registering an account.
     """
-    token = request.cookies.get(ACCESS_COOKIE)
+    token = _bearer_token(request)
     if token:
         user_id = security.decode_access_token(token)
         if user_id:
             user = db.query(User).filter(User.id == user_id).first()
             if user:
                 return user
-    if os.environ.get("ALLOW_ANONYMOUS_SEARCH", "true").lower() == "false":
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
-    return None
+    if os.environ.get("ALLOW_ANONYMOUS_SEARCH", "false").lower() == "true":
+        return None
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         # Same message either way a real attacker would try email
         # enumeration -- but note this DOES still leak via timing/existing
@@ -139,7 +121,7 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
     db.commit()
     db.refresh(user)
 
-    _issue_session(db, user, response)
+    access_token, refresh_token = _issue_tokens(db, user)
 
     # Verification email is fire-and-forget via the console backend in
     # dev (see adapters/email_adapter.py) -- a real link/token generation
@@ -147,11 +129,11 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
     # the actual verification-token issuance is left for that point
     # rather than building it against a backend that can't send yet.
 
-    return user
+    return AuthResponse(user=user, access_token=access_token, refresh_token=refresh_token)
 
 
-@router.post("/login", response_model=UserOut)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@router.post("/login", response_model=AuthResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     # Verify against a real dummy hash even when no user is found (see
     # security.DUMMY_PASSWORD_HASH's docstring) -- otherwise "no such
@@ -163,16 +145,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     if not user or not user.password_hash or not password_ok:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password.")
 
-    _issue_session(db, user, response)
-    return user
+    access_token, refresh_token = _issue_tokens(db, user)
+    return AuthResponse(user=user, access_token=access_token, refresh_token=refresh_token)
 
 
-@router.post("/refresh", response_model=UserOut)
-def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
-    raw_token = request.cookies.get(REFRESH_COOKIE)
-    if not raw_token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh token provided.")
-
+@router.post("/refresh", response_model=AuthResponse)
+def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+    raw_token = payload.refresh_token
     token_hash = security.hash_refresh_token(raw_token)
     stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
 
@@ -217,21 +196,16 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     db.commit()
 
     access_token = security.create_access_token(user.id)
-    _set_auth_cookies(response, access_token, new_raw)
-    return user
+    return AuthResponse(user=user, access_token=access_token, refresh_token=new_raw)
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
-    raw_token = request.cookies.get(REFRESH_COOKIE)
-    if raw_token:
-        token_hash = security.hash_refresh_token(raw_token)
-        stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
-        if stored and stored.revoked_at is None:
-            stored.revoked_at = datetime.datetime.utcnow()
-            db.commit()
-    response.delete_cookie(ACCESS_COOKIE, path="/")
-    response.delete_cookie(REFRESH_COOKIE, path="/auth")
+def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
+    token_hash = security.hash_refresh_token(payload.refresh_token)
+    stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+    if stored and stored.revoked_at is None:
+        stored.revoked_at = datetime.datetime.utcnow()
+        db.commit()
     return {"message": "Logged out."}
 
 

@@ -57,20 +57,34 @@ def _fresh_db():
 
 @pytest.fixture
 def authed_client():
-    """A TestClient that's already registered + logged in (cookies persist across requests)."""
+    """A TestClient that's already registered + logged in, with the
+    bearer access token set as a persistent per-client header (see
+    api/routes/auth.py -- auth is bearer-token, not cookie, so there's
+    no ambient credential for TestClient to carry automatically)."""
     client = TestClient(app, base_url="https://testserver")
-    client.post("/auth/register", json={
+    resp = client.post("/auth/register", json={
         "email": "searcher@example.com", "password": "correcthorsebattery",
     }, headers=CSRF_HEADERS)
+    access_token = resp.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {access_token}"
     return client
 
 
-def test_search_works_without_authentication_by_default(monkeypatch):
-    # Anonymous is the DEFAULT now (changed 2026-08-25) -- the product
-    # shows no login UI at all, so requiring auth here was fighting the
-    # product's own design, not protecting anything real. See
-    # routes/auth.get_current_user_for_search's docstring.
+def test_search_requires_authentication_by_default(monkeypatch):
+    # Auth-required is the DEFAULT (restored 2026-08-25 now that real
+    # sign-in exists on the frontend -- see
+    # routes/auth.get_current_user_for_search's docstring).
     monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 401
+
+
+def test_search_allows_anonymous_when_explicitly_enabled(monkeypatch):
+    # ALLOW_ANONYMOUS_SEARCH=true is the local-dev/testing escape hatch.
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
@@ -79,20 +93,7 @@ def test_search_works_without_authentication_by_default(monkeypatch):
     assert len(resp.json()["results"]) > 0
 
 
-def test_search_can_require_authentication_explicitly(monkeypatch):
-    # ALLOW_ANONYMOUS_SEARCH=false restores the old behavior for anyone
-    # who deliberately wants auth back.
-    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "false")
-    client = TestClient(app, base_url="https://testserver")
-    resp = client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
-    }, headers=CSRF_HEADERS)
-    assert resp.status_code == 401
-
-
-def test_a_real_session_still_works_with_anonymous_search_enabled(authed_client):
-    # Anonymous being allowed doesn't break real auth -- a logged-in
-    # client still works exactly as before, it's purely an OR.
+def test_a_real_session_works_for_search(authed_client):
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
     }, headers=CSRF_HEADERS)
@@ -202,11 +203,11 @@ def test_search_with_valid_target_resort_returns_only_that_one(authed_client):
     assert results[0]["resort"]["name"] == "Livigno"
 
 
-def test_list_resort_names_works_without_authentication():
+def test_list_resort_names_requires_authentication_by_default(monkeypatch):
+    monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/trips/resorts")
-    assert resp.status_code == 200
-    assert len(resp.json()) == 30
+    assert resp.status_code == 401
 
 
 def test_list_resort_names_returns_thirty(authed_client):

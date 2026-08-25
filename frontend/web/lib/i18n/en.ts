@@ -164,6 +164,22 @@ const en = {
 
   // --- Language switcher ---
   languageLabel: "Language",
+
+  // --- Auth ---
+  signIn: "Sign in",
+  signOut: "Sign out",
+  createAccount: "Create account",
+  continueWithGoogle: "Continue with Google",
+  orDivider: "or",
+  emailLabel: "Email",
+  passwordLabel: "Password",
+  authSwitchToRegister: "Need an account? Create one",
+  authSwitchToLogin: "Already have an account? Sign in",
+  authWorking: "Working…",
+  authPasswordTooShort: "Password must be at least 12 characters.",
+  authErrorGeneric: "Something went wrong. Please try again.",
+  signInToSearch: "Sign in to search for trips.",
+  signInToSeeExamples: "Sign in to see example trips.",
 } as const;
 
 export default en;

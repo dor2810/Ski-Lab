@@ -9,8 +9,10 @@ README for this sandbox's honesty note about that):
 CORS is intentionally an explicit allow-list (FRONTEND_URL), never "*"
 -- a wildcard origin combined with allow_credentials=True is rejected
 by browsers anyway (and rightly so: it would let any website read
-authenticated responses), so this isn't just caution, it's required for
-cookie-based auth to work at all.
+authenticated responses). allow_credentials stays on for the OAuth
+login/callback navigations (see SessionMiddleware below); it's not
+needed for our own bearer-token auth (see routes/auth.py), which the
+frontend attaches as an explicit Authorization header, not a cookie.
 """
 import os
 
@@ -31,7 +33,7 @@ app = FastAPI(title="Ski Lab API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
-    allow_credentials=True,  # required so the browser sends the httpOnly cookies cross-origin (dev: 3000 -> 8000)
+    allow_credentials=True,  # needed for the Authlib session cookie during the Google OAuth redirect dance
     allow_methods=["*"],
     allow_headers=["*"],
 )
