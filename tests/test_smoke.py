@@ -87,6 +87,39 @@ def test_target_resort_not_found_returns_empty():
     assert results == []
 
 
+def test_include_resorts_restricts_to_exactly_those():
+    resorts = load_resorts()
+    prefs = UserPreferences(budget_eur_per_person=3000, trip_nights=5, group_size=2,
+                            include_resorts=["Livigno", "Bansko"])
+    results = rank_trips(resorts, prefs, top_n=10)
+    names = {t.resort.name for t in results}
+    assert names <= {"Livigno", "Bansko"}
+    assert len(results) == 2  # both affordable at this budget
+
+
+def test_exclude_resorts_removes_just_those():
+    resorts = load_resorts()
+    prefs = UserPreferences(budget_eur_per_person=3000, trip_nights=5, group_size=2,
+                            exclude_resorts=["Val Thorens"])
+    results = rank_trips(resorts, prefs, top_n=100)
+    names = {t.resort.name for t in results}
+    assert "Val Thorens" not in names
+    assert len(names) > 1  # everything else is still in play
+
+
+def test_include_resorts_score_normalization_uses_full_dataset():
+    # A 2-resort pin must NOT collapse the price-score normalization
+    # range down to just those 2 resorts -- that would make 'price'
+    # meaningless (always 0 or 1). Compare against the same resort
+    # pinned alone via target_resort, which already uses the full range.
+    resorts = load_resorts()
+    via_target = rank_trips(resorts, UserPreferences(
+        budget_eur_per_person=3000, trip_nights=5, group_size=2, target_resort="Livigno"))
+    via_include = rank_trips(resorts, UserPreferences(
+        budget_eur_per_person=3000, trip_nights=5, group_size=2, include_resorts=["Livigno"]))
+    assert via_target[0].score_components["price"] == via_include[0].score_components["price"]
+
+
 # --- terrain parser tests ---
 
 def test_terrain_parses_clean_percentages():

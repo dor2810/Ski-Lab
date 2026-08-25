@@ -21,7 +21,7 @@ from ski_optimizer.engine.cost_calculator import (
 from ski_optimizer.engine.date_search import (
     candidate_start_dates, shortlist_resorts, search_date_range,
     best_date_per_resort, price_sensitivity, date_independent_cost,
-    cheapest_possible_cost,
+    cheapest_possible_cost, WEEKDAY_NAMES,
 )
 
 WEIGHTS = {"ski_quality": 0.30, "price": 0.30, "snow": 0.15,
@@ -106,6 +106,37 @@ def test_step_days_coarsens_the_grid():
 def test_window_shorter_than_the_trip_yields_nothing():
     assert candidate_start_dates(datetime.date(2027, 2, 1),
                                  datetime.date(2027, 2, 3), trip_nights=6) == []
+
+
+def test_start_weekday_restricts_to_that_weekday_only():
+    # A month-wide window, Saturday-only: every result must actually be
+    # a Saturday, and there should be about one per week.
+    saturday = WEEKDAY_NAMES["saturday"]
+    starts = candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
+                                   trip_nights=6, start_weekday=saturday)
+    assert starts
+    assert all(d.weekday() == saturday for d in starts)
+    assert len(starts) in (3, 4)  # a ~4-week window, minus the trip length eating the tail
+
+
+def test_start_weekday_advances_from_a_non_matching_earliest_date():
+    # 2027-02-01 is a Monday -- the first Saturday result must be the
+    # NEXT Saturday, not silently ignore the constraint on day one.
+    saturday = WEEKDAY_NAMES["saturday"]
+    assert datetime.date(2027, 2, 1).weekday() != saturday
+    starts = candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
+                                   trip_nights=6, start_weekday=saturday)
+    assert starts[0] == datetime.date(2027, 2, 6)
+
+
+def test_start_weekday_rejects_out_of_range_values():
+    for bad in (-1, 7):
+        try:
+            candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
+                                  trip_nights=6, start_weekday=bad)
+            assert False, f"expected ValueError for start_weekday={bad}"
+        except ValueError:
+            pass
 
 
 def test_candidate_dates_reject_nonsense_input():
@@ -318,6 +349,45 @@ def test_unavailable_accommodation_date_keeps_the_static_estimate():
     without_fn = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
                                    datetime.date(2027, 2, 28), top_n=500)
     assert len(with_fn) == len(without_fn)
+
+
+def test_include_resorts_restricts_search_date_range_to_exactly_those():
+    prefs = _prefs(budget_eur_per_person=2500, include_resorts=["Livigno", "Bansko"])
+    results = search_date_range(load_resorts(), prefs, datetime.date(2027, 1, 10),
+                                datetime.date(2027, 1, 25), top_n=500)
+    names = {o.resort.name for o in results}
+    assert names <= {"Livigno", "Bansko"}
+    assert names  # something was actually found
+
+
+def test_include_resorts_bypasses_stage1_top_n_cut_in_search_date_range():
+    # Stage 1's fit-based top-N cut (shortlist_size) would normally keep
+    # only 1 of these 2 included resorts -- shortlist_size=1 forces that.
+    # Both must still appear: the user explicitly picked both, so Stage 1
+    # pruning (affordability floor AND the fit top-N cut) must be skipped
+    # entirely for an explicit include, not just partially.
+    prefs = _prefs(budget_eur_per_person=2500, include_resorts=["Livigno", "Bansko"])
+    results = search_date_range(load_resorts(), prefs, datetime.date(2027, 1, 10),
+                                datetime.date(2027, 1, 20), top_n=500, shortlist_size=1)
+    names = {o.resort.name for o in results}
+    assert names == {"Livigno", "Bansko"}
+
+
+def test_exclude_resorts_removes_just_that_one_from_search_date_range():
+    prefs = _prefs(budget_eur_per_person=2500, exclude_resorts=["Val Thorens"])
+    results = search_date_range(load_resorts(), prefs, datetime.date(2027, 1, 10),
+                                datetime.date(2027, 1, 20), top_n=500)
+    names = {o.resort.name for o in results}
+    assert "Val Thorens" not in names
+
+
+def test_start_weekday_threads_through_search_date_range():
+    saturday = WEEKDAY_NAMES["saturday"]
+    prefs = _prefs(budget_eur_per_person=2500, include_resorts=["Livigno"])
+    results = search_date_range(load_resorts(), prefs, datetime.date(2027, 1, 1),
+                                datetime.date(2027, 2, 1), top_n=500, start_weekday=saturday)
+    assert results
+    assert all(o.start_date.weekday() == saturday for o in results)
 
 
 # --- output helpers ---

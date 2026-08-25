@@ -110,6 +110,17 @@ class UserPreferences:
     equipment_tier: str = "standard"       # standard | premium
     rooms_needed: Optional[int] = None     # defaults to ceil(group_size / 2) if not set
     target_resort: Optional[str] = None    # set this to evaluate ONE resort only ("fixed resort" mode)
+    # Generalized versions of target_resort, for "search just these 2-3
+    # resorts" or "search everywhere except Val Thorens". Matched
+    # case/whitespace-insensitively, same as target_resort. If
+    # target_resort is ALSO set, target_resort wins (kept for exact
+    # backward compat with existing single-pin callers) -- these two are
+    # meant to be used instead of it, not combined with it. include and
+    # exclude CAN combine (include narrows the pool, exclude then removes
+    # from what's left), though in practice a caller would normally use
+    # one or the other.
+    include_resorts: Optional[list] = None
+    exclude_resorts: Optional[list] = None
     # When set, enables season-band cost adjustment (see cost_calculator.py)
     # and, when a flight_cost_fn is also supplied to rank_trips(), live
     # flight repricing for the top candidates. None reproduces the

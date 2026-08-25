@@ -134,7 +134,10 @@ def test_search_dates_with_valid_target_resort_returns_only_that_one(authed_clie
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["query_resort_count"] == 1
+    # query_resort_count reports the full dataset size, matching
+    # /trips/search's convention -- the narrowing itself is proven by
+    # the results, not this count (see engine.scoring.narrow_resort_pool).
+    assert body["query_resort_count"] == 30
     for result in body["results"]:
         assert result["resort"]["name"] == "Livigno"
 
@@ -144,7 +147,9 @@ def test_search_dates_target_resort_matching_is_case_insensitive(authed_client):
         **BASE_PAYLOAD, "target_resort": "livigno",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
-    assert resp.json()["query_resort_count"] == 1
+    body = resp.json()
+    assert body["results"]
+    assert all(r["resort"]["name"] == "Livigno" for r in body["results"])
 
 
 def test_search_dates_with_tiny_budget_falls_back_to_cheapest_flagged(authed_client):
@@ -175,6 +180,62 @@ def test_search_dates_rejects_invalid_skill_level(authed_client):
 def test_search_dates_rejects_unknown_weight_key(authed_client):
     resp = authed_client.post("/trips/search-dates", json={
         **BASE_PAYLOAD, "weights": {"apres_ski_quality": 1.0},
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 422
+
+
+def test_search_dates_include_resorts_restricts_to_exactly_those(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "include_resorts": ["Livigno", "Bansko"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"]
+    names = {r["resort"]["name"] for r in body["results"]}
+    assert names <= {"Livigno", "Bansko"}
+
+
+def test_search_dates_exclude_resorts_removes_just_that_one(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "budget_eur_per_person": 3000, "exclude_resorts": ["Val Thorens"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    names = {r["resort"]["name"] for r in resp.json()["results"]}
+    assert "Val Thorens" not in names
+
+
+def test_search_dates_unknown_include_resort_404s(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "include_resorts": ["Definitely Not A Real Resort"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 404
+
+
+def test_search_dates_unknown_exclude_resort_404s(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "exclude_resorts": ["Definitely Not A Real Resort"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 404
+
+
+def test_search_dates_start_weekday_restricts_results_to_that_day(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 3000, "trip_nights": 6,
+        "earliest_date": "2027-01-04", "latest_date": "2027-02-01",
+        "start_weekday": "saturday", "include_resorts": ["Livigno"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"]
+    import datetime as _dt
+    for r in body["results"]:
+        d = _dt.date.fromisoformat(r["start_date"])
+        assert d.weekday() == 5  # Saturday
+
+
+def test_search_dates_invalid_start_weekday_rejected(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "start_weekday": "funday",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
 

@@ -252,6 +252,34 @@ def test_search_rejects_zero_group_size(authed_client):
     assert resp.status_code in (400, 422)
 
 
+def test_include_resorts_restricts_to_exactly_those(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 10,
+        "include_resorts": ["Livigno", "Bansko"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    names = {r["resort"]["name"] for r in resp.json()["results"]}
+    assert names <= {"Livigno", "Bansko"}
+
+
+def test_exclude_resorts_removes_just_that_one(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+        "exclude_resorts": ["Val Thorens"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    names = {r["resort"]["name"] for r in resp.json()["results"]}
+    assert "Val Thorens" not in names
+
+
+def test_unknown_include_resort_404s(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "include_resorts": ["Not A Real Resort"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 404
+
+
 def test_min_budget_filters_out_cheaper_results(authed_client):
     baseline = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,

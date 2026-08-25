@@ -34,7 +34,7 @@ from ...models import (
 from ...engine.cost_calculator import live_flight_cost_eur, live_accommodation_cost_eur_per_person
 from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
-from ...engine.date_search import search_date_range, candidate_start_dates
+from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
@@ -70,6 +70,26 @@ def reload_resorts() -> int:
     return len(_resort_cache)
 
 
+def _validate_resort_names(names: Optional[List[str]]) -> None:
+    """
+    404s clearly on any unknown resort name in a target_resort /
+    include_resorts / exclude_resorts list, matching the ENGINE's
+    case/whitespace-insensitive matching (narrow_resort_pool) exactly --
+    so a name this rejects is also a name the engine would have silently
+    matched nothing for, never a false negative. Shared by both search
+    routes so the two don't drift into checking differently.
+    """
+    if not names:
+        return
+    known = {r.name.strip().lower() for r in _resort_cache}
+    unknown = [n for n in names if n.strip().lower() not in known]
+    if unknown:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"Unknown resort(s) {unknown!r}. See GET /trips/resorts for valid names.",
+        )
+
+
 class SearchRequest(BaseModel):
     budget_eur_per_person: float = Field(gt=0)
     # Optional floor for "price range" requests: results cheaper than
@@ -86,6 +106,15 @@ class SearchRequest(BaseModel):
     food_profile: str = "normal"
     equipment_tier: str = "standard"
     target_resort: Optional[str] = None
+    # Search ONLY these resorts (2-3, or however many). Case/whitespace-
+    # insensitive, same matching as target_resort. If target_resort is
+    # ALSO set, target_resort wins -- these are meant as its replacement
+    # for "more than one resort", not to be combined with it.
+    include_resorts: Optional[List[str]] = None
+    # Search every resort EXCEPT these -- "everywhere but Val Thorens".
+    # Combines with include_resorts if both are given (include narrows
+    # first, exclude then removes from what's left).
+    exclude_resorts: Optional[List[str]] = None
     # Optional: enables season-band cost adjustment, and live flight +
     # accommodation repricing for the top candidates when SERPAPI_API_KEY
     # is configured (see search_trips() below). Omitting it reproduces
@@ -266,6 +295,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
+            include_resorts=payload.include_resorts,
+            exclude_resorts=payload.exclude_resorts,
             outbound_date=payload.outbound_date,
             preferred_transfer_modes=payload.preferred_transfer_modes,
             weights=full_weights,
@@ -276,21 +307,14 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         # clean 400 instead of a 500 if some edge case gets past it.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 
-    if payload.target_resort:
-        # Match the ENGINE's normalization exactly (see engine/scoring.py's
-        # rank_trips). Previously this used an exact, case-SENSITIVE
-        # membership test while the engine matched case-insensitively --
-        # so 'krvavec' got a 404 here even though the engine would have
-        # resolved it fine. Two layers disagreeing about what counts as a
-        # valid resort name is a bug waiting to confuse someone.
-        target = payload.target_resort.strip().lower()
-        known_names = {r.name.strip().lower() for r in _resort_cache}
-        if target not in known_names:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND,
-                f"Unknown resort {payload.target_resort!r}. "
-                f"See GET /trips/resorts for valid names.",
-            )
+    # Match the ENGINE's normalization exactly (see
+    # engine/scoring.narrow_resort_pool) -- case/whitespace-insensitive,
+    # so a name this accepts is also a name the engine will actually
+    # match, and a name this rejects would have silently matched
+    # nothing there.
+    _validate_resort_names([payload.target_resort] if payload.target_resort else None)
+    _validate_resort_names(payload.include_resorts)
+    _validate_resort_names(payload.exclude_resorts)
 
     # Live flight/accommodation repricing only kicks in when the client
     # gave a date AND a SerpApi key is actually configured -- a date
@@ -368,11 +392,24 @@ class SearchDateRangeRequest(BaseModel):
     # None = search across resorts (like search_trips); set this to pin
     # the search to one resort and just find the best DATES for it.
     target_resort: Optional[str] = None
+    # See SearchRequest.include_resorts / exclude_resorts -- same
+    # contract, generalizing target_resort to "these 2-3" or "all
+    # except these".
+    include_resorts: Optional[List[str]] = None
+    exclude_resorts: Optional[List[str]] = None
     # See SearchRequest.max_connections -- same contract.
     max_connections: Optional[int] = Field(default=None, ge=0, le=2)
     # See rank_trips'/search_date_range's over-budget-fallback docstring.
     allow_over_budget_fallback: bool = True
     step_days: int = Field(default=1, gt=0, le=14)
+    # Restrict candidate start dates to just this day of the week, e.g.
+    # "saturday" -- a real, common preference (a week-long trip starting
+    # mid-week splits a weekend across both ends). None = every day in
+    # the window is a candidate (existing behavior, unchanged). When
+    # set, step_days above is ignored -- see
+    # date_search.candidate_start_dates' start_weekday docstring for why
+    # the two don't combine.
+    start_weekday: Optional[str] = None
     top_n: int = Field(default=10, gt=0, le=100)
     # See SearchRequest.preferred_transfer_modes -- same contract.
     preferred_transfer_modes: Optional[List[str]] = None
@@ -416,6 +453,16 @@ class SearchDateRangeRequest(BaseModel):
             raise ValueError(
                 f"unknown transfer mode(s) {sorted(unknown)}; allowed: {sorted(_VALID_TRANSFER_MODES)}"
             )
+        return v
+
+    @field_validator("start_weekday")
+    @classmethod
+    def _valid_start_weekday(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip().lower()
+        if v not in WEEKDAY_NAMES:
+            raise ValueError(f"start_weekday must be one of {sorted(WEEKDAY_NAMES)}")
         return v
 
     @field_validator("weights")
@@ -484,27 +531,24 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
+            include_resorts=payload.include_resorts,
+            exclude_resorts=payload.exclude_resorts,
             preferred_transfer_modes=payload.preferred_transfer_modes,
             weights=full_weights,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 
-    # Same "choose a resort" contract as search_trips: if given, it must
-    # be a real resort -- pin the search space to it. If omitted, the
-    # funnel searches (and shortlists) across every resort, same as
-    # search_trips does when target_resort is None.
-    search_pool = _resort_cache
-    if payload.target_resort:
-        target = payload.target_resort.strip().lower()
-        matches = [r for r in _resort_cache if r.name.strip().lower() == target]
-        if not matches:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND,
-                f"Unknown resort {payload.target_resort!r}. "
-                f"See GET /trips/resorts for valid names.",
-            )
-        search_pool = matches
+    # Same "choose resorts" contract as search_trips -- see that route's
+    # comment. Narrowing itself now happens INSIDE search_date_range
+    # (via prefs, see engine.scoring.narrow_resort_pool), so this route
+    # always passes the full cache; it only validates names up front so
+    # a typo 404s clearly instead of the engine silently matching nothing.
+    _validate_resort_names([payload.target_resort] if payload.target_resort else None)
+    _validate_resort_names(payload.include_resorts)
+    _validate_resort_names(payload.exclude_resorts)
+
+    start_weekday = WEEKDAY_NAMES[payload.start_weekday] if payload.start_weekday else None
 
     live_key_present = bool(os.environ.get("SERPAPI_API_KEY"))
 
@@ -522,9 +566,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             )
 
     dated_options = search_date_range(
-        search_pool, prefs, payload.earliest_date, payload.latest_date,
-        shortlist_size=len(search_pool) if payload.target_resort else 8,
-        step_days=payload.step_days, top_n=payload.top_n,
+        _resort_cache, prefs, payload.earliest_date, payload.latest_date,
+        shortlist_size=8, step_days=payload.step_days, start_weekday=start_weekday,
+        top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
         allow_over_budget_fallback=payload.allow_over_budget_fallback,
         # Caps live pricing to a fast, quota-sane number of (resort, date)
@@ -539,7 +583,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         dated_options = [t for t in dated_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
 
     candidate_dates = len(candidate_start_dates(
-        payload.earliest_date, payload.latest_date, payload.trip_nights, payload.step_days))
+        payload.earliest_date, payload.latest_date, payload.trip_nights,
+        payload.step_days, start_weekday))
 
     results = [
         DatedTripResultOut(
@@ -564,7 +609,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     ]
 
     return SearchDateRangeResponse(
-        query_resort_count=len(search_pool),
+        query_resort_count=len(_resort_cache),
         candidate_dates_per_resort=candidate_dates,
         live_pricing_active=live_key_present,
         results=results,

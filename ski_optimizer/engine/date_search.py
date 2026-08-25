@@ -41,7 +41,7 @@ from .cost_calculator import (
     ski_pass_cost, food_cost_eur, season_band, EQUIPMENT_EUR_PER_DAY,
     apply_live_flight_price, apply_live_accommodation_price,
 )
-from .scoring import rank_trips, _normalize, _ski_quality_score
+from .scoring import rank_trips, _normalize, _ski_quality_score, narrow_resort_pool
 
 
 @dataclass
@@ -62,8 +62,16 @@ class DatedTripOption:
         return self.cost.total_eur
 
 
+#: date.weekday() convention (Monday=0 .. Sunday=6), keyed by lowercase name.
+WEEKDAY_NAMES = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
+}
+
+
 def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
-                          trip_nights: int, step_days: int = 1) -> List[datetime.date]:
+                          trip_nights: int, step_days: int = 1,
+                          start_weekday: Optional[int] = None) -> List[datetime.date]:
     """
     Every valid start date whose full trip fits inside the window.
 
@@ -72,6 +80,15 @@ def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
     live API call. Searching every 3rd day first and refining around the
     winner is far cheaper than 25 blind lookups, and gets unnecessary as
     db/fare_history.py accumulates real data.
+
+    start_weekday (0=Monday..6=Sunday, see WEEKDAY_NAMES), when given,
+    restricts results to just that weekday -- "only Saturdays in this
+    month" -- which is a real, common travel preference (a whole-week
+    trip starting mid-week splits a weekend across both ends). This
+    REPLACES step_days entirely rather than combining with it: a
+    weekly cadence is already implied by "every Saturday", and a second,
+    independent step would either be redundant (7 is already a multiple
+    of itself) or silently skip weeks in a way nothing here signals.
     """
     if trip_nights <= 0:
         raise ValueError(f"trip_nights must be > 0, got {trip_nights}")
@@ -79,12 +96,20 @@ def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
         raise ValueError(f"step_days must be > 0, got {step_days}")
     if latest < earliest:
         raise ValueError(f"latest {latest} is before earliest {earliest}")
+    if start_weekday is not None and not (0 <= start_weekday <= 6):
+        raise ValueError(f"start_weekday must be 0-6 (Monday-Sunday), got {start_weekday}")
+
+    if start_weekday is not None:
+        day = earliest + datetime.timedelta(days=(start_weekday - earliest.weekday()) % 7)
+        step = 7
+    else:
+        day = earliest
+        step = step_days
 
     out = []
-    day = earliest
     while day + datetime.timedelta(days=trip_nights) <= latest:
         out.append(day)
-        day += datetime.timedelta(days=step_days)
+        day += datetime.timedelta(days=step)
     return out
 
 
@@ -177,6 +202,7 @@ def search_date_range(
     latest_date: datetime.date,
     shortlist_size: int = 8,
     step_days: int = 1,
+    start_weekday: Optional[int] = None,
     top_n: int = 10,
     flight_cost_fn: Optional[Callable] = None,
     accommodation_cost_fn: Optional[Callable] = None,
@@ -238,23 +264,45 @@ def search_date_range(
     necessarily the best FIT) is searched instead, so there's still
     something to report as "the cheapest we found" rather than an empty
     result caused by pruning before pricing even ran.
+
+    RESORT SELECTION: prefs.target_resort / include_resorts /
+    exclude_resorts (see narrow_resort_pool, shared with rank_trips) let
+    a caller pin the search to specific resorts or exclude some, e.g.
+    "only these 3" or "everywhere except Val Thorens". When an EXPLICIT
+    pin is active (target_resort or include_resorts -- exclude_resorts
+    alone still means "search broadly"), Stage 1's affordability/fit
+    pruning is skipped entirely: every explicitly chosen resort is
+    scored across every date, full stop, relying on the over-budget
+    fallback above (not silent pre-filtering) to handle any that don't
+    fit -- the user picked these resorts on purpose.
     """
-    starts = candidate_start_dates(earliest_date, latest_date, prefs.trip_nights, step_days)
+    starts = candidate_start_dates(earliest_date, latest_date, prefs.trip_nights,
+                                   step_days, start_weekday)
     if not starts:
         return []
 
-    shortlist = shortlist_resorts(resorts, prefs, top_n=shortlist_size)
-    if not shortlist:
-        if not (allow_over_budget_fallback and resorts):
-            return []
-        # Nothing passed Stage 1's optimistic affordability floor -- fall
-        # back to the resorts CLOSEST to affordable, so pricing still has
-        # something to search rather than reporting empty over a pruning
-        # decision made before any real cost was even computed.
-        shortlist = sorted(resorts, key=lambda r: cheapest_possible_cost(r, prefs))[:max(3, shortlist_size // 2)]
+    candidate_pool = narrow_resort_pool(resorts, prefs)
+    if not candidate_pool:
+        return []
 
-    # Normalization ranges come from the FULL dataset, not the shortlist,
-    # so scores stay comparable with the fixed-date engine's output.
+    explicit_pin = bool(prefs.target_resort or prefs.include_resorts)
+    if explicit_pin:
+        shortlist = candidate_pool
+    else:
+        shortlist = shortlist_resorts(candidate_pool, prefs, top_n=shortlist_size)
+        if not shortlist:
+            if not allow_over_budget_fallback:
+                return []
+            # Nothing passed Stage 1's optimistic affordability floor --
+            # fall back to the resorts CLOSEST to affordable, so pricing
+            # still has something to search rather than reporting empty
+            # over a pruning decision made before any real cost was
+            # even computed.
+            shortlist = sorted(candidate_pool, key=lambda r: cheapest_possible_cost(r, prefs))[:max(3, shortlist_size // 2)]
+
+    # Normalization ranges come from the FULL, UNNARROWED dataset, not
+    # the shortlist/candidate_pool, so scores stay comparable with the
+    # fixed-date engine's output even when only 1-3 resorts are in play.
     piste_vals = [r.piste_km for r in resorts]
     transfer_vals = [r.transfer_time_minutes for r in resorts]
     accom_vals = [r.accommodation_eur_per_night for r in resorts]

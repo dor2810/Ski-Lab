@@ -176,6 +176,9 @@ export interface Weights {
   accommodation: number;
 }
 
+export type WeekdayName =
+  | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
 export interface CommonSearchFields {
   budget_eur_per_person: number;
   min_budget_eur_per_person?: number | null;
@@ -185,6 +188,10 @@ export interface CommonSearchFields {
   food_profile: FoodProfile;
   equipment_tier: EquipmentTier;
   target_resort?: string | null;
+  // "Only these" -- 2-3 (or any number of) specific resorts.
+  include_resorts?: string[] | null;
+  // "Everywhere except these".
+  exclude_resorts?: string[] | null;
   max_connections?: number | null; // 0 nonstop / 1 / 2 / null = no preference
   preferred_transfer_modes?: TransferMode[] | null;
   weights: Weights;
@@ -206,6 +213,10 @@ export interface FlexibleWindowSearchParams extends CommonSearchFields {
   earliest_date: string;
   latest_date: string;
   top_n?: number;
+  // Restrict candidate start dates to just this weekday (e.g. many
+  // people prefer a trip that starts on a Saturday, not mid-week).
+  // null/omitted = every day in the window is a candidate.
+  start_weekday?: WeekdayName | null;
 }
 
 export async function searchFixedDates(params: FixedDateSearchParams): Promise<SearchResponse> {

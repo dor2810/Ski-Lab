@@ -12,13 +12,7 @@ import { Logo } from "./Logo";
  * photo later by dropping a file in public/images and changing this
  * section's background.
  */
-export function Hero({
-  onPlanTrip,
-  onFindDeal,
-}: {
-  onPlanTrip: () => void;
-  onFindDeal: () => void;
-}) {
+export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
   return (
     <section className="relative overflow-hidden">
       <div
@@ -46,21 +40,16 @@ export function Hero({
 
         <p className="mt-6 text-lg sm:text-xl text-ice/80 max-w-2xl mx-auto">
           Complete ski trips, priced end to end. Flights, transfers, lodging,
-          lift pass — one real number.
+          lift pass — one real number. Pick exact dates or a whole month and
+          we&rsquo;ll find the best week for you.
         </p>
 
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="mt-10 flex items-center justify-center">
           <button
             onClick={onPlanTrip}
             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-signal hover:bg-signal/90 transition-colors font-semibold text-white shadow-lg shadow-signal/20"
           >
             Plan my trip
-          </button>
-          <button
-            onClick={onFindDeal}
-            className="w-full sm:w-auto px-8 py-4 rounded-xl border border-white/25 hover:border-sky/60 hover:text-sky transition-colors font-semibold text-white"
-          >
-            Find me a deal
           </button>
         </div>
       </div>

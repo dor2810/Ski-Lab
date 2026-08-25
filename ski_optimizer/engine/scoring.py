@@ -17,6 +17,35 @@ from ..models import Resort, UserPreferences, TripOption
 from .cost_calculator import compute_trip_cost, apply_live_flight_price, apply_live_accommodation_price
 
 
+def _norm_name(name: str) -> str:
+    return name.strip().lower()
+
+
+def narrow_resort_pool(resorts: List[Resort], prefs: UserPreferences) -> List[Resort]:
+    """
+    Applies target_resort / include_resorts / exclude_resorts (see their
+    docstrings on UserPreferences) to a resort list. Shared by rank_trips
+    and date_search.search_date_range so "pick specific resorts" /
+    "everywhere except X" means the same thing in both search modes.
+
+    Deliberately does NOT touch normalization ranges -- the caller must
+    keep computing piste/transfer/accom ranges from the ORIGINAL,
+    unnarrowed resort list, so a 2-resort pin still scores 'price' etc.
+    against the full dataset's spread rather than a nearly-degenerate
+    2-point range.
+    """
+    if prefs.target_resort:
+        target = _norm_name(prefs.target_resort)
+        return [r for r in resorts if _norm_name(r.name) == target]
+    if prefs.include_resorts:
+        include = {_norm_name(n) for n in prefs.include_resorts}
+        resorts = [r for r in resorts if _norm_name(r.name) in include]
+    if prefs.exclude_resorts:
+        exclude = {_norm_name(n) for n in prefs.exclude_resorts}
+        resorts = [r for r in resorts if _norm_name(r.name) not in exclude]
+    return resorts
+
+
 def passes_hard_constraints(resort: Resort, prefs: UserPreferences, total_cost: float) -> bool:
     if total_cost > prefs.budget_eur_per_person:
         return False
@@ -173,23 +202,17 @@ def rank_trips(resorts: List[Resort], prefs: UserPreferences, top_n: int = 5,
     flagged result as a normal one. Pass allow_over_budget_fallback=False
     to get the old "empty means nothing fits" behavior back.
     """
-    # "Fixed resort" mode: the user already knows where they want to go —
-    # evaluate that one resort's cost/fit instead of competing it against
-    # everything else. Score components (esp. 'price') are still computed
-    # relative to the FULL dataset's range, so they stay meaningful even
-    # though nothing else is being ranked against it.
-    if prefs.target_resort:
-        resorts_for_ranges = resorts  # keep normalization ranges dataset-wide
-        # Normalize case AND surrounding whitespace. Case-insensitive
-        # matching alone still failed on a trailing space (an easy
-        # real-world input from copy-paste or mobile autocomplete),
-        # silently returning zero results as if the resort didn't exist.
-        target = prefs.target_resort.strip().lower()
-        resorts = [r for r in resorts if r.name.strip().lower() == target]
+    # "Fixed resort(s)" mode: the user already knows where they want to
+    # go -- evaluate just target_resort / include_resorts / (all minus)
+    # exclude_resorts instead of competing every resort against each
+    # other. Score components (esp. 'price') are still computed relative
+    # to the FULL, UNNARROWED dataset's range (resorts_for_ranges), so
+    # they stay meaningful even when only 1-3 resorts are being ranked.
+    resorts_for_ranges = resorts
+    if prefs.target_resort or prefs.include_resorts or prefs.exclude_resorts:
+        resorts = narrow_resort_pool(resorts, prefs)
         if not resorts:
             return []
-    else:
-        resorts_for_ranges = resorts
 
     # Precompute dataset ranges for normalization (done once, not per-resort).
     piste_values = [r.piste_km for r in resorts_for_ranges]
