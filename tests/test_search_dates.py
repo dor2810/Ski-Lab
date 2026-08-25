@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from ski_optimizer.api.main import app
-from ski_optimizer.api import security
+from ski_optimizer.api import security, rate_limit
 from ski_optimizer.db.database import Base, get_db
 
 engine = create_engine(
@@ -40,6 +40,9 @@ CSRF_HEADERS = {security.CSRF_HEADER_NAME: security.CSRF_HEADER_VALUE}
 def _fresh_db():
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
+    # See test_search.py's matching comment: rate_limit's limiters are
+    # module-level singletons shared across every test in the process.
+    rate_limit.clear_all()
     yield
     Base.metadata.drop_all(bind=engine)
     del app.dependency_overrides[get_db]
@@ -62,7 +65,15 @@ BASE_PAYLOAD = {
 }
 
 
-def test_search_dates_requires_authentication():
+def test_search_dates_works_without_authentication_by_default():
+    # Anonymous is the default now -- see routes/auth.get_current_user_for_search.
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+
+
+def test_search_dates_can_require_authentication_explicitly(monkeypatch):
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "false")
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
     assert resp.status_code == 401

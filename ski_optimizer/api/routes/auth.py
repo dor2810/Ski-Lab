@@ -84,21 +84,29 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 def get_current_user_for_search(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     """
-    Same as get_current_user, EXCEPT: when the env var
-    ALLOW_ANONYMOUS_SEARCH=true is set, a request with no valid session
-    is let through as anonymous (returns None) instead of raising 401.
-    Used ONLY by routes/search.py's search endpoints, which never
-    actually read the returned User -- it exists purely as an auth gate,
-    so swapping it here doesn't touch any search logic.
+    Same as get_current_user, EXCEPT: a request with no valid session is
+    let through as anonymous (returns None) rather than raising 401,
+    unless ALLOW_ANONYMOUS_SEARCH is explicitly set to "false". Used
+    ONLY by routes/search.py's search endpoints, which never actually
+    read the returned User -- it exists purely as an auth gate, so
+    swapping it here doesn't touch any search logic.
 
-    DEV CONVENIENCE ONLY. Unset (or any value other than "true"), this
-    behaves exactly like get_current_user -- the production default is
-    unchanged. Turning it on removes the only real cost control in front
-    of live SerpApi search (an unauthenticated client could otherwise
-    hit /trips/search repeatedly with no accountability and burn the
-    metered monthly quota) -- do not set this in a public deployment
-    without understanding that tradeoff. Requested explicitly for local/
-    dev testing convenience (2026-08-25).
+    ANONYMOUS BY DEFAULT, ON PURPOSE (changed 2026-08-25, was opt-in
+    before): the product itself shows no login/account UI at all (see
+    frontend/web's brand spec, "No user accounts, login, or dashboard
+    in this pass") -- requiring auth here was fighting the product's
+    own design, not protecting anything a real user could see or work
+    around anyway (the frontend already silently self-registers a
+    throwaway account per visitor; requiring auth just added a fragile
+    cross-site-cookie dependency between it and this API, with no
+    actual accountability benefit since the "account" was never a real
+    identity to begin with).
+
+    The REAL cost control for live, metered SerpApi search is now
+    routes/search.py's rate limiting (api/rate_limit.py) -- a per-IP
+    burst limit plus a global daily cap specifically on live pricing --
+    not this auth check. Set ALLOW_ANONYMOUS_SEARCH=false explicitly to
+    restore the old auth-required behavior if that's ever wanted again.
     """
     token = request.cookies.get(ACCESS_COOKIE)
     if token:
@@ -107,9 +115,9 @@ def get_current_user_for_search(request: Request, db: Session = Depends(get_db))
             user = db.query(User).filter(User.id == user_id).first()
             if user:
                 return user
-    if os.environ.get("ALLOW_ANONYMOUS_SEARCH", "false").lower() == "true":
-        return None
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    if os.environ.get("ALLOW_ANONYMOUS_SEARCH", "true").lower() == "false":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    return None
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)

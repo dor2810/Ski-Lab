@@ -1,18 +1,22 @@
 /**
  * Client for the real Ski Lab FastAPI backend (ski_optimizer/api/).
  *
- * SESSION STRATEGY: the backend's search endpoints require an
- * authenticated cookie session (see api/routes/auth.py), but this
- * landing page deliberately shows no login/account UI at all (brand
- * spec section 8: "No user accounts, login, or dashboard in this
- * pass"). ensureSession() reconciles the two: on first load it checks
- * for an existing session, and if there isn't one, silently registers
- * a disposable guest account behind the scenes -- no UI, no visible
- * step. The browser holds the resulting httpOnly session cookie itself
- * (SameSite=None; Secure, see auth.py -- required because the frontend
- * and API live on different Render subdomains); nothing is ever put in
- * localStorage/sessionStorage, per the brand spec's explicit "hold
- * state in React" requirement.
+ * SESSION STRATEGY: none, deliberately. Search
+ * (/trips/search, /trips/search-dates, /trips/resorts) is anonymous by
+ * default on the backend now (see api/routes/auth.get_current_user_for_search)
+ * -- no cookie, no session, no register call needed. This file used to
+ * silently self-register a disposable guest account before every
+ * search to work around an auth requirement; that machinery is gone
+ * because the requirement itself is gone, not just hidden. It was also
+ * the likely cause of real, hard-to-diagnose failures: the frontend and
+ * API live on different onrender.com subdomains, and a growing number
+ * of browsers block or restrict third-party (cross-site) cookies by
+ * default (Safari has for years; others are moving the same way) --
+ * SameSite=None doesn't help with THAT restriction, only with the
+ * SameSite mechanism itself. Removing the cookie dependency for search
+ * removes that whole failure class, not just papers over one symptom
+ * of it. The backend's real cost control for live pricing is now
+ * api/rate_limit.py, not auth.
  */
 
 const PROD_API_BASE = "https://ski-lab-api.onrender.com";
@@ -46,7 +50,6 @@ async function apiFetch<T>(
 
   const resp = await fetch(apiBase() + path, {
     method,
-    credentials: "include",
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -65,40 +68,6 @@ async function apiFetch<T>(
     throw new ApiError(resp.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return data as T;
-}
-
-function randomGuestCredentials(): { email: string; password: string } {
-  const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  // example.com is reserved for documentation but IS accepted by the
-  // backend's email validator (checked directly against a running
-  // instance -- it only rejects special-use TLDs like .test/.invalid,
-  // not multi-label domains under a normal TLD).
-  return {
-    email: `guest-${id}@example.com`,
-    password: `sl-${id}-${id}`, // well over the 12-char minimum, never shown to anyone
-  };
-}
-
-let sessionPromise: Promise<void> | null = null;
-
-/** Idempotent -- safe to call from multiple components; only does the network round-trip once. */
-export function ensureSession(): Promise<void> {
-  if (!sessionPromise) {
-    sessionPromise = (async () => {
-      try {
-        await apiFetch("/auth/me");
-        return; // existing cookie session is still valid
-      } catch {
-        // fall through to registration
-      }
-      const creds = randomGuestCredentials();
-      await apiFetch("/auth/register", { method: "POST", body: creds });
-    })();
-  }
-  return sessionPromise;
 }
 
 // --- Shared response shapes (mirrors ski_optimizer/api/routes/search.py) ---
@@ -220,18 +189,15 @@ export interface FlexibleWindowSearchParams extends CommonSearchFields {
 }
 
 export async function searchFixedDates(params: FixedDateSearchParams): Promise<SearchResponse> {
-  await ensureSession();
   return apiFetch<SearchResponse>("/trips/search", { method: "POST", body: params });
 }
 
 export async function searchFlexibleWindow(
   params: FlexibleWindowSearchParams
 ): Promise<SearchDateRangeResponse> {
-  await ensureSession();
   return apiFetch<SearchDateRangeResponse>("/trips/search-dates", { method: "POST", body: params });
 }
 
 export async function listResortNames(): Promise<string[]> {
-  await ensureSession();
   return apiFetch<string[]>("/trips/resorts");
 }

@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from ski_optimizer.api.main import app
-from ski_optimizer.api import security
+from ski_optimizer.api import security, rate_limit
 from ski_optimizer.db.database import Base, get_db
 
 engine = create_engine(
@@ -42,6 +42,14 @@ def _fresh_db():
     # whole session -- including the other file's tests.
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
+    # rate_limit's limiters are module-level singletons (see its own
+    # docstring on why -- same reasoning as response_cache.py). Every
+    # TestClient request in this file shares one fixed client identity,
+    # so without clearing between tests, the per-IP burst limit (default
+    # 6/minute) would trip partway through this file's own test list and
+    # fail later tests with an unrelated 429 -- not what any of them
+    # are testing for.
+    rate_limit.clear_all()
     yield
     Base.metadata.drop_all(bind=engine)
     del app.dependency_overrides[get_db]
@@ -57,19 +65,12 @@ def authed_client():
     return client
 
 
-def test_search_requires_authentication():
-    client = TestClient(app, base_url="https://testserver")
-    resp = client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
-    }, headers=CSRF_HEADERS)
-    assert resp.status_code == 401
-
-
-def test_anonymous_search_allowed_when_dev_flag_set(monkeypatch):
-    # Dev-only convenience (ALLOW_ANONYMOUS_SEARCH=true): no cookie, no
-    # register/login round-trip, search still works. Default (unset)
-    # behavior above must stay exactly as it was -- this is additive.
-    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
+def test_search_works_without_authentication_by_default(monkeypatch):
+    # Anonymous is the DEFAULT now (changed 2026-08-25) -- the product
+    # shows no login UI at all, so requiring auth here was fighting the
+    # product's own design, not protecting anything real. See
+    # routes/auth.get_current_user_for_search's docstring.
+    monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
@@ -78,8 +79,10 @@ def test_anonymous_search_allowed_when_dev_flag_set(monkeypatch):
     assert len(resp.json()["results"]) > 0
 
 
-def test_anonymous_search_flag_off_by_default(monkeypatch):
-    monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
+def test_search_can_require_authentication_explicitly(monkeypatch):
+    # ALLOW_ANONYMOUS_SEARCH=false restores the old behavior for anyone
+    # who deliberately wants auth back.
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "false")
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
@@ -87,10 +90,9 @@ def test_anonymous_search_flag_off_by_default(monkeypatch):
     assert resp.status_code == 401
 
 
-def test_a_real_session_still_works_when_anonymous_flag_is_set(authed_client, monkeypatch):
-    # The flag doesn't break real auth -- a logged-in client still works
-    # exactly as before, it's purely an OR, not a replacement.
-    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
+def test_a_real_session_still_works_with_anonymous_search_enabled(authed_client):
+    # Anonymous being allowed doesn't break real auth -- a logged-in
+    # client still works exactly as before, it's purely an OR.
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,
     }, headers=CSRF_HEADERS)
@@ -200,10 +202,11 @@ def test_search_with_valid_target_resort_returns_only_that_one(authed_client):
     assert results[0]["resort"]["name"] == "Livigno"
 
 
-def test_list_resort_names_requires_auth():
+def test_list_resort_names_works_without_authentication():
     client = TestClient(app, base_url="https://testserver")
     resp = client.get("/trips/resorts")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert len(resp.json()) == 30
 
 
 def test_list_resort_names_returns_thirty(authed_client):
@@ -332,6 +335,17 @@ def test_preferred_transfer_modes_rejects_unknown_mode(authed_client):
         "preferred_transfer_modes": ["helicopter"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
+
+
+def test_search_rate_limit_returns_429_once_exceeded(authed_client):
+    from ski_optimizer.api.rate_limit import _PER_IP_LIMIT
+
+    payload = {"budget_eur_per_person": 1500, "trip_nights": 5}
+    for _ in range(_PER_IP_LIMIT):
+        resp = authed_client.post("/trips/search", json=payload, headers=CSRF_HEADERS)
+        assert resp.status_code == 200
+    resp = authed_client.post("/trips/search", json=payload, headers=CSRF_HEADERS)
+    assert resp.status_code == 429
 
 
 def test_no_returned_trip_has_a_nonpositive_cost(authed_client):

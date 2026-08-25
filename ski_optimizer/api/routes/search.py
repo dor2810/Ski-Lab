@@ -38,6 +38,7 @@ from ...engine.date_search import search_date_range, candidate_start_dates, WEEK
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
+from ..rate_limit import enforce_search_rate_limit, live_pricing_allowed
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -268,7 +269,7 @@ def _to_resort_out(r: Resort) -> ResortOut:
     )
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(enforce_search_rate_limit)])
 def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     # Auto-normalize weights (divide by sum) rather than require the
     # client send an exact 1.0 -- matches the frontend prototype's
@@ -317,11 +318,20 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
     _validate_resort_names(payload.exclude_resorts)
 
     # Live flight/accommodation repricing only kicks in when the client
-    # gave a date AND a SerpApi key is actually configured -- a date
-    # without a key is a degraded-but-valid request (falls back to the
-    # static estimate), not an error. Origin is hardcoded to TLV,
-    # matching the product's current Israeli-traveler-only scope.
-    live_pricing_active = payload.outbound_date is not None and bool(os.environ.get("SERPAPI_API_KEY"))
+    # gave a date AND a SerpApi key is actually configured AND the
+    # global daily live-pricing budget isn't exhausted (rate_limit.py --
+    # search is anonymous now, so this is the real cost control, not
+    # auth) -- any of those missing is a degraded-but-valid request
+    # (falls back to the static estimate), not an error. Origin is
+    # hardcoded to TLV, matching the product's current Israeli-
+    # traveler-only scope. live_pricing_allowed() has a side effect
+    # (spends one unit of the daily budget) so it must be last, after
+    # the cheap checks that would short-circuit anyway.
+    live_pricing_active = (
+        payload.outbound_date is not None
+        and bool(os.environ.get("SERPAPI_API_KEY"))
+        and live_pricing_allowed()
+    )
     flight_cost_fn = accommodation_cost_fn = None
     if live_pricing_active:
         def flight_cost_fn(resort, start_date, end_date, _prefs):
@@ -497,7 +507,7 @@ class SearchDateRangeResponse(BaseModel):
     results: List[DatedTripResultOut]
 
 
-@router.post("/search-dates", response_model=SearchDateRangeResponse)
+@router.post("/search-dates", response_model=SearchDateRangeResponse, dependencies=[Depends(enforce_search_rate_limit)])
 def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     """
     "I want to go to resort X (or: anywhere), sometime in this window,
@@ -550,7 +560,10 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
     start_weekday = WEEKDAY_NAMES[payload.start_weekday] if payload.start_weekday else None
 
-    live_key_present = bool(os.environ.get("SERPAPI_API_KEY"))
+    # See search_trips' comment on the same check -- live_pricing_allowed()
+    # spends budget as a side effect, so it's last and only reached when
+    # a key is actually configured.
+    live_key_present = bool(os.environ.get("SERPAPI_API_KEY")) and live_pricing_allowed()
 
     flight_cost_fn = None
     accommodation_cost_fn = None
