@@ -5,36 +5,43 @@ WHY THIS EXISTS: search is anonymous by default (see
 routes/auth.get_current_user_for_search) -- the product deliberately
 shows no login, matching the frontend's "no accounts" design (see
 frontend/web's brand spec). That means there is NO per-account
-accountability standing between a script and hammering live, metered
-SerpApi search. Two, deliberately different, limiters cover the two
-real risks:
+accountability standing between a script and hammering live pricing.
+Two, deliberately different, limiters cover the two real risks:
 
   1. PER-CLIENT BURST (enforce_search_rate_limit): a short per-IP
      window, applied to every search request regardless of whether it
      ends up live-priced. Stops one script from spamming the endpoint.
 
   2. GLOBAL LIVE-PRICING BUDGET (live_pricing_allowed): a single,
-     GLOBAL counter -- not per-IP -- because the thing being protected
-     (SerpApi's monthly call quota) is itself global, shared across
-     every visitor, not a per-visitor resource. A single live-eligible
-     request can cost up to ~12-20 real SerpApi calls (search_date_range
-     live-reprices up to live_reprice_n pairs, x2 for flight+
-     accommodation; rank_trips' own live_reprice_n defaults higher
-     still) -- so even a SMALL number of live SEARCH REQUESTS can burn
-     a large slice of a 250-call/month free-tier budget. The default
-     here (8/day) is a deliberately conservative, roughly-even split of
-     that monthly budget across ~30 days; it does NOT precisely track
-     actual SerpApi call counts (that would need counting calls inside
-     the adapters themselves, not requests here) -- it's a coarse,
-     honest safety net, not a precise budget meter. Tune via
-     MAX_LIVE_SEARCHES_PER_DAY if real usage shows it's too tight or
+     GLOBAL counter -- not per-IP -- because BOTH things it protects are
+     themselves global, shared across every visitor, not a per-visitor
+     resource: SerpApi's monthly call quota (still metered, still spent
+     by live ACCOMMODATION pricing -- see serpapi_hotel_adapter.py) and
+     Google Flights' own rate-limit/ban tolerance for the scraper behind
+     live FLIGHT pricing (unmetered in dollars, see
+     google_flights_adapter.py's module docstring, but not free of
+     limits). A single live-eligible request can cost up to ~12-20 real
+     provider calls across both (search_date_range live-reprices up to
+     live_reprice_n pairs, x2 for flight+accommodation; rank_trips' own
+     live_reprice_n defaults higher still) -- so even a SMALL number of
+     live SEARCH REQUESTS adds up fast against either constraint. The
+     default here (8/day) is a deliberately conservative safety net; it
+     does NOT precisely track actual provider call counts (that would
+     need counting calls inside the adapters themselves, not requests
+     here) -- it's a coarse, honest budget, not a precise meter. Tune
+     via MAX_LIVE_SEARCHES_PER_DAY if real usage shows it's too tight or
      too loose.
 
 When the global live-pricing budget is exhausted, callers must degrade
 to the static estimate for the REST of the window -- never block the
-search itself. This matches every other live-pricing failure mode
-already in this codebase (adapter error, missing key): search still
-works, live_pricing_active just correctly reports False.
+search itself. live_pricing_active reports False when the budget is
+exhausted (or the request had nothing live-eligible about it, e.g. no
+date). It does NOT report False just because a live call happened to
+fail for one resort/date -- that's the OTHER degrade path
+(flight_price_is_live / accommodation_price_is_live per result; see
+engine/date_search.py's flight_cost_fn contract), and conflating the
+two used to silently empty the whole result set on any provider hiccup,
+not just correctly label one result as estimated.
 
 Bounded, in-memory, single-instance -- same pattern and same reasoning
 as adapters/response_cache.py's MemoryResponseCache: Render's free tier

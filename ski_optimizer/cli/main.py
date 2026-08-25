@@ -95,32 +95,32 @@ def main():
     print("\n(NOTE: this cost is date-independent right now -- see engine/date_search.py")
     print(" for what's needed to find the actual cheapest/best week, not just one estimate.)")
 
-    # --- Live flight pricing demo (only runs if a key is configured) ---
+    # --- Live flight pricing demo ---
     # Same fixed-resort mode, but with outbound_date set and a live
     # flight_cost_fn wired in -- exercises the exact path Part 1 added.
-    if os.environ.get("SERPAPI_API_KEY"):
-        print("\n" + "=" * 70)
-        print("Live flight pricing demo: Val Thorens, Jan 2-9 2027")
-        dated_prefs = UserPreferences(
-            budget_eur_per_person=1500,
-            ski_days=5,
-            group_size=2,
-            accommodation_tier="budget",
-            target_resort="Val Thorens",
-            outbound_date=datetime.date(2027, 1, 2),
-            weights=prefs.weights,
-        )
+    # No SERPAPI_API_KEY gate any more: live_flight_cost_eur is backed
+    # by adapters/google_flights_adapter.py, which needs no key -- see
+    # its module docstring.
+    print("\n" + "=" * 70)
+    print("Live flight pricing demo: Val Thorens, Jan 2-9 2027")
+    dated_prefs = UserPreferences(
+        budget_eur_per_person=1500,
+        ski_days=5,
+        group_size=2,
+        accommodation_tier="budget",
+        target_resort="Val Thorens",
+        outbound_date=datetime.date(2027, 1, 2),
+        weights=prefs.weights,
+    )
 
-        def _live_flight_cost_fn(resort, start_date, end_date, _prefs):
-            return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV")
+    def _live_flight_cost_fn(resort, start_date, end_date, _prefs):
+        return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV")
 
-        dated_results = rank_trips(resorts, dated_prefs, top_n=1, flight_cost_fn=_live_flight_cost_fn)
-        if dated_results:
-            print_trip(1, dated_results[0], skill_level=dated_prefs.skill_level)
-        else:
-            print("No result -- either out of budget once live-priced, or the live call failed.")
+    dated_results = rank_trips(resorts, dated_prefs, top_n=1, flight_cost_fn=_live_flight_cost_fn)
+    if dated_results:
+        print_trip(1, dated_results[0], skill_level=dated_prefs.skill_level)
     else:
-        print("\n(Set SERPAPI_API_KEY in .env to see a live flight pricing demo here.)")
+        print("No result -- either out of budget once live-priced, or the live call failed.")
 
     # --- Date-range search demo: "resort + window + trip length -> deals" ---
     # This is the product's second query mode (see engine/date_search.py's
@@ -141,11 +141,13 @@ def main():
     earliest = datetime.date(2027, 1, 10)
     latest = datetime.date(2027, 1, 20)  # 10-day window
 
-    flight_fn = accom_fn = None
-    if os.environ.get("SERPAPI_API_KEY"):
-        def flight_fn(resort, start_date, end_date, _prefs):
-            return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV")
+    # flight_fn always wired now (no key needed, see the demo above);
+    # accom_fn stays gated -- live accommodation still needs SerpApi.
+    def flight_fn(resort, start_date, end_date, _prefs):
+        return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV")
 
+    accom_fn = None
+    if os.environ.get("SERPAPI_API_KEY"):
         def accom_fn(resort, start_date, end_date, _prefs):
             return live_accommodation_cost_eur_per_person(
                 resort, start_date, nights=window_prefs.nights,
@@ -164,7 +166,8 @@ def main():
             print(f"      Total est. cost per person: €{opt.total_eur:,.0f}  "
                   f"(flight €{opt.cost.flight_eur:,.0f}, accommodation €{opt.cost.accommodation_eur:,.0f})")
     if not os.environ.get("SERPAPI_API_KEY"):
-        print("\n(Set SERPAPI_API_KEY in .env to see this ranked by REAL flight + accommodation prices,")
+        print("\n(Flight prices above are already real/live (no key needed) --")
+        print(" set SERPAPI_API_KEY in .env to also see REAL accommodation prices,")
         print(" not just the season-banded static estimate.)")
 
 

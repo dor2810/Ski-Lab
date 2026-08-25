@@ -1,6 +1,15 @@
 openpyxl>=3.1
 pytest>=7.0
 
+# --- Live flight pricing: adapters/google_flights_adapter.py ---
+# Scrapes Google Flights directly, no API key -- see that module's
+# docstring for why this replaced flight_adapter.py's SerpApi call as
+# the default (SerpApi's free-tier quota was the binding constraint on
+# how much of this product's search could actually be live-priced).
+# REQUIRES PYTHON >= 3.10 (fast-flights' own requirement -- this repo's
+# venv was upgraded from 3.9 to 3.12 to install it).
+fast-flights>=3.1
+
 # --- Auth backend (this session) ---
 # NOTE: none of these are installed in the sandbox this was written in
 # (no network access) -- syntax-checked only, not run. See README.
@@ -16,7 +25,8 @@ python-multipart>=0.0.9  # required by FastAPI for form data
 email-validator>=2.1     # required by pydantic's EmailStr
 
 # --- Not yet needed, listed here for when each phase lands ---
-requests>=2.31           # adapters/flight_adapter.py (SerpApi live search)
-# (requests also covers Phase 5/7 accommodation/weather/snow adapters)
+requests>=2.31           # adapters/serpapi_hotel_adapter.py (live accommodation search)
+# (also covers adapters/flight_adapter.py, the unswapped SerpApi flight
+# fallback, and Phase 5/7 accommodation/weather/snow adapters)
 # alembic                 (once the DB schema needs a migration, not just create_all)
 # anthropic               (Phase 6 -- nlp/preference_parser.py, nlp/explainer.py's LLM version)

@@ -11,6 +11,15 @@ services:
       # they must be set manually, and are never stored in this file or
       # in git). Generate SECRET_KEY with:
       #   python -c "import secrets; print(secrets.token_urlsafe(32))"
+      # Render's default Python version depends on when the service was
+      # first created (pre-existing services can default to something
+      # much older, per Render's own docs) -- pinned explicitly because
+      # requirements.txt's fast-flights (live flight pricing, see
+      # adapters/google_flights_adapter.py) REQUIRES >= 3.10 and would
+      # otherwise fail to install on an older default, silently breaking
+      # the whole deploy rather than just flight pricing.
+      - key: PYTHON_VERSION
+        value: "3.12"
       - key: SECRET_KEY
         sync: false
       - key: SERPAPI_API_KEY

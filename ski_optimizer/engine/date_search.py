@@ -214,18 +214,18 @@ def search_date_range(
     candidate start date, returning the best (resort, date) combinations.
 
     flight_cost_fn lets a caller inject live pricing with the signature
-    (resort, start_date, end_date, prefs) -> float, or None if no price
-    is available for that date. Defaults to the static estimate, which
-    keeps this fully runnable and testable without an API key.
+    (resort, start_date, end_date, prefs) -> float, or None if no live
+    price is available for that date -- in which case the static
+    estimate is kept (honestly labeled: flight_price_is_live stays
+    False), the SAME contract as accommodation_cost_fn below, not a
+    dropped date. Defaults to the static estimate, which keeps this
+    fully runnable and testable without an API key.
 
     accommodation_cost_fn is the same idea for accommodation: signature
     (resort, start_date, end_date, prefs) -> Optional[float] (EUR per
     person for the whole stay), or None if no live price is available
     for that date -- in which case the static season-banded estimate is
-    kept rather than the date being dropped (accommodation, unlike
-    flight, is not the primary search axis this product optimizes for
-    date-shifting on; a missing hotel quote shouldn't sink an otherwise
-    good flight date). Defaults to None, which reproduces the previous
+    kept. Defaults to None, which reproduces the previous
     accommodation-is-always-static behaviour exactly.
 
     live_reprice_n CAPS how many (resort, date) pairs actually get
@@ -356,12 +356,22 @@ def search_date_range(
             cost = opt.cost
             if flight_cost_fn is not None:
                 live_flight = flight_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)
-                if live_flight is None:
-                    # Flight IS the primary search axis for this mode --
-                    # no live price means no real answer for this date,
-                    # so it's dropped rather than shown on a stale estimate.
-                    continue
-                if live_flight != cost.flight_eur:
+                # None here keeps the static estimate rather than dropping
+                # the date -- SAME contract as the accommodation branch
+                # below, and for the same reason: a failed live lookup
+                # (provider outage, scrape blocked, transient network
+                # error -- adapters/google_flights_adapter.py's own
+                # docstring warns this provider can get rate-limited/
+                # banned, a real and now much more likely failure mode
+                # than the old paid API's) is NOT the same fact as "no
+                # flight exists for this date," and treating it as one
+                # silently emptied the WHOLE result set on any hiccup --
+                # discovered exactly that way while building this swap.
+                # The static estimate is still honestly labeled
+                # (flight_price_is_live stays False), matching this
+                # project's degrade-visibly-not-silently rule everywhere
+                # else it applies.
+                if live_flight is not None and live_flight != cost.flight_eur:
                     cost = apply_live_flight_price(cost, live_flight)
             if accommodation_cost_fn is not None:
                 live_accom = accommodation_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)

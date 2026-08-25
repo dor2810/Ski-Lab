@@ -149,11 +149,20 @@ def test_search_flight_link_includes_dates_when_outbound_date_is_given(authed_cl
     assert "on 2027-01-10 through 2027-01-16" in result["flight_search_url"].replace("%20", " ")
 
 
-def test_search_with_outbound_date_falls_back_to_static_without_a_serpapi_key(authed_client, monkeypatch):
-    # CI/test environment has no SERPAPI_API_KEY (see test_auth.py/test_search.py's
-    # setdefault calls -- neither sets it, and .env is never auto-loaded).
-    # Passing outbound_date must degrade to the static estimate, not error.
-    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+def test_search_with_outbound_date_falls_back_to_static_when_live_pricing_is_unavailable(authed_client, monkeypatch):
+    # Live flight pricing (adapters/google_flights_adapter.py) needs no
+    # API key, so it can't be disabled via env var any more -- mock the
+    # adapter call itself to fail instead, matching this test's real
+    # intent: passing outbound_date must degrade to the static estimate
+    # when a live quote genuinely isn't available, not error. Also keeps
+    # this test network-free rather than hitting Google Flights for real.
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _raise(*_args, **_kwargs):
+        raise AdapterError("no network in tests")
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", _raise)
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "ski_days": 5,
         "outbound_date": "2027-01-02",

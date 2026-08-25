@@ -128,12 +128,29 @@ def test_search_dates_results_carry_dated_flight_and_accommodation_links(authed_
         )
 
 
-def test_search_dates_without_serpapi_key_reports_live_pricing_inactive(authed_client, monkeypatch):
-    monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
+def test_search_dates_degrades_to_static_per_result_when_the_provider_fails(authed_client, monkeypatch):
+    # See test_search.py's matching test for why this mocks the adapter
+    # instead of unsetting SERPAPI_API_KEY: live flight pricing
+    # (adapters/google_flights_adapter.py) needs no key any more, so
+    # live_pricing_active now means "live pricing was eligible and
+    # attempted" (budget + a date), not "every result got a real live
+    # price" -- it correctly stays True here even though the provider
+    # fails on every attempt; results.flight_price_is_live is the
+    # honest per-result signal, and (per the date_search.py fix this
+    # test guards) a failed attempt must still return results, just
+    # statically priced, not an empty list.
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _raise(*_args, **_kwargs):
+        raise AdapterError("no network in tests")
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", _raise)
     resp = authed_client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["live_pricing_active"] is False
+    assert body["live_pricing_active"] is True
+    assert body["results"]
     for result in body["results"]:
         assert result["cost"]["flight_price_is_live"] is False
 

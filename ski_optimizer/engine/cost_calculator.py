@@ -194,12 +194,23 @@ def live_flight_cost_eur(
     keeps guarding against: a plausible-looking number that isn't real.
 
     Callers should treat a None as "no live price", not "free".
+
+    PROVIDER: adapters/google_flights_adapter.py (scrapes Google Flights
+    directly, no API key/quota needed), not adapters/flight_adapter.py
+    (SerpApi) -- switched because SerpApi's free-tier quota was the
+    binding constraint on how much of this product's search could
+    actually be live-priced (see api/rate_limit.py's live-pricing budget
+    docstring). Both adapters share the exact same FlightOption/
+    FlightSearchResult boundary type and public shape on purpose, so
+    swapping back is this one import line, not a rewrite -- see
+    google_flights_adapter.py's own module docstring for the tradeoffs
+    (it's also a scraper, just of a different, keyless endpoint).
     """
     codes = airport_codes_for(resort)
     if not codes:
         return None
     try:
-        from ..adapters import flight_adapter
+        from ..adapters import google_flights_adapter as flight_adapter
         result = flight_adapter.search_flights(
             origin_airport=origin_airport,
             destination_airports=codes,

@@ -296,18 +296,24 @@ def test_multi_airport_resorts_are_detected():
     assert len(multi) >= 10, "expected many resorts served by several airports"
 
 
-def test_live_flight_cost_returns_none_without_api_key():
-    # Degrades to None (caller falls back visibly) rather than raising
-    # or inventing a number.
-    import os
+def test_live_flight_cost_degrades_to_none_when_the_provider_fails(monkeypatch):
+    # engine/cost_calculator.live_flight_cost_eur is now backed by
+    # adapters/google_flights_adapter.py (see that module's docstring),
+    # which needs no API key -- so "no key" is no longer the way to
+    # exercise this degrade path. What must still hold, regardless of
+    # provider, is the contract itself: a failed live lookup returns
+    # None (caller falls back visibly) rather than raising or inventing
+    # a number. Mocking the adapter call (not manipulating env vars)
+    # also keeps this test network-free, matching every other test in
+    # this file.
     from datetime import date
+    from ski_optimizer.adapters import google_flights_adapter
     from ski_optimizer.data.resort_repository import load_resorts
     from ski_optimizer.engine.cost_calculator import live_flight_cost_eur
-    saved = os.environ.pop("SERPAPI_API_KEY", None)
-    try:
-        flight_adapter.clear_cache()
-        resort = load_resorts()[0]
-        assert live_flight_cost_eur(resort, date(2027, 1, 15), date(2027, 1, 20)) is None
-    finally:
-        if saved is not None:
-            os.environ["SERPAPI_API_KEY"] = saved
+
+    def _raise(*_args, **_kwargs):
+        raise AdapterError("scrape blocked")
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", _raise)
+    resort = load_resorts()[0]
+    assert live_flight_cost_eur(resort, date(2027, 1, 15), date(2027, 1, 20)) is None

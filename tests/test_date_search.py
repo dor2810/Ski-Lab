@@ -264,9 +264,17 @@ def test_search_responds_to_date_varying_flight_prices():
     )
 
 
-def test_unavailable_flight_date_is_skipped_not_estimated():
-    # Returning None must drop the date, never silently substitute an
-    # estimate and present it as a real priced option.
+def test_unavailable_flight_date_falls_back_to_the_static_estimate_not_dropped():
+    # CHANGED: a None flight price used to drop the (resort, date) pair
+    # entirely. Discovered while swapping to a keyless, scraper-based
+    # flight provider (adapters/google_flights_adapter.py, which can get
+    # rate-limited/blocked -- a real, likely failure mode, unlike the old
+    # paid API's) that this silently emptied the WHOLE result set on any
+    # live-pricing hiccup, not just skipped one date -- the exact
+    # "silent failure" this project's own conventions rule out
+    # everywhere else. A missing flight quote must now degrade to the
+    # static estimate, honestly labeled (flight_price_is_live stays
+    # False), same as accommodation already did.
     def flight_fn(resort, start, end, prefs):
         return None if start.day % 2 == 0 else 200.0
 
@@ -274,7 +282,11 @@ def test_unavailable_flight_date_is_skipped_not_estimated():
                                 datetime.date(2027, 2, 28), top_n=500,
                                 flight_cost_fn=flight_fn)
     assert results
-    assert all(o.start_date.day % 2 == 1 for o in results)
+    even_day_results = [o for o in results if o.start_date.day % 2 == 0]
+    assert even_day_results, "dates where the live flight lookup failed should still appear"
+    assert all(not o.cost.flight_price_is_live for o in even_day_results)
+    odd_day_results = [o for o in results if o.start_date.day % 2 == 1]
+    assert all(o.cost.flight_price_is_live for o in odd_day_results)
 
 
 def test_live_reprice_n_caps_the_number_of_live_calls():
