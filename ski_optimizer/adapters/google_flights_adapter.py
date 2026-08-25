@@ -137,6 +137,66 @@ def _parse_flight_result(flight, currency_is_eur: bool) -> Optional[FlightOption
     )
 
 
+def _build_query(
+    origin_airport: str,
+    destination_airport: str,
+    outbound_date: datetime.date,
+    return_date: Optional[datetime.date],
+    adults: int,
+    max_connections: Optional[int],
+    currency: str,
+):
+    from fast_flights import FlightQuery, Passengers, create_query
+
+    legs = [FlightQuery(date=outbound_date.isoformat(),
+                        from_airport=origin_airport, to_airport=destination_airport)]
+    if return_date is not None:
+        legs.append(FlightQuery(date=return_date.isoformat(),
+                                from_airport=destination_airport, to_airport=origin_airport))
+
+    return create_query(
+        flights=legs,
+        seat="economy",
+        trip="round-trip" if return_date is not None else "one-way",
+        passengers=Passengers(adults=adults),
+        language="en",
+        currency=currency,
+        max_stops=max_connections,
+    )
+
+
+def search_url(
+    origin_airport: str,
+    destination_airport: str,
+    outbound_date: datetime.date,
+    return_date: Optional[datetime.date] = None,
+    currency: str = "EUR",
+) -> str:
+    """
+    A real, reliable Google Flights deep link for this exact route and
+    dates -- built from the SAME structured query object real pricing
+    searches use (create_query().url(), fast_flights' own URL builder,
+    using the protobuf `tfs` param Google's own UI generates), not a
+    natural-language `q=` guess.
+
+    engine/links.py's google_flights_url() used a natural-language
+    query ("Flights to X from Y on ... through ...") before this
+    existed -- reported live to sometimes land on Google Flights'
+    plain homepage instead of real results (natural-language parsing on
+    that endpoint isn't 100% reliable). Verified this replacement
+    lands directly on the correct route/dates every time it was tried.
+
+    Single airport only (unlike search_flights' multi-airport fan-out
+    for pricing) -- the structured query format takes exactly one
+    to_airport per leg, so a multi-airport resort's link uses whichever
+    airport the caller passes (engine/links.py picks the first one),
+    trading the "or" flexibility of the old link for reliability.
+    """
+    query = _build_query(origin_airport, destination_airport, outbound_date, return_date,
+                         adults=1, max_connections=None, currency=currency)
+    return query.url()
+
+
 def _search_one_airport(
     origin_airport: str,
     destination_airport: str,
@@ -146,23 +206,11 @@ def _search_one_airport(
     max_connections: Optional[int],
     currency: str,
 ) -> List[FlightOption]:
-    from fast_flights import FlightQuery, Passengers, create_query, get_flights
     from fast_flights.exceptions import FlightsNotFound
+    from fast_flights import get_flights
 
-    legs = [FlightQuery(date=outbound_date.isoformat(),
-                        from_airport=origin_airport, to_airport=destination_airport)]
-    if return_date is not None:
-        legs.append(FlightQuery(date=return_date.isoformat(),
-                                from_airport=destination_airport, to_airport=origin_airport))
-
-    query = create_query(
-        flights=legs,
-        seat="economy",
-        trip="round-trip" if return_date is not None else "one-way",
-        passengers=Passengers(adults=adults),
-        currency=currency,
-        max_stops=max_connections,
-    )
+    query = _build_query(origin_airport, destination_airport, outbound_date, return_date,
+                         adults, max_connections, currency)
 
     try:
         raw_results = get_flights(query)

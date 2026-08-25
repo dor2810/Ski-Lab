@@ -121,11 +121,18 @@ def test_search_dates_results_carry_dated_flight_and_accommodation_links(authed_
     body = resp.json()
     assert body["results"]
     for result in body["results"]:
-        decoded = result["flight_search_url"].replace("%20", " ")
-        assert f"on {result['start_date']} through {result['end_date']}" in decoded
-        assert result["accommodation_search_url"].startswith(
-            "https://www.google.com/travel/hotels?q="
+        # Both links now delegate to their adapter's own structured,
+        # dated search_url() (see engine/links.py's docstring) rather
+        # than building a natural-language query with the dates spelled
+        # out in it -- so "dated" is verified by URL shape, not by a
+        # human-readable date substring.
+        assert result["flight_search_url"].startswith(
+            "https://www.google.com/travel/flights/search?tfs="
         )
+        assert result["accommodation_search_url"].startswith(
+            "https://www.google.com/travel/search?q="
+        )
+        assert "&ts=" in result["accommodation_search_url"]
 
 
 def test_search_dates_degrades_to_static_per_result_when_the_provider_fails(authed_client, monkeypatch):

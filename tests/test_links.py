@@ -28,10 +28,15 @@ def test_google_flights_url_includes_origin_and_destination():
 
 
 def test_google_flights_url_includes_dates_when_given():
+    # tfs= is an opaque base64url protobuf blob (see
+    # adapters/google_flights_adapter.py's own docstring and tests for
+    # how it was reverse-engineered/verified) -- this test only proves
+    # links.py delegates to the structured search_url() builder with the
+    # right route/dates, not what's inside the blob.
     r = _resort("Livigno")
     url = google_flights_url(r, datetime.date(2027, 1, 10), datetime.date(2027, 1, 17))
-    decoded = unquote(url)
-    assert "on 2027-01-10 through 2027-01-17" in decoded
+    assert url.startswith("https://www.google.com/travel/flights/search?tfs=")
+    assert "&hl=en&curr=EUR" in url
 
 
 def test_google_flights_url_omits_dates_when_not_given():
@@ -63,3 +68,10 @@ def test_google_hotels_url_includes_resort_and_country():
     decoded = unquote(url)
     assert "Livigno" in decoded
     assert r.country in decoded
+
+
+def test_google_hotels_url_is_dated_and_carries_a_ts_param_when_dates_are_given():
+    r = _resort("Livigno")
+    url = google_hotels_url(r, datetime.date(2027, 1, 10), datetime.date(2027, 1, 17))
+    assert url.startswith("https://www.google.com/travel/search?q=")
+    assert "&ts=" in url

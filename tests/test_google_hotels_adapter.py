@@ -229,3 +229,31 @@ def test_search_accommodation_caches_identical_queries(monkeypatch):
 def test_cheapest_price_eur_per_night_is_none_for_no_options():
     from ski_optimizer.models import AccommodationSearchResult
     assert gha.cheapest_price_eur_per_night(AccommodationSearchResult(options=[])) is None
+
+
+# --- search_url ---
+
+def test_search_url_without_dates_is_a_plain_location_search():
+    url = gha.search_url("Val Thorens, France")
+    assert url == "https://www.google.com/travel/hotels?q=Hotels%20in%20Val%20Thorens%2C%20France&hl=en&curr=EUR&gl=us"
+
+
+def test_search_url_with_dates_switches_to_search_path_and_carries_a_ts_param():
+    # Reference value pure/offline -- _build_ts with an empty place_id is
+    # plain protobuf encoding, no network call (see this function's own
+    # docstring). Verified live once, via browser, that Google Hotels
+    # still resolves the place from the name alone and shows correctly
+    # dated real prices for this exact ts value.
+    url = gha.search_url("Val Thorens, France", date(2027, 1, 10), date(2027, 1, 16))
+    assert url == (
+        "https://www.google.com/travel/search?q=Hotels%20in%20Val%20Thorens%2C%20France"
+        "&hl=en&curr=EUR&gl=us&ts="
+        "CAESCgoCCAMKAggDEAAaOQobEhcyADoTVmFsIFRob3JlbnMsIEZyYW5jZRoAEhoSFAoHCOsPEAEYChIHCOsPEAEYEBgFMgIIASoJCgU6A0VVUhoA"
+    )
+
+
+def test_search_url_omits_ts_when_only_one_date_is_given():
+    with_only_checkin = gha.search_url("Val Thorens, France", date(2027, 1, 10))
+    with_only_checkout = gha.search_url("Val Thorens, France", checkout_date=date(2027, 1, 16))
+    assert "ts=" not in with_only_checkin
+    assert "ts=" not in with_only_checkout

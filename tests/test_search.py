@@ -146,7 +146,12 @@ def test_search_flight_link_includes_dates_when_outbound_date_is_given(authed_cl
     }, headers=CSRF_HEADERS)
     body = resp.json()
     result = body["results"][0]
-    assert "on 2027-01-10 through 2027-01-16" in result["flight_search_url"].replace("%20", " ")
+    # tfs= is an opaque structured blob now (see engine/links.py's
+    # docstring on why the old natural-language "on ... through ..."
+    # query was replaced) -- just confirm this is the dated, structured
+    # search link, not the dateless natural-language fallback.
+    url = result["flight_search_url"]
+    assert url.startswith("https://www.google.com/travel/flights/search?tfs=")
 
 
 def test_search_with_outbound_date_falls_back_to_static_when_live_pricing_is_unavailable(authed_client, monkeypatch):

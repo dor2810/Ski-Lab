@@ -186,3 +186,37 @@ def test_cheapest_price_eur_picks_the_minimum(monkeypatch):
 def test_cheapest_price_eur_is_none_for_no_options():
     from ski_optimizer.models import FlightSearchResult
     assert gfa.cheapest_price_eur(FlightSearchResult(options=[])) is None
+
+
+# --- search_url ---
+
+def test_search_url_round_trip_matches_the_captured_reference_value():
+    # Pure/offline -- no network call, _build_query().url() is plain
+    # protobuf encoding. Reference value captured by actually calling
+    # search_url() and confirming live (via browser) that navigating to
+    # it lands on the correct route/dates with real prices -- see this
+    # module's own docstring on search_url.
+    url = gfa.search_url("TLV", "BGY", date(2027, 1, 10), date(2027, 1, 16))
+    assert url == (
+        "https://www.google.com/travel/flights/search?tfs="
+        "GhoSCjIwMjctMDEtMTBqBRIDVExWcgUSA0JHWRoaEgoyMDI3LTAxLTE2agUSA0JHWXIFEgNUTFZCAQFIAZgBAQ=="
+        "&hl=en&curr=EUR"
+    )
+
+
+def test_search_url_one_way_omits_the_return_leg():
+    url = gfa.search_url("TLV", "BGY", date(2027, 1, 10))
+    assert url == (
+        "https://www.google.com/travel/flights/search?tfs="
+        "GhoSCjIwMjctMDEtMTBqBRIDVExWcgUSA0JHWUIBAUgBmAEC"
+        "&hl=en&curr=EUR"
+    )
+
+
+def test_search_url_always_specifies_language_so_google_does_not_have_to_guess():
+    # Regression guard: create_query() defaults language="" (Google
+    # decides), which produced a live &hl= with nothing after it --
+    # caught by inspecting the actual URL fast_flights.Query.url()
+    # built, not by assumption.
+    url = gfa.search_url("TLV", "GVA", date(2027, 1, 10))
+    assert "&hl=en&" in url

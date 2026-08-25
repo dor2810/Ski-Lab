@@ -181,6 +181,34 @@ def _build_ts(place_id: str, place_name: str, checkin_date: date, checkout_date:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
+def search_url(place_name: str, checkin_date: Optional[date] = None,
+               checkout_date: Optional[date] = None, currency: str = "EUR") -> str:
+    """
+    A real Google Hotels deep link for this location -- dated and
+    showing real prices when both dates are given. Unlike the flight
+    equivalent (search_url in google_flights_adapter.py), this needs no
+    resolved place ID at all: verified live that Google Hotels' search
+    UI correctly resolves the location and applies the dates from the
+    `ts` blob's place NAME alone (empty place ID), so this whole
+    function is pure/offline -- no network call, unlike
+    search_accommodation() itself, which does one to actually price
+    properties. Location-level, not one specific hotel: Google Hotels
+    doesn't expose a plain URL scheme for "this one property" without
+    ALSO knowing that property's own place ID, which isn't collected
+    by this module (only the search LOCATION's ID is, and only when
+    actually resolving one for search_accommodation -- see that
+    function).
+    """
+    from urllib.parse import quote
+
+    query = f"Hotels in {place_name}"
+    url = f"{SEARCH_URL}?q={quote(query)}&hl=en&curr={currency}&gl=us"
+    if checkin_date is not None and checkout_date is not None:
+        ts = _build_ts("", place_name, checkin_date, checkout_date, currency=currency)
+        url = url.replace("/hotels?", "/search?") + f"&ts={ts}"
+    return url
+
+
 # ---------------------------------------------------------------------------
 # Parsing -- deliberately separate from the HTTP calls so it's testable
 # offline against captured payload shapes, matching every other

@@ -383,7 +383,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
             flight_search_url=google_flights_url(t.resort, payload.outbound_date, return_date),
-            accommodation_search_url=google_hotels_url(t.resort),
+            accommodation_search_url=google_hotels_url(t.resort, payload.outbound_date, return_date),
         )
         for t in trip_options
     ]
@@ -645,7 +645,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
             flight_search_url=google_flights_url(t.resort, t.start_date, t.end_date),
-            accommodation_search_url=google_hotels_url(t.resort),
+            accommodation_search_url=google_hotels_url(t.resort, t.start_date, t.end_date),
         )
         for t in dated_options
     ]
