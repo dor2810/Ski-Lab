@@ -1,7 +1,10 @@
 """
 The first real, protected use of the engine over HTTP: POST /trips/search
 wraps engine.scoring.rank_trips exactly as the CLI demo does, but behind
-Depends(get_current_user) -- no valid access_token cookie, no results.
+Depends(get_current_user_for_search) -- no valid access_token cookie, no
+results, UNLESS ALLOW_ANONYMOUS_SEARCH=true is set (dev-only convenience;
+see that function's docstring in routes/auth.py -- production default is
+unchanged, still requires auth).
 
 This is deliberately the search wrapped in the SAME hard/soft
 constraint pipeline the CLI and the frontend prototype's ported JS use
@@ -34,7 +37,7 @@ from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates
 from ...nlp.explainer import explain
 from ...db.models import User
-from .auth import get_current_user
+from .auth import get_current_user_for_search
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -237,7 +240,7 @@ def _to_resort_out(r: Resort) -> ResortOut:
 
 
 @router.post("/search", response_model=SearchResponse)
-def search_trips(payload: SearchRequest, current_user: User = Depends(get_current_user)):
+def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     # Auto-normalize weights (divide by sum) rather than require the
     # client send an exact 1.0 -- matches the frontend prototype's
     # slider behavior, and floating-point client input summing to
@@ -339,7 +342,7 @@ def search_trips(payload: SearchRequest, current_user: User = Depends(get_curren
 
 
 @router.get("/resorts", response_model=List[str])
-def list_resort_names(current_user: User = Depends(get_current_user)):
+def list_resort_names(current_user: Optional[User] = Depends(get_current_user_for_search)):
     """Lets an authenticated client populate a 'fixed resort' dropdown without guessing names."""
     return sorted(r.name for r in _resort_cache)
 
@@ -448,7 +451,7 @@ class SearchDateRangeResponse(BaseModel):
 
 
 @router.post("/search-dates", response_model=SearchDateRangeResponse)
-def search_trip_dates(payload: SearchDateRangeRequest, current_user: User = Depends(get_current_user)):
+def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     """
     "I want to go to resort X (or: anywhere), sometime in this window,
     for N nights -- find me the best deal(s)." Evaluates every valid

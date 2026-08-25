@@ -65,6 +65,38 @@ def test_search_requires_authentication():
     assert resp.status_code == 401
 
 
+def test_anonymous_search_allowed_when_dev_flag_set(monkeypatch):
+    # Dev-only convenience (ALLOW_ANONYMOUS_SEARCH=true): no cookie, no
+    # register/login round-trip, search still works. Default (unset)
+    # behavior above must stay exactly as it was -- this is additive.
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    assert len(resp.json()["results"]) > 0
+
+
+def test_anonymous_search_flag_off_by_default(monkeypatch):
+    monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
+    client = TestClient(app, base_url="https://testserver")
+    resp = client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 401
+
+
+def test_a_real_session_still_works_when_anonymous_flag_is_set(authed_client, monkeypatch):
+    # The flag doesn't break real auth -- a logged-in client still works
+    # exactly as before, it's purely an OR, not a replacement.
+    monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "trip_nights": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+
+
 def test_search_without_csrf_header_is_rejected(authed_client):
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "trip_nights": 5,

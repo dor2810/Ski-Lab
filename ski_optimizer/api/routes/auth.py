@@ -26,6 +26,8 @@ ports only) this is a no-op -- same-site cross-port requests were never
 restricted by SameSite in the first place.
 """
 import datetime
+import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlalchemy.orm import Session
@@ -78,6 +80,36 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User no longer exists")
     return user
+
+
+def get_current_user_for_search(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
+    """
+    Same as get_current_user, EXCEPT: when the env var
+    ALLOW_ANONYMOUS_SEARCH=true is set, a request with no valid session
+    is let through as anonymous (returns None) instead of raising 401.
+    Used ONLY by routes/search.py's search endpoints, which never
+    actually read the returned User -- it exists purely as an auth gate,
+    so swapping it here doesn't touch any search logic.
+
+    DEV CONVENIENCE ONLY. Unset (or any value other than "true"), this
+    behaves exactly like get_current_user -- the production default is
+    unchanged. Turning it on removes the only real cost control in front
+    of live SerpApi search (an unauthenticated client could otherwise
+    hit /trips/search repeatedly with no accountability and burn the
+    metered monthly quota) -- do not set this in a public deployment
+    without understanding that tradeoff. Requested explicitly for local/
+    dev testing convenience (2026-08-25).
+    """
+    token = request.cookies.get(ACCESS_COOKIE)
+    if token:
+        user_id = security.decode_access_token(token)
+        if user_id:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                return user
+    if os.environ.get("ALLOW_ANONYMOUS_SEARCH", "false").lower() == "true":
+        return None
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
