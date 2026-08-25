@@ -10,6 +10,15 @@ pytest>=7.0
 # venv was upgraded from 3.9 to 3.12 to install it).
 fast-flights>=3.1
 
+# --- Live accommodation pricing: adapters/google_hotels_adapter.py ---
+# Hand-reverse-engineered Google Hotels scraping (no published library
+# for this exists, unlike flights) -- see that module's docstring for
+# how and why. primp (HTTP client with real-browser impersonation) and
+# selectolax (HTML parsing) are used directly here, not just pulled in
+# transitively via fast-flights, so they're pinned explicitly.
+primp
+selectolax
+
 # --- Auth backend (this session) ---
 # NOTE: none of these are installed in the sandbox this was written in
 # (no network access) -- syntax-checked only, not run. See README.

@@ -1,7 +1,7 @@
 """
 Tests for engine/cost_calculator.live_accommodation_cost_eur_per_person and
 apply_live_accommodation_price -- the glue between
-adapters/serpapi_hotel_adapter and the cost model, mirroring
+adapters/google_hotels_adapter and the cost model, mirroring
 live_flight_cost_eur's existing tests in test_flight_adapter.py.
 """
 import sys
@@ -17,33 +17,38 @@ from ski_optimizer.engine.cost_calculator import (
 )
 
 
-def test_live_accommodation_cost_returns_none_without_api_key():
-    # Degrades to None (caller falls back visibly) rather than raising
-    # or inventing a number -- same contract as live_flight_cost_eur.
-    import os
-    from ski_optimizer.adapters import serpapi_hotel_adapter
+def test_live_accommodation_cost_degrades_to_none_when_the_provider_fails(monkeypatch):
+    # engine/cost_calculator.live_accommodation_cost_eur_per_person is
+    # now backed by adapters/google_hotels_adapter.py (see that
+    # module's docstring), which needs no API key -- so "no key" is no
+    # longer the way to exercise this degrade path. What must still
+    # hold, regardless of provider, is the contract itself: a failed
+    # live lookup returns None (caller falls back visibly) rather than
+    # raising or inventing a number -- same contract as
+    # live_flight_cost_eur. Mocking the adapter call keeps this test
+    # network-free, matching every other test in this file.
+    from ski_optimizer.adapters import google_hotels_adapter
+    from ski_optimizer.adapters.base import AdapterError
 
-    saved = os.environ.pop("SERPAPI_API_KEY", None)
-    try:
-        serpapi_hotel_adapter.clear_cache()
-        resort = load_resorts()[0]
-        result = live_accommodation_cost_eur_per_person(
-            resort, date(2027, 1, 15), nights=5, group_size=2, rooms_needed=1)
-        assert result is None
-    finally:
-        if saved is not None:
-            os.environ["SERPAPI_API_KEY"] = saved
+    def _raise(*_args, **_kwargs):
+        raise AdapterError("no network in tests")
+
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", _raise)
+    resort = load_resorts()[0]
+    result = live_accommodation_cost_eur_per_person(
+        resort, date(2027, 1, 15), nights=5, group_size=2, rooms_needed=1)
+    assert result is None
 
 
 def test_live_accommodation_cost_divides_by_group_size():
     # Exercises the actual arithmetic against a cached result, without a
-    # real key -- same trick test_serpapi_hotel_adapter.py uses for the
-    # adapter's own caching test.
-    from ski_optimizer.adapters import serpapi_hotel_adapter
+    # real network call -- same trick test_google_hotels_adapter.py
+    # uses for the adapter's own caching test.
+    from ski_optimizer.adapters import google_hotels_adapter
     from ski_optimizer.adapters.response_cache import get_cache
     from ski_optimizer.models import AccommodationSearchResult, AccommodationOption
 
-    serpapi_hotel_adapter.clear_cache()
+    google_hotels_adapter.clear_cache()
     resort = load_resorts()[0]
     checkin = date(2027, 1, 15)
     nights, rooms_needed, group_size = 5, 2, 4
@@ -51,15 +56,14 @@ def test_live_accommodation_cost_divides_by_group_size():
     stored = AccommodationSearchResult(
         options=[AccommodationOption(price_eur_per_night=100.0, property_name="Test Hotel")],
     )
-    checkout = checkin + __import__("datetime").timedelta(days=nights)
-    key = serpapi_hotel_adapter._cache_key(resort.name, checkin, checkout, rooms_needed * 2, "EUR")
+    key = google_hotels_adapter._cache_key(resort.name, checkin, nights, rooms_needed, "EUR")
     get_cache().set(key, stored)
 
     result = live_accommodation_cost_eur_per_person(
         resort, checkin, nights=nights, group_size=group_size, rooms_needed=rooms_needed)
     # 100 EUR/night * 5 nights * 2 rooms / 4 people = 250
     assert result == 250.0
-    serpapi_hotel_adapter.clear_cache()
+    google_hotels_adapter.clear_cache()
 
 
 def _cost(**overrides):

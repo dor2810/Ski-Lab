@@ -241,26 +241,32 @@ def live_accommodation_cost_eur_per_person(
     estimate itself -- the caller decides how to degrade, and whether to
     tell the user the number is estimated.
 
-    Uses adapters/serpapi_hotel_adapter, NOT adapters/accommodation_adapter
-    (the Booking.com one) -- see serpapi_hotel_adapter's module docstring
-    for why: Booking.com's Demand API needs Managed Affiliate Partner
-    approval that isn't available yet, while SerpApi already works today
-    with the same key as flight pricing.
+    PROVIDER: adapters/google_hotels_adapter.py (hand-reverse-engineered
+    Google Hotels scraping, no API key/quota needed -- see that
+    module's docstring for exactly how and why), not
+    adapters/serpapi_hotel_adapter.py -- switched for the same reason
+    the flight provider was: SerpApi's free-tier quota was the binding
+    constraint on how much of this product's search could actually be
+    live-priced (see api/rate_limit.py's live-pricing budget docstring).
+    serpapi_hotel_adapter.py is kept, unswapped, as the fallback the
+    adapter pattern exists to make cheap; so is
+    adapters/accommodation_adapter.py (the Booking.com one, still
+    waiting on Managed Affiliate Partner approval).
 
-    SerpApi has no "N rooms" request parameter (see the adapter's
-    limitation #1), so the price it returns is ONE room's cheapest
-    nightly rate. This function multiplies by rooms_needed and nights
-    itself, matching exactly how the static estimate
+    Neither this provider nor SerpApi has an "N rooms" request
+    parameter, so the price returned is ONE room's cheapest nightly
+    rate. This function multiplies by rooms_needed and nights itself,
+    matching exactly how the static estimate
     (accommodation_cost_eur_per_person, below) turns a per-night,
     per-room rate into a per-person trip cost -- so the two are directly
     comparable/swappable.
     """
     try:
-        from ..adapters import serpapi_hotel_adapter
-        result = serpapi_hotel_adapter.search_accommodation(
+        from ..adapters import google_hotels_adapter
+        result = google_hotels_adapter.search_accommodation(
             resort, checkin_date, nights, rooms_needed,
         )
-        nightly = serpapi_hotel_adapter.cheapest_price_eur_per_night(result)
+        nightly = google_hotels_adapter.cheapest_price_eur_per_night(result)
         if nightly is None:
             return None
         return round((nightly * nights * rooms_needed) / group_size, 2)

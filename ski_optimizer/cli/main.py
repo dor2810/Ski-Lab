@@ -9,7 +9,6 @@ This stays a useful dev/debug entrypoint even after api/ exists later --
 it's the fastest way to exercise engine/ without spinning up a server.
 """
 import datetime
-import os
 
 from ..data.resort_repository import load_resorts
 from ..models import UserPreferences
@@ -141,17 +140,16 @@ def main():
     earliest = datetime.date(2027, 1, 10)
     latest = datetime.date(2027, 1, 20)  # 10-day window
 
-    # flight_fn always wired now (no key needed, see the demo above);
-    # accom_fn stays gated -- live accommodation still needs SerpApi.
+    # Both wired unconditionally now -- neither flight nor accommodation
+    # live pricing needs an API key any more (see the demo above and
+    # adapters/google_hotels_adapter.py's module docstring).
     def flight_fn(resort, start_date, end_date, _prefs):
         return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV")
 
-    accom_fn = None
-    if os.environ.get("SERPAPI_API_KEY"):
-        def accom_fn(resort, start_date, end_date, _prefs):
-            return live_accommodation_cost_eur_per_person(
-                resort, start_date, nights=window_prefs.nights,
-                group_size=window_prefs.group_size, rooms_needed=window_prefs.rooms_needed)
+    def accom_fn(resort, start_date, end_date, _prefs):
+        return live_accommodation_cost_eur_per_person(
+            resort, start_date, nights=window_prefs.nights,
+            group_size=window_prefs.group_size, rooms_needed=window_prefs.rooms_needed)
 
     dated = search_date_range(
         val_thorens, window_prefs, earliest, latest,
@@ -165,10 +163,6 @@ def main():
             print(f"\n  #{i}: {opt.start_date} -> {opt.end_date}  (score {opt.score:.3f}, {opt.season} season)")
             print(f"      Total est. cost per person: €{opt.total_eur:,.0f}  "
                   f"(flight €{opt.cost.flight_eur:,.0f}, accommodation €{opt.cost.accommodation_eur:,.0f})")
-    if not os.environ.get("SERPAPI_API_KEY"):
-        print("\n(Flight prices above are already real/live (no key needed) --")
-        print(" set SERPAPI_API_KEY in .env to also see REAL accommodation prices,")
-        print(" not just the season-banded static estimate.)")
 
 
 if __name__ == "__main__":

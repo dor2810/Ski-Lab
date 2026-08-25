@@ -19,7 +19,6 @@ server. See reload_resorts() below for how to pick up spreadsheet edits
 without a full restart (useful during a verification pass).
 """
 import datetime
-import os
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -123,9 +122,9 @@ class SearchRequest(BaseModel):
     # first, exclude then removes from what's left).
     exclude_resorts: Optional[List[str]] = None
     # Optional: enables season-band cost adjustment, and live flight +
-    # accommodation repricing for the top candidates when SERPAPI_API_KEY
-    # is configured (see search_trips() below). Omitting it reproduces
-    # the previous date-agnostic behavior exactly.
+    # accommodation repricing for the top candidates (see search_trips()
+    # below -- no API key needed for either any more). Omitting it
+    # reproduces the previous date-agnostic behavior exactly.
     outbound_date: Optional[datetime.date] = None
     # Connections preference for live flight pricing. 0 = nonstop only,
     # 1 = up to 1 stop, 2 = up to 2 stops, None = no preference (any
@@ -330,18 +329,17 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
     _validate_resort_names(payload.exclude_resorts)
 
     # Live flight repricing (engine/cost_calculator.live_flight_cost_eur,
-    # now backed by adapters/google_flights_adapter.py) needs no API key
-    # any more -- only a date AND the global daily live-pricing budget
-    # not being exhausted (rate_limit.py; search is anonymous, so this
-    # is the real cost control, not auth). Live ACCOMMODATION repricing
-    # is unaffected and still needs SERPAPI_API_KEY (Google Hotels via
-    # SerpApi, see serpapi_hotel_adapter.py) on top of that same budget.
+    # backed by adapters/google_flights_adapter.py) AND live accommodation
+    # repricing (live_accommodation_cost_eur_per_person, backed by
+    # adapters/google_hotels_adapter.py) both need no API key any more --
+    # only a date AND the global daily live-pricing budget not being
+    # exhausted (rate_limit.py; search is anonymous, so this is the real
+    # cost control, not auth). SERPAPI_API_KEY is no longer read here at
+    # all; both SerpApi-based adapters are kept, unswapped, as fallbacks.
     # live_pricing_allowed() has a side effect (spends one unit of the
     # daily budget) so it must be last, after the cheap checks that
-    # would short-circuit anyway, and called exactly once regardless of
-    # which of the two legs below end up actually live-priced. Origin is
-    # hardcoded to TLV, matching the product's current Israeli-
-    # traveler-only scope.
+    # would short-circuit anyway. Origin is hardcoded to TLV, matching
+    # the product's current Israeli-traveler-only scope.
     live_reprice_allowed = payload.outbound_date is not None and live_pricing_allowed()
     flight_cost_fn = accommodation_cost_fn = None
     if live_reprice_allowed:
@@ -349,11 +347,10 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV",
                                         max_connections=payload.max_connections)
 
-        if os.environ.get("SERPAPI_API_KEY"):
-            def accommodation_cost_fn(resort, start_date, end_date, _prefs):
-                return live_accommodation_cost_eur_per_person(
-                    resort, start_date, nights=prefs.nights,
-                    group_size=payload.group_size, rooms_needed=prefs.rooms_needed)
+        def accommodation_cost_fn(resort, start_date, end_date, _prefs):
+            return live_accommodation_cost_eur_per_person(
+                resort, start_date, nights=prefs.nights,
+                group_size=payload.group_size, rooms_needed=prefs.rooms_needed)
 
     live_pricing_active = flight_cost_fn is not None
 
@@ -539,10 +536,11 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     N-night start date inside [earliest_date, latest_date] (e.g. a
     10-day window with a 7-night trip yields 4 candidate start dates:
     day 1, 2, 3, 4) and, for each, prices flight + accommodation live
-    when SERPAPI_API_KEY is configured, falling back to the static
-    season-banded estimate for any date/resort where a live quote isn't
-    available -- never silently for the WHOLE search, only per missing
-    quote, matching search_trips()'s existing degrade-visibly contract.
+    (no API key needed for either -- see google_flights_adapter.py and
+    google_hotels_adapter.py), falling back to the static season-banded
+    estimate for any date/resort where a live quote isn't available --
+    never silently for the WHOLE search, only per missing quote,
+    matching search_trips()'s existing degrade-visibly contract.
     """
     if payload.latest_date <= payload.earliest_date:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
@@ -584,12 +582,12 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
     start_weekday = WEEKDAY_NAMES[payload.start_weekday] if payload.start_weekday else None
 
-    # See search_trips' matching comment: live flight repricing no
-    # longer needs SERPAPI_API_KEY (adapters/google_flights_adapter.py),
-    # only a date-eligible request under the shared daily live-pricing
-    # budget; live accommodation repricing still needs the key on top of
-    # that. live_pricing_allowed() spends budget as a side effect, so
-    # it's called exactly once.
+    # See search_trips' matching comment: neither live flight repricing
+    # (adapters/google_flights_adapter.py) nor live accommodation
+    # repricing (adapters/google_hotels_adapter.py) needs an API key any
+    # more -- only a date-eligible request under the shared daily
+    # live-pricing budget. live_pricing_allowed() spends budget as a
+    # side effect, so it's called exactly once.
     live_reprice_allowed = live_pricing_allowed()
 
     flight_cost_fn = None
@@ -599,12 +597,11 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             return live_flight_cost_eur(resort, start_date, end_date, origin_airport="TLV",
                                         max_connections=payload.max_connections)
 
-        if os.environ.get("SERPAPI_API_KEY"):
-            def accommodation_cost_fn(resort, start_date, end_date, _prefs):
-                return live_accommodation_cost_eur_per_person(
-                    resort, start_date, nights=prefs.nights,
-                    group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
-                )
+        def accommodation_cost_fn(resort, start_date, end_date, _prefs):
+            return live_accommodation_cost_eur_per_person(
+                resort, start_date, nights=prefs.nights,
+                group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
+            )
 
     dated_options = search_date_range(
         _resort_cache, prefs, payload.earliest_date, payload.latest_date,

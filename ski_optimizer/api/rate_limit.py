@@ -13,23 +13,22 @@ Two, deliberately different, limiters cover the two real risks:
      ends up live-priced. Stops one script from spamming the endpoint.
 
   2. GLOBAL LIVE-PRICING BUDGET (live_pricing_allowed): a single,
-     GLOBAL counter -- not per-IP -- because BOTH things it protects are
-     themselves global, shared across every visitor, not a per-visitor
-     resource: SerpApi's monthly call quota (still metered, still spent
-     by live ACCOMMODATION pricing -- see serpapi_hotel_adapter.py) and
-     Google Flights' own rate-limit/ban tolerance for the scraper behind
-     live FLIGHT pricing (unmetered in dollars, see
-     google_flights_adapter.py's module docstring, but not free of
-     limits). A single live-eligible request can cost up to ~12-20 real
-     provider calls across both (search_date_range live-reprices up to
+     GLOBAL counter -- not per-IP -- because what it protects is itself
+     global, shared across every visitor, not a per-visitor resource:
+     Google Flights' and Google Hotels' own rate-limit/ban tolerance for
+     the scrapers behind live pricing (adapters/google_flights_adapter.py,
+     adapters/google_hotels_adapter.py -- unmetered in dollars, no API
+     key for either, but not free of limits; see each module's own
+     docstring). A single live-eligible request can cost up to ~12-20
+     real provider calls (search_date_range live-reprices up to
      live_reprice_n pairs, x2 for flight+accommodation; rank_trips' own
      live_reprice_n defaults higher still) -- so even a SMALL number of
-     live SEARCH REQUESTS adds up fast against either constraint. The
-     default here (8/day) is a deliberately conservative safety net; it
-     does NOT precisely track actual provider call counts (that would
-     need counting calls inside the adapters themselves, not requests
-     here) -- it's a coarse, honest budget, not a precise meter. Tune
-     via MAX_LIVE_SEARCHES_PER_DAY if real usage shows it's too tight or
+     live SEARCH REQUESTS adds up fast. The default here (8/day) is a
+     deliberately conservative safety net; it does NOT precisely track
+     actual provider call counts (that would need counting calls inside
+     the adapters themselves, not requests here) -- it's a coarse,
+     honest budget, not a precise meter. Tune via
+     MAX_LIVE_SEARCHES_PER_DAY if real usage shows it's too tight or
      too loose.
 
 When the global live-pricing budget is exhausted, callers must degrade
