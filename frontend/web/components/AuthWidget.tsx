@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { ApiError } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n/context";
 
 export function AuthWidget() {
-  const { user, isLoading, login, register, logout, loginWithGoogle } = useAuth();
+  const {
+    user, isLoading, googleAuthError, dismissGoogleError,
+    login, register, logout, loginWithGoogle,
+  } = useAuth();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -14,6 +17,13 @@ export function AuthWidget() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-open so a user bounced back from a canceled/failed Google
+  // sign-in immediately sees why, instead of the page silently landing
+  // back on "Sign in" with no explanation.
+  useEffect(() => {
+    if (googleAuthError) setOpen(true);
+  }, [googleAuthError]);
 
   if (isLoading) return null;
 
@@ -60,7 +70,10 @@ export function AuthWidget() {
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          dismissGoogleError();
+        }}
         aria-expanded={open}
         className="rounded-lg bg-signal px-3 py-1.5 text-xs font-semibold text-white hover:bg-signal/90"
       >
@@ -69,6 +82,11 @@ export function AuthWidget() {
 
       {open && (
         <div className="absolute end-0 top-full z-50 mt-2 w-72 rounded-xl border border-white/10 bg-midnight p-4 shadow-xl">
+          {googleAuthError && (
+            <p className="mb-3 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+              {t("googleSignInFailed")}
+            </p>
+          )}
           <button
             type="button"
             onClick={loginWithGoogle}

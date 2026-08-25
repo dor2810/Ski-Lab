@@ -181,6 +181,29 @@ def test_google_login_without_configured_credentials_returns_503(client):
     assert resp.status_code == 503
 
 
+def test_google_callback_redirects_cleanly_when_the_user_cancels_consent(client, monkeypatch):
+    # REGRESSION: per Google's own OAuth docs, an app "must gracefully
+    # handle situations where some permissions are denied" -- the most
+    # common real case is the user clicking "Cancel" on Google's consent
+    # screen, which Authlib surfaces as an OAuthError from
+    # authorize_access_token. Before this was caught, that crashed with
+    # an unhandled 500 instead of sending the user back to the app.
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-client-secret")
+
+    from authlib.integrations.base_client.errors import OAuthError
+    from ski_optimizer.api.routes import google_oauth
+
+    async def _raise(*_args, **_kwargs):
+        raise OAuthError(error="access_denied")
+
+    monkeypatch.setattr(google_oauth.oauth.google, "authorize_access_token", _raise)
+
+    resp = client.get("/auth/google/callback", follow_redirects=False)
+    assert resp.status_code in (302, 307)
+    assert "auth_error=google_oauth_failed" in resp.headers["location"]
+
+
 # --- email normalization (regression) ---
 
 def test_email_is_normalized_to_lowercase_on_register(client):

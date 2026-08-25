@@ -25,6 +25,11 @@ interface AuthContextValue {
   user: AuthUser | null;
   accessToken: string | null;
   isLoading: boolean;
+  // Set when Google's OAuth callback redirected back with an error (see
+  // api/routes/google_oauth.py -- most commonly the user clicked
+  // "Cancel" on Google's consent screen). Cleared by dismissGoogleError.
+  googleAuthError: boolean;
+  dismissGoogleError: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
@@ -37,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [googleAuthError, setGoogleAuthError] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleSilentRefresh = useCallback((refreshToken: string) => {
@@ -89,6 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             /* fall through to the stored-refresh-token path below */
           }
         }
+      } else if (hash.includes("auth_error=")) {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        setGoogleAuthError(true);
       }
 
       const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -130,11 +139,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function loginWithGoogle() {
+    setGoogleAuthError(false);
     window.location.href = googleLoginUrl();
   }
 
+  function dismissGoogleError() {
+    setGoogleAuthError(false);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, loginWithGoogle }}>
+    <AuthContext.Provider
+      value={{
+        user, accessToken, isLoading, googleAuthError, dismissGoogleError,
+        login, register, logout, loginWithGoogle,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

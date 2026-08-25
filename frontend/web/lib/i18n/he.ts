@@ -177,6 +177,7 @@ const he: Record<keyof typeof en, string> = {
   authWorking: "טוען…",
   authPasswordTooShort: "הסיסמה חייבת להכיל לפחות 12 תווים.",
   authErrorGeneric: "משהו השתבש. נסו שוב.",
+  googleSignInFailed: "ההתחברות עם Google לא הושלמה -- ייתכן שביטלתם אותה, או שהחיבור פג. נסו שוב.",
   signInToSearch: "התחברו כדי לחפש טיולים.",
   signInToSeeExamples: "התחברו כדי לראות טיולים לדוגמה.",
 };

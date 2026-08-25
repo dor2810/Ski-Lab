@@ -12,6 +12,7 @@ it's a Google Cloud Console task for whoever owns the project.
 """
 import os
 
+from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from starlette.responses import RedirectResponse
@@ -55,7 +56,18 @@ async def google_login(request: Request):
 @router.get("/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     _require_google_configured()
-    token = await oauth.google.authorize_access_token(request)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except OAuthError:
+        # Per Google's own OAuth docs: an app "must gracefully handle
+        # situations where some permissions are denied" -- the most
+        # common real cause here is the user clicking "Cancel" on
+        # Google's consent screen, which Google reports back as an
+        # error redirect (access_denied) rather than an authorization
+        # code. A stale/expired session cookie failing Authlib's CSRF
+        # state check lands here too. Either way: redirect back to the
+        # app with a clean signal, don't crash with an unhandled 500.
+        return RedirectResponse(url=f"{FRONTEND_URL}#auth_error=google_oauth_failed")
     # parse_id_token verifies the JWT signature/audience/issuer against
     # Google's published keys -- this is the actual identity proof, not
     # just "we got redirected back so it must be fine."

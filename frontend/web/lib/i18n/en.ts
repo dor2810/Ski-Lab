@@ -182,6 +182,7 @@ const en = {
   authWorking: "Working…",
   authPasswordTooShort: "Password must be at least 12 characters.",
   authErrorGeneric: "Something went wrong. Please try again.",
+  googleSignInFailed: "Google sign-in didn't complete -- you may have canceled it, or the session expired. Try again.",
   signInToSearch: "Sign in to search for trips.",
   signInToSeeExamples: "Sign in to see example trips.",
 } as const;
