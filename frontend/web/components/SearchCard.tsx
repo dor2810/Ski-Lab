@@ -12,7 +12,7 @@ import {
   type WeekdayName,
   type TripResult,
 } from "@/lib/api";
-import { todayPlusDays } from "@/lib/format";
+import { todayPlusDays, addDays } from "@/lib/format";
 import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
@@ -114,6 +114,18 @@ export function SearchCard({
     });
   }, [accessToken]);
 
+  // If the user pushes the earliest date past the current latest date
+  // (or so close that the window can no longer fit a trip of this
+  // length), the form used to just show a validation error on submit --
+  // annoying when it's obvious what they meant. Auto-carry the latest
+  // date forward instead, keeping it a valid tripNights-long window.
+  function handleEarliestChange(value: string) {
+    setEarliest(value);
+    if (value && latest < addDays(value, tripNights)) {
+      setLatest(addDays(value, tripNights));
+    }
+  }
+
   function toggleResort(name: string) {
     setSelectedResorts((prev) => {
       const next = new Set(prev);
@@ -203,7 +215,7 @@ export function SearchCard({
               <label htmlFor="earliest" className={labelClass()}>{t("earliestDate")}</label>
               <input
                 id="earliest" type="date" value={earliest}
-                onChange={(e) => setEarliest(e.target.value)}
+                onChange={(e) => handleEarliestChange(e.target.value)}
                 className={fieldClass()} required
               />
             </div>

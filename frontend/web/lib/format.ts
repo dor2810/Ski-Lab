@@ -7,8 +7,26 @@ export function formatDate(iso: string, locale: string = "en-GB"): string {
   return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
+// Formats a Date's LOCAL calendar date as YYYY-MM-DD. Deliberately not
+// `d.toISOString().slice(0, 10)` -- toISOString converts to UTC first,
+// which silently shifts the date back a day for anyone in a timezone
+// ahead of UTC (e.g. Israel, this app's actual target market) once the
+// local time is past midnight but before the UTC offset catches up.
+function toLocalISODate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function todayPlusDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toLocalISODate(d);
+}
+
+export function addDays(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return toLocalISODate(d);
 }
