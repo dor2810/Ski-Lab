@@ -29,7 +29,7 @@ WEIGHTS = {"ski_quality": 0.30, "price": 0.30, "snow": 0.15,
 
 
 def _prefs(**overrides):
-    kw = dict(budget_eur_per_person=1300, trip_nights=6, group_size=2,
+    kw = dict(budget_eur_per_person=1300, ski_days=6, group_size=2,
               accommodation_tier="budget", weights=dict(WEIGHTS))
     kw.update(overrides)
     return UserPreferences(**kw)
@@ -88,7 +88,7 @@ def test_trip_cost_rises_in_peak_season():
 
 def test_candidate_dates_fit_entirely_inside_the_window():
     starts = candidate_start_dates(datetime.date(2027, 2, 1),
-                                   datetime.date(2027, 2, 10), trip_nights=6)
+                                   datetime.date(2027, 2, 10), nights=6)
     assert starts[0] == datetime.date(2027, 2, 1)
     # A 6-night trip starting Feb 5 ends Feb 11, past the window.
     assert starts[-1] == datetime.date(2027, 2, 4)
@@ -105,7 +105,7 @@ def test_step_days_coarsens_the_grid():
 
 def test_window_shorter_than_the_trip_yields_nothing():
     assert candidate_start_dates(datetime.date(2027, 2, 1),
-                                 datetime.date(2027, 2, 3), trip_nights=6) == []
+                                 datetime.date(2027, 2, 3), nights=6) == []
 
 
 def test_start_weekday_restricts_to_that_weekday_only():
@@ -113,7 +113,7 @@ def test_start_weekday_restricts_to_that_weekday_only():
     # a Saturday, and there should be about one per week.
     saturday = WEEKDAY_NAMES["saturday"]
     starts = candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
-                                   trip_nights=6, start_weekday=saturday)
+                                   nights=6, start_weekday=saturday)
     assert starts
     assert all(d.weekday() == saturday for d in starts)
     assert len(starts) in (3, 4)  # a ~4-week window, minus the trip length eating the tail
@@ -125,7 +125,7 @@ def test_start_weekday_advances_from_a_non_matching_earliest_date():
     saturday = WEEKDAY_NAMES["saturday"]
     assert datetime.date(2027, 2, 1).weekday() != saturday
     starts = candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
-                                   trip_nights=6, start_weekday=saturday)
+                                   nights=6, start_weekday=saturday)
     assert starts[0] == datetime.date(2027, 2, 6)
 
 
@@ -133,17 +133,17 @@ def test_start_weekday_rejects_out_of_range_values():
     for bad in (-1, 7):
         try:
             candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
-                                  trip_nights=6, start_weekday=bad)
+                                  nights=6, start_weekday=bad)
             assert False, f"expected ValueError for start_weekday={bad}"
         except ValueError:
             pass
 
 
 def test_candidate_dates_reject_nonsense_input():
-    for kwargs in ({"trip_nights": 0}, {"trip_nights": -2}, {"step_days": 0}):
+    for kwargs in ({"nights": 0}, {"nights": -2}, {"step_days": 0}):
         try:
             candidate_start_dates(datetime.date(2027, 2, 1), datetime.date(2027, 3, 1),
-                                  **{"trip_nights": 6, **kwargs})
+                                  **{"nights": 6, **kwargs})
             assert False, f"expected ValueError for {kwargs}"
         except ValueError:
             pass

@@ -4,7 +4,7 @@ Validation, cost-model invariant, and scoring-property tests.
 These exist because an audit of the code found that validation lived
 ONLY at the API boundary (api/routes/search.py's Pydantic schema), so
 the CLI, library callers, and tests could all construct nonsense
-preferences. The most serious finding: UserPreferences(trip_nights=-3)
+preferences. The most serious finding: UserPreferences(ski_days=-3)
 produced NEGATIVE trip costs, which then passed the "is it under
 budget?" filter and were returned as legitimate ranked results.
 
@@ -26,7 +26,7 @@ from ski_optimizer.engine.terrain import TerrainMix
 
 
 def _valid(**overrides):
-    kw = dict(budget_eur_per_person=1500, trip_nights=5, group_size=2)
+    kw = dict(budget_eur_per_person=1500, ski_days=5, group_size=2)
     kw.update(overrides)
     return UserPreferences(**kw)
 
@@ -41,9 +41,9 @@ def _expect_value_error(**overrides):
 
 # --- numeric input validation ---
 
-def test_rejects_zero_and_negative_trip_nights():
-    assert _expect_value_error(trip_nights=0)
-    assert _expect_value_error(trip_nights=-3)
+def test_rejects_zero_and_negative_ski_days():
+    assert _expect_value_error(ski_days=0)
+    assert _expect_value_error(ski_days=-3)
 
 
 def test_rejects_zero_and_negative_budget():
@@ -204,7 +204,7 @@ def test_rejects_empty_weights():
 # --- cost model invariants ---
 
 def test_no_resort_ever_produces_negative_or_zero_cost():
-    # The bug this guards: negative trip_nights made every component
+    # The bug this guards: negative ski_days made every component
     # negative, and a negative total trivially "fits" any budget.
     resorts = load_resorts()
     prefs = _valid()
@@ -229,9 +229,30 @@ def test_cost_breakdown_components_sum_to_total():
 def test_longer_trip_costs_more():
     resorts = load_resorts()
     r = resorts[0]
-    short = compute_trip_cost(r, _valid(trip_nights=3))
-    long_ = compute_trip_cost(r, _valid(trip_nights=7))
+    short = compute_trip_cost(r, _valid(ski_days=3))
+    long_ = compute_trip_cost(r, _valid(ski_days=7))
     assert long_.total_eur > short.total_eur
+
+
+def test_nights_away_is_always_one_more_than_ski_days():
+    assert _valid(ski_days=4).nights == 5
+    assert _valid(ski_days=6).nights == 7
+
+
+def test_ski_pass_and_equipment_cost_scale_with_ski_days_not_nights():
+    # REGRESSION: compute_trip_cost used to silently treat ski_days as a
+    # copy of nights ("ski_days = nights"), so a 6-ski-day trip (7
+    # nights away) was priced as a 7-DAY ski pass -- one day too many,
+    # and the same overcount for equipment rental. ski_pass_eur and
+    # equipment_eur must match ski_days directly; only accommodation and
+    # food should grow with the extra night.
+    r = load_resorts()[0]
+    prefs = _valid(ski_days=6)
+    cost = compute_trip_cost(r, prefs)
+    assert cost.ski_pass_eur == ski_pass_cost(r, prefs.ski_days)
+    assert cost.ski_pass_eur != ski_pass_cost(r, prefs.nights), (
+        "ski pass priced for `nights` days instead of `ski_days` -- the exact bug this guards"
+    )
 
 
 def test_premium_equipment_costs_more_than_standard():
@@ -279,7 +300,13 @@ def test_every_returned_trip_respects_the_budget():
     for budget in (800, 1200, 2000):
         prefs = _valid(budget_eur_per_person=budget)
         for trip in rank_trips(resorts, prefs, top_n=len(resorts)):
-            assert trip.cost.total_eur <= budget
+            # A trip flagged within_budget=False is the documented
+            # over-budget-fallback result (see rank_trips' own
+            # docstring): "the cheapest we found, honestly labeled as
+            # not fitting" -- not a budget-filter bug. Only rows claiming
+            # to fit must actually fit.
+            if trip.within_budget:
+                assert trip.cost.total_eur <= budget
 
 
 def test_top_n_is_respected():

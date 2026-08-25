@@ -72,7 +72,7 @@ export default function Home() {
             accommodation_tier: "standard",
             food_profile: "normal",
             equipment_tier: "standard",
-            trip_nights: 5,
+            ski_days: 5,
             top_n: 4,
             weights: normalizeWeights(DEFAULT_RAW_WEIGHTS),
           },

@@ -64,7 +64,7 @@ def authed_client():
 
 BASE_PAYLOAD = {
     "budget_eur_per_person": 2000,
-    "trip_nights": 7,
+    "ski_days": 6,  # -> 7 nights away (see UserPreferences.nights)
     "earliest_date": "2027-01-10",
     "latest_date": "2027-01-20",  # 10-day window, 7-night trip -> 4 candidate starts
 }
@@ -92,9 +92,10 @@ def test_search_dates_without_csrf_header_is_rejected(authed_client):
 
 def test_10_day_window_7_night_trip_yields_four_candidate_dates(authed_client):
     # The exact scenario from the product ask: a 10-day range for a
-    # 7-day vacation should search day 1/2/3/4 as valid start dates
-    # (day 4 + 7 nights = day 11, still inside the 10-day window which
-    # runs Jan 10 through Jan 20 inclusive of checkout).
+    # 6-ski-day trip (7 nights away, see BASE_PAYLOAD) should search day
+    # 1/2/3/4 as valid start dates (day 4 + 7 nights = day 11, still
+    # inside the 10-day window which runs Jan 10 through Jan 20
+    # inclusive of checkout).
     resp = authed_client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
@@ -113,6 +114,20 @@ def test_search_dates_returns_results_within_budget(authed_client):
     assert scores == sorted(scores, reverse=True)
 
 
+def test_search_dates_results_carry_dated_flight_and_accommodation_links(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        **BASE_PAYLOAD, "target_resort": "Livigno",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert body["results"]
+    for result in body["results"]:
+        decoded = result["flight_search_url"].replace("%20", " ")
+        assert f"on {result['start_date']} through {result['end_date']}" in decoded
+        assert result["accommodation_search_url"].startswith(
+            "https://www.google.com/travel/hotels?q="
+        )
+
+
 def test_search_dates_without_serpapi_key_reports_live_pricing_inactive(authed_client, monkeypatch):
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
     resp = authed_client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
@@ -125,7 +140,7 @@ def test_search_dates_without_serpapi_key_reports_live_pricing_inactive(authed_c
 
 def test_search_dates_rejects_window_shorter_than_the_trip(authed_client):
     resp = authed_client.post("/trips/search-dates", json={
-        **BASE_PAYLOAD, "trip_nights": 30, "earliest_date": "2027-01-10", "latest_date": "2027-01-12",
+        **BASE_PAYLOAD, "ski_days": 29, "earliest_date": "2027-01-10", "latest_date": "2027-01-12",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["results"] == []
@@ -237,7 +252,7 @@ def test_search_dates_unknown_exclude_resort_404s(authed_client):
 
 def test_search_dates_start_weekday_restricts_results_to_that_day(authed_client):
     resp = authed_client.post("/trips/search-dates", json={
-        "budget_eur_per_person": 3000, "trip_nights": 6,
+        "budget_eur_per_person": 3000, "ski_days": 6,
         "earliest_date": "2027-01-04", "latest_date": "2027-02-01",
         "start_weekday": "saturday", "include_resorts": ["Livigno"],
     }, headers=CSRF_HEADERS)

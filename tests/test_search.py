@@ -77,7 +77,7 @@ def test_search_requires_authentication_by_default(monkeypatch):
     monkeypatch.delenv("ALLOW_ANONYMOUS_SEARCH", raising=False)
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 401
 
@@ -87,7 +87,7 @@ def test_search_allows_anonymous_when_explicitly_enabled(monkeypatch):
     monkeypatch.setenv("ALLOW_ANONYMOUS_SEARCH", "true")
     client = TestClient(app, base_url="https://testserver")
     resp = client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert len(resp.json()["results"]) > 0
@@ -95,21 +95,21 @@ def test_search_allows_anonymous_when_explicitly_enabled(monkeypatch):
 
 def test_a_real_session_works_for_search(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
 
 
 def test_search_without_csrf_header_is_rejected(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
     })  # no CSRF header
     assert resp.status_code == 403
 
 
 def test_search_returns_ranked_results_within_budget(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5, "group_size": 2,
+        "budget_eur_per_person": 1500, "ski_days": 5, "group_size": 2,
         "skill_level": "advanced", "accommodation_tier": "budget",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -123,13 +123,39 @@ def test_search_returns_ranked_results_within_budget(authed_client):
     assert scores == sorted(scores, reverse=True)
 
 
+def test_search_results_carry_flight_and_accommodation_links(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert body["results"]
+    for result in body["results"]:
+        # No outbound_date in this request -> no dated flight link, but
+        # the resort/route is still known, so flight_search_url is None
+        # or a bare (dateless) query, never a fabricated date.
+        assert "flight_search_url" in result
+        assert result["accommodation_search_url"].startswith(
+            "https://www.google.com/travel/hotels?q="
+        )
+
+
+def test_search_flight_link_includes_dates_when_outbound_date_is_given(authed_client):
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    result = body["results"][0]
+    assert "on 2027-01-10 through 2027-01-16" in result["flight_search_url"].replace("%20", " ")
+
+
 def test_search_with_outbound_date_falls_back_to_static_without_a_serpapi_key(authed_client, monkeypatch):
     # CI/test environment has no SERPAPI_API_KEY (see test_auth.py/test_search.py's
     # setdefault calls -- neither sets it, and .env is never auto-loaded).
     # Passing outbound_date must degrade to the static estimate, not error.
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "outbound_date": "2027-01-02",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -144,7 +170,7 @@ def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(auth
     # list for this (see rank_trips' over-budget-fallback docstring), it
     # returns the cheapest option(s) it found, honestly flagged.
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 10, "trip_nights": 5,
+        "budget_eur_per_person": 10, "ski_days": 5,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     results = resp.json()["results"]
@@ -154,7 +180,7 @@ def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(auth
 
 def test_search_can_opt_out_of_the_over_budget_fallback(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 10, "trip_nights": 5, "allow_over_budget_fallback": False,
+        "budget_eur_per_person": 10, "ski_days": 5, "allow_over_budget_fallback": False,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["results"] == []
@@ -162,14 +188,14 @@ def test_search_can_opt_out_of_the_over_budget_fallback(authed_client):
 
 def test_search_rejects_invalid_skill_level(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5, "skill_level": "godlike",
+        "budget_eur_per_person": 1500, "ski_days": 5, "skill_level": "godlike",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
 
 
 def test_search_rejects_unknown_weight_key(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "weights": {"apres_ski_quality": 1.0},
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
@@ -178,7 +204,7 @@ def test_search_rejects_unknown_weight_key(authed_client):
 def test_search_normalizes_weights_not_summing_to_one(authed_client):
     # 200, not 400/422 -- normalization should absorb this, not reject it.
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "weights": {"ski_quality": 5, "price": 5},  # sums to 10, not 1.0
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -186,7 +212,7 @@ def test_search_normalizes_weights_not_summing_to_one(authed_client):
 
 def test_search_with_unknown_target_resort_returns_404(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "target_resort": "Definitely Not A Real Resort",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 404
@@ -194,7 +220,7 @@ def test_search_with_unknown_target_resort_returns_404(authed_client):
 
 def test_search_with_valid_target_resort_returns_only_that_one(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 2000, "trip_nights": 5,
+        "budget_eur_per_person": 2000, "ski_days": 5,
         "target_resort": "Livigno",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -224,7 +250,7 @@ def test_target_resort_matching_is_case_insensitive_in_api(authed_client):
     # 404 here even though the engine would have resolved it fine. Two
     # layers disagreeing about valid resort names is a real bug.
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 2000, "trip_nights": 5,
+        "budget_eur_per_person": 2000, "ski_days": 5,
         "target_resort": "livigno",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -233,32 +259,32 @@ def test_target_resort_matching_is_case_insensitive_in_api(authed_client):
 
 def test_target_resort_tolerates_whitespace_in_api(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 2000, "trip_nights": 5,
+        "budget_eur_per_person": 2000, "ski_days": 5,
         "target_resort": " Livigno ",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert len(resp.json()["results"]) == 1
 
 
-def test_search_rejects_negative_trip_nights(authed_client):
+def test_search_rejects_negative_ski_days(authed_client):
     # The domain model rejects this now; the API should surface it as a
     # clean 4xx, never a 500 or a negative-priced "result".
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": -3,
+        "budget_eur_per_person": 1500, "ski_days": -3,
     }, headers=CSRF_HEADERS)
     assert resp.status_code in (400, 422)
 
 
 def test_search_rejects_zero_group_size(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5, "group_size": 0,
+        "budget_eur_per_person": 1500, "ski_days": 5, "group_size": 0,
     }, headers=CSRF_HEADERS)
     assert resp.status_code in (400, 422)
 
 
 def test_include_resorts_restricts_to_exactly_those(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 10,
+        "budget_eur_per_person": 3000, "ski_days": 5, "top_n": 10,
         "include_resorts": ["Livigno", "Bansko"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -268,7 +294,7 @@ def test_include_resorts_restricts_to_exactly_those(authed_client):
 
 def test_exclude_resorts_removes_just_that_one(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+        "budget_eur_per_person": 3000, "ski_days": 5, "top_n": 30,
         "exclude_resorts": ["Val Thorens"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -278,7 +304,7 @@ def test_exclude_resorts_removes_just_that_one(authed_client):
 
 def test_unknown_include_resort_404s(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "include_resorts": ["Not A Real Resort"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 404
@@ -286,14 +312,14 @@ def test_unknown_include_resort_404s(authed_client):
 
 def test_min_budget_filters_out_cheaper_results(authed_client):
     baseline = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+        "budget_eur_per_person": 3000, "ski_days": 5, "top_n": 30,
     }, headers=CSRF_HEADERS).json()["results"]
     assert baseline  # sanity: something exists below the floor we're about to set
     cheapest = min(r["cost"]["total_eur"] for r in baseline)
     floor = cheapest + 1
 
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 30,
+        "budget_eur_per_person": 3000, "ski_days": 5, "top_n": 30,
         "min_budget_eur_per_person": floor,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -304,19 +330,19 @@ def test_min_budget_filters_out_cheaper_results(authed_client):
 def test_max_connections_accepts_valid_values_and_rejects_others(authed_client):
     for value in (0, 1, 2):
         resp = authed_client.post("/trips/search", json={
-            "budget_eur_per_person": 1500, "trip_nights": 5, "max_connections": value,
+            "budget_eur_per_person": 1500, "ski_days": 5, "max_connections": value,
         }, headers=CSRF_HEADERS)
         assert resp.status_code == 200, value
 
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5, "max_connections": 3,
+        "budget_eur_per_person": 1500, "ski_days": 5, "max_connections": 3,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
 
 
 def test_top_n_limits_result_count(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5, "top_n": 3,
+        "budget_eur_per_person": 3000, "ski_days": 5, "top_n": 3,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     assert len(resp.json()["results"]) <= 3
@@ -324,7 +350,7 @@ def test_top_n_limits_result_count(authed_client):
 
 def test_preferred_transfer_modes_accepts_real_modes(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "preferred_transfer_modes": ["shared_shuttle", "train"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
@@ -332,7 +358,7 @@ def test_preferred_transfer_modes_accepts_real_modes(authed_client):
 
 def test_preferred_transfer_modes_rejects_unknown_mode(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 1500, "trip_nights": 5,
+        "budget_eur_per_person": 1500, "ski_days": 5,
         "preferred_transfer_modes": ["helicopter"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 422
@@ -341,7 +367,7 @@ def test_preferred_transfer_modes_rejects_unknown_mode(authed_client):
 def test_search_rate_limit_returns_429_once_exceeded(authed_client):
     from ski_optimizer.api.rate_limit import _PER_IP_LIMIT
 
-    payload = {"budget_eur_per_person": 1500, "trip_nights": 5}
+    payload = {"budget_eur_per_person": 1500, "ski_days": 5}
     for _ in range(_PER_IP_LIMIT):
         resp = authed_client.post("/trips/search", json=payload, headers=CSRF_HEADERS)
         assert resp.status_code == 200
@@ -351,7 +377,7 @@ def test_search_rate_limit_returns_429_once_exceeded(authed_client):
 
 def test_no_returned_trip_has_a_nonpositive_cost(authed_client):
     resp = authed_client.post("/trips/search", json={
-        "budget_eur_per_person": 3000, "trip_nights": 5,
+        "budget_eur_per_person": 3000, "ski_days": 5,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     for result in resp.json()["results"]:

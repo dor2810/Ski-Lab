@@ -79,14 +79,19 @@ export function SearchCard({
   const { t } = useTranslation();
   const { accessToken } = useAuth();
 
-  // One unified date range: if latest - earliest == trip_nights, this is
+  // One unified date range: if latest - earliest == nights away, this is
   // effectively "exact dates" (a single candidate start date); wider than
   // that, the backend searches every valid start date in between. See
   // lib/api.searchFlexibleWindow -- there's no separate "fixed date" mode
   // in this UI any more, the search itself degrades to one date naturally.
   const [earliest, setEarliest] = useState(todayPlusDays(30));
   const [latest, setLatest] = useState(todayPlusDays(37));
-  const [tripNights, setTripNights] = useState(6);
+  // Full days on the mountain -- what the user actually cares about, not
+  // nights away (see lib/api.FixedDateSearchParams.ski_days). Nights
+  // away is always skiDays + 1 (arrive the evening before day 1, leave
+  // the day after the last ski day) -- see the `nights` derivation
+  // wherever it's used below.
+  const [skiDays, setSkiDays] = useState(6);
   const [startWeekday, setStartWeekday] = useState<WeekdayName | "">("");
 
   const [resortNames, setResortNames] = useState<string[]>([]);
@@ -118,11 +123,12 @@ export function SearchCard({
   // (or so close that the window can no longer fit a trip of this
   // length), the form used to just show a validation error on submit --
   // annoying when it's obvious what they meant. Auto-carry the latest
-  // date forward instead, keeping it a valid tripNights-long window.
+  // date forward instead, keeping it a window at least `nights` long.
   function handleEarliestChange(value: string) {
     setEarliest(value);
-    if (value && latest < addDays(value, tripNights)) {
-      setLatest(addDays(value, tripNights));
+    const nights = skiDays + 1;
+    if (value && latest < addDays(value, nights)) {
+      setLatest(addDays(value, nights));
     }
   }
 
@@ -151,14 +157,15 @@ export function SearchCard({
       return;
     }
 
-    if (!(tripNights > 0)) {
+    if (!(skiDays > 0)) {
       setError(t("errorTripLength"));
       return;
     }
+    const nights = skiDays + 1;
     const windowNights = Math.round(
       (new Date(latest).getTime() - new Date(earliest).getTime()) / 86_400_000
     );
-    if (windowNights < tripNights) {
+    if (windowNights < nights) {
       setError(t("errorRangeTooShort"));
       return;
     }
@@ -182,7 +189,7 @@ export function SearchCard({
           exclude_resorts: resortMode === "exclude" ? resortList : null,
           start_weekday: startWeekday === "" ? null : startWeekday,
           weights: normalizeWeights(weights),
-          trip_nights: tripNights,
+          ski_days: skiDays,
           earliest_date: earliest,
           latest_date: latest,
           top_n: 12,
@@ -231,12 +238,15 @@ export function SearchCard({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="nights" className={labelClass()}>{t("tripLengthNights")}</label>
+              <label htmlFor="skiDays" className={labelClass()}>{t("skiDaysLabel")}</label>
               <input
-                id="nights" type="number" min={1} max={30} value={tripNights}
-                onChange={(e) => setTripNights(Number(e.target.value))}
+                id="skiDays" type="number" min={1} max={30} value={skiDays}
+                onChange={(e) => setSkiDays(Number(e.target.value))}
                 className={fieldClass()} required
               />
+              <p className="mt-1 text-[11px] text-ice/40">
+                {t("skiDaysHint", { nights: skiDays + 1 })}
+              </p>
             </div>
             <div>
               <label htmlFor="weekday" className={labelClass()}>{t("startDayOfWeek")}</label>

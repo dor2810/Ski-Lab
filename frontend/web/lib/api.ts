@@ -116,6 +116,12 @@ export interface TripResult {
   start_date?: string;
   end_date?: string;
   season?: "peak" | "high" | "shoulder";
+  // Deep links to Google's own live search results -- NOT a booking
+  // link for this exact priced itinerary (see engine/links.py's module
+  // docstring on the backend for why). flight_search_url is null when
+  // the resort's airport field has no parseable IATA code.
+  flight_search_url: string | null;
+  accommodation_search_url: string;
 }
 
 export interface SearchResponse {
@@ -165,7 +171,11 @@ export interface CommonSearchFields {
 }
 
 export interface FixedDateSearchParams extends CommonSearchFields {
-  trip_nights: number;
+  // Full days actually spent on the mountain, NOT nights away -- the
+  // backend derives nights = ski_days + 1 (see
+  // models.UserPreferences.nights), since you arrive the evening
+  // before your first ski day and leave the day after your last one.
+  ski_days: number;
   // Optional: omitting it skips season-band adjustment AND live
   // flight/accommodation repricing (see api/routes/search.py), giving a
   // fast, quota-free, static-estimate result. Used for the landing
@@ -176,7 +186,8 @@ export interface FixedDateSearchParams extends CommonSearchFields {
 }
 
 export interface FlexibleWindowSearchParams extends CommonSearchFields {
-  trip_nights: number;
+  // See FixedDateSearchParams.ski_days -- same contract.
+  ski_days: number;
   earliest_date: string;
   latest_date: string;
   top_n?: number;

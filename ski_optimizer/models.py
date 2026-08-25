@@ -100,7 +100,22 @@ MAX_OCCUPANTS_PER_ROOM = 4
 class UserPreferences:
     # --- hard constraints ---
     budget_eur_per_person: float
-    trip_nights: int
+    # The number of FULL days actually spent on the mountain -- what a
+    # traveler is really asking for ("I want 6 ski days"), not the
+    # number of nights away. Nights away is ALWAYS ski_days + 1 (see the
+    # `nights` property below): you need to arrive the evening before
+    # your first ski day and can fly home the day after your last one.
+    #
+    # This deliberately does NOT try to model the two-way dependency the
+    # product spec flags -- whether that extra night is really 1 or 2
+    # depends on actual flight departure/arrival CLOCK times (a redeye
+    # vs. an early-morning flight can turn a ski day into a travel day
+    # or vice versa) -- because adapters/flight_adapter.py's FlightOption
+    # doesn't capture clock times today, only dates. +1 night is the
+    # realistic, common-case default (a package advertised as "6 days
+    # skiing" is almost always sold as 7 nights), documented as an
+    # approximation rather than silently treated as exact.
+    ski_days: int
     group_size: int = 2
 
     # --- trip style (used by the static cost model) ---
@@ -155,8 +170,8 @@ class UserPreferences:
         # Validating once here means every caller is protected.
         if self.budget_eur_per_person <= 0:
             raise ValueError(f"budget_eur_per_person must be > 0, got {self.budget_eur_per_person}")
-        if self.trip_nights <= 0:
-            raise ValueError(f"trip_nights must be > 0, got {self.trip_nights}")
+        if self.ski_days <= 0:
+            raise ValueError(f"ski_days must be > 0, got {self.ski_days}")
         if self.group_size <= 0:
             # Previously a ZeroDivisionError deep inside the cost
             # calculator -- a clear message at construction is far more
@@ -219,6 +234,11 @@ class UserPreferences:
         total = sum(self.weights.values())
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"weights must sum to 1.0, got {total:.3f}: {self.weights}")
+
+    @property
+    def nights(self) -> int:
+        """Nights away = ski_days + 1. See ski_days' field comment for why."""
+        return self.ski_days + 1
 
 
 # ---------------------------------------------------------------------------

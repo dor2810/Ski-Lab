@@ -30,7 +30,7 @@ def test_all_resorts_have_positive_core_fields():
 
 def test_cost_breakdown_totals_are_positive():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=2000, trip_nights=5, group_size=2)
+    prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5, group_size=2)
     for r in resorts:
         cost = compute_trip_cost(r, prefs)
         assert cost.total_eur > 0
@@ -38,7 +38,7 @@ def test_cost_breakdown_totals_are_positive():
 
 def test_hard_budget_constraint_is_enforced():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=50, trip_nights=5, group_size=2)
+    prefs = UserPreferences(budget_eur_per_person=50, ski_days=5, group_size=2)
     # No resort fits a 50 EUR/person budget -- rank_trips no longer returns
     # an empty list for this (see its over-budget-fallback docstring), it
     # returns the cheapest option(s) it found, honestly flagged as not
@@ -55,7 +55,7 @@ def test_hard_budget_constraint_is_enforced():
 
 def test_ranking_is_sorted_descending_by_score():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=2000, trip_nights=5, group_size=2)
+    prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5, group_size=2)
     results = rank_trips(resorts, prefs, top_n=10)
     scores = [t.score for t in results]
     assert scores == sorted(scores, reverse=True)
@@ -63,7 +63,7 @@ def test_ranking_is_sorted_descending_by_score():
 
 def test_weights_must_sum_to_one():
     try:
-        UserPreferences(budget_eur_per_person=1000, trip_nights=5,
+        UserPreferences(budget_eur_per_person=1000, ski_days=5,
                          weights={"ski_quality": 0.5, "price": 0.2})
         assert False, "should have raised"
     except ValueError:
@@ -72,7 +72,7 @@ def test_weights_must_sum_to_one():
 
 def test_target_resort_mode_returns_only_that_resort():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=2000, trip_nights=5,
+    prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5,
                              group_size=2, target_resort="Livigno")
     results = rank_trips(resorts, prefs)
     assert len(results) == 1
@@ -81,7 +81,7 @@ def test_target_resort_mode_returns_only_that_resort():
 
 def test_target_resort_not_found_returns_empty():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=2000, trip_nights=5,
+    prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5,
                              group_size=2, target_resort="Nonexistent Resort")
     results = rank_trips(resorts, prefs)
     assert results == []
@@ -89,7 +89,7 @@ def test_target_resort_not_found_returns_empty():
 
 def test_include_resorts_restricts_to_exactly_those():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=3000, trip_nights=5, group_size=2,
+    prefs = UserPreferences(budget_eur_per_person=3000, ski_days=5, group_size=2,
                             include_resorts=["Livigno", "Bansko"])
     results = rank_trips(resorts, prefs, top_n=10)
     names = {t.resort.name for t in results}
@@ -99,7 +99,7 @@ def test_include_resorts_restricts_to_exactly_those():
 
 def test_exclude_resorts_removes_just_those():
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=3000, trip_nights=5, group_size=2,
+    prefs = UserPreferences(budget_eur_per_person=3000, ski_days=5, group_size=2,
                             exclude_resorts=["Val Thorens"])
     results = rank_trips(resorts, prefs, top_n=100)
     names = {t.resort.name for t in results}
@@ -114,9 +114,9 @@ def test_include_resorts_score_normalization_uses_full_dataset():
     # pinned alone via target_resort, which already uses the full range.
     resorts = load_resorts()
     via_target = rank_trips(resorts, UserPreferences(
-        budget_eur_per_person=3000, trip_nights=5, group_size=2, target_resort="Livigno"))
+        budget_eur_per_person=3000, ski_days=5, group_size=2, target_resort="Livigno"))
     via_include = rank_trips(resorts, UserPreferences(
-        budget_eur_per_person=3000, trip_nights=5, group_size=2, include_resorts=["Livigno"]))
+        budget_eur_per_person=3000, ski_days=5, group_size=2, include_resorts=["Livigno"]))
     assert via_target[0].score_components["price"] == via_include[0].score_components["price"]
 
 
@@ -211,7 +211,7 @@ def test_ischgl_flags_conflicting_snowfall_sources():
 def test_missing_terrain_data_does_not_crash_scoring():
     # Zermatt has no parseable terrain text -- scoring must still work.
     resorts = load_resorts()
-    prefs = UserPreferences(budget_eur_per_person=2000, trip_nights=5,
+    prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5,
                              group_size=2, skill_level="beginner")
     results = rank_trips(resorts, prefs, top_n=30)
     names = [t.resort.name for t in results]

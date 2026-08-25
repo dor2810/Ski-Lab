@@ -15,6 +15,7 @@ import {
   FoodIcon,
   SnowIcon,
   PinIcon,
+  ExternalLinkIcon,
 } from "./icons";
 
 function LivePill({ live }: { live: boolean }) {
@@ -54,6 +55,27 @@ const DIMENSION_KEYS: Record<string, keyof Dictionary> = {
   convenience: "priorityConvenience",
   accommodation: "priorityAccommodation",
 };
+
+// Deep links to Google's own live search results, NOT a booking link
+// for this exact priced itinerary -- see api/engine/links.py's module
+// docstring on the backend for why (resolving the provider's opaque
+// booking_token into a real bookable page needs a live API call per
+// result, which this project's rate-limited quota can't spend on every
+// card in every search). searchLinkDisclaimer makes that explicit
+// rather than letting the link imply more precision than it has.
+function SearchLinkButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-sky hover:border-sky/60 hover:bg-sky/10"
+    >
+      <ExternalLinkIcon size={13} />
+      {label}
+    </a>
+  );
+}
 
 function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Dictionary; value: number; live: boolean | null }[] {
   return [
@@ -136,6 +158,14 @@ export function ResultCard({ result }: { result: TripResult }) {
             {live !== null && <LivePill live={live} />}
           </div>
         ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {r.flight_search_url && (
+          <SearchLinkButton href={r.flight_search_url} label={t("viewFlights")} />
+        )}
+        <SearchLinkButton href={r.accommodation_search_url} label={t("viewAccommodation")} />
+        <span className="text-[11px] text-ice/40">{t("searchLinkDisclaimer")}</span>
       </div>
 
       <div className="mt-6">

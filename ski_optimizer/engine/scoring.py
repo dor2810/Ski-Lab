@@ -275,7 +275,7 @@ def _reprice_with_live_prices(candidates: List[TripOption], prefs: UserPreferenc
     reproduce the empty result the fallback exists to avoid; the point
     there is to show the true live price, not to re-filter by it).
     """
-    end_date = prefs.outbound_date + datetime.timedelta(days=prefs.trip_nights)
+    end_date = prefs.outbound_date + datetime.timedelta(days=prefs.nights)
     repriced = []
     for trip in candidates:
         cost = trip.cost

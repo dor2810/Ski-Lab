@@ -70,7 +70,7 @@ WEEKDAY_NAMES = {
 
 
 def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
-                          trip_nights: int, step_days: int = 1,
+                          nights: int, step_days: int = 1,
                           start_weekday: Optional[int] = None) -> List[datetime.date]:
     """
     Every valid start date whose full trip fits inside the window.
@@ -90,8 +90,8 @@ def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
     independent step would either be redundant (7 is already a multiple
     of itself) or silently skip weeks in a way nothing here signals.
     """
-    if trip_nights <= 0:
-        raise ValueError(f"trip_nights must be > 0, got {trip_nights}")
+    if nights <= 0:
+        raise ValueError(f"nights must be > 0, got {nights}")
     if step_days <= 0:
         raise ValueError(f"step_days must be > 0, got {step_days}")
     if latest < earliest:
@@ -107,7 +107,7 @@ def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
         step = step_days
 
     out = []
-    while day + datetime.timedelta(days=trip_nights) <= latest:
+    while day + datetime.timedelta(days=nights) <= latest:
         out.append(day)
         day += datetime.timedelta(days=step)
     return out
@@ -120,9 +120,9 @@ def date_independent_cost(resort: Resort, prefs: UserPreferences) -> float:
     Used by the Stage 1 feasibility floor. Deliberately EXCLUDES the ski
     pass, because that is Tier 2 (season-banded) and so does vary by date.
     """
-    nights = prefs.trip_nights
+    nights = prefs.nights
     transfer = transfer_cost_eur_per_person(resort, prefs.group_size)
-    equipment = EQUIPMENT_EUR_PER_DAY[prefs.equipment_tier] * nights
+    equipment = EQUIPMENT_EUR_PER_DAY[prefs.equipment_tier] * prefs.ski_days
     food = food_cost_eur(resort, nights, prefs.food_profile)
     return transfer + equipment + food
 
@@ -137,9 +137,9 @@ def cheapest_possible_cost(resort: Resort, prefs: UserPreferences) -> float:
     its best case busts the budget, so pruning can never discard a trip
     that would actually have been affordable.
     """
-    nights = prefs.trip_nights
+    nights = prefs.nights
     # Shoulder band = cheapest, obtained by passing no date.
-    pass_cost = ski_pass_cost(resort, nights, None)
+    pass_cost = ski_pass_cost(resort, prefs.ski_days, None)
     rooms = prefs.rooms_needed or max(1, -(-prefs.group_size // 2))
     accom = (resort.accommodation_eur_per_night * nights * rooms) / prefs.group_size
     subtotal = date_independent_cost(resort, prefs) + pass_cost + accom + flight_cost_eur(resort)
@@ -276,7 +276,7 @@ def search_date_range(
     fallback above (not silent pre-filtering) to handle any that don't
     fit -- the user picked these resorts on purpose.
     """
-    starts = candidate_start_dates(earliest_date, latest_date, prefs.trip_nights,
+    starts = candidate_start_dates(earliest_date, latest_date, prefs.nights,
                                    step_days, start_weekday)
     if not starts:
         return []
@@ -338,7 +338,7 @@ def search_date_range(
     all_static = []
     for resort in shortlist:
         for start in starts:
-            end = start + datetime.timedelta(days=prefs.trip_nights)
+            end = start + datetime.timedelta(days=prefs.nights)
             cost = compute_trip_cost(resort, prefs, start_date=start)
             if not (0 < cost.total_eur):
                 continue  # nonsensical cost, never a real result

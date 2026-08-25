@@ -32,6 +32,7 @@ from ...models import (
     VALID_FOOD_PROFILES, VALID_EQUIPMENT_TIERS, VALID_WEIGHT_KEYS,
 )
 from ...engine.cost_calculator import live_flight_cost_eur, live_accommodation_cost_eur_per_person
+from ...engine.links import google_flights_url, google_hotels_url
 from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
@@ -100,7 +101,12 @@ class SearchRequest(BaseModel):
     # don't want anything under X" is a real preference, not a feasibility
     # problem to work around the way "nothing fits my budget" is.
     min_budget_eur_per_person: Optional[float] = Field(default=None, ge=0)
-    trip_nights: int = Field(gt=0, le=30)
+    # The number of FULL days on the mountain -- see
+    # models.UserPreferences.ski_days' comment for why this, not nights
+    # away, is the field a client sends. Nights away (derived as
+    # ski_days + 1) is what actually drives accommodation/food/flight
+    # date math -- see UserPreferences.nights.
+    ski_days: int = Field(gt=0, le=30)
     group_size: int = Field(default=2, gt=0, le=20)
     skill_level: str = "intermediate"
     accommodation_tier: str = "standard"
@@ -243,6 +249,12 @@ class TripResultOut(BaseModel):
     # allow_over_budget_fallback) -- the frontend MUST show this
     # honestly rather than presenting a flagged result as a normal one.
     within_budget: bool
+    # Links to Google's own live search results, NOT a booking link for
+    # this exact priced itinerary -- see engine/links.py's module
+    # docstring for why. flight_search_url is None when the resort's
+    # airport field has no parseable IATA code.
+    flight_search_url: Optional[str] = None
+    accommodation_search_url: str
 
 
 class SearchResponse(BaseModel):
@@ -289,7 +301,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
     try:
         prefs = UserPreferences(
             budget_eur_per_person=payload.budget_eur_per_person,
-            trip_nights=payload.trip_nights,
+            ski_days=payload.ski_days,
             group_size=payload.group_size,
             skill_level=payload.skill_level,
             accommodation_tier=payload.accommodation_tier,
@@ -340,7 +352,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
 
         def accommodation_cost_fn(resort, start_date, end_date, _prefs):
             return live_accommodation_cost_eur_per_person(
-                resort, start_date, nights=payload.trip_nights,
+                resort, start_date, nights=prefs.nights,
                 group_size=payload.group_size, rooms_needed=prefs.rooms_needed)
 
     trip_options = rank_trips(
@@ -351,6 +363,10 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
 
     if payload.min_budget_eur_per_person is not None:
         trip_options = [t for t in trip_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
+
+    # Same for every result in this route (there's one fixed outbound
+    # date, not one per resort) -- computed once rather than per result.
+    return_date = payload.outbound_date + datetime.timedelta(days=prefs.nights) if payload.outbound_date else None
 
     results = [
         TripResultOut(
@@ -367,6 +383,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             score_components=t.score_components,
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
+            flight_search_url=google_flights_url(t.resort, payload.outbound_date, return_date),
+            accommodation_search_url=google_hotels_url(t.resort),
         )
         for t in trip_options
     ]
@@ -391,7 +409,8 @@ class SearchDateRangeRequest(BaseModel):
     budget_eur_per_person: float = Field(gt=0)
     # See SearchRequest.min_budget_eur_per_person -- same contract.
     min_budget_eur_per_person: Optional[float] = Field(default=None, ge=0)
-    trip_nights: int = Field(gt=0, le=30)
+    # See SearchRequest.ski_days -- same contract.
+    ski_days: int = Field(gt=0, le=30)
     earliest_date: datetime.date
     latest_date: datetime.date
     group_size: int = Field(default=2, gt=0, le=20)
@@ -498,6 +517,9 @@ class DatedTripResultOut(BaseModel):
     score_components: Dict[str, float]
     explanation: str
     within_budget: bool
+    # See TripResultOut's matching fields -- same contract.
+    flight_search_url: Optional[str] = None
+    accommodation_search_url: str
 
 
 class SearchDateRangeResponse(BaseModel):
@@ -534,7 +556,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     try:
         prefs = UserPreferences(
             budget_eur_per_person=payload.budget_eur_per_person,
-            trip_nights=payload.trip_nights,
+            ski_days=payload.ski_days,
             group_size=payload.group_size,
             skill_level=payload.skill_level,
             accommodation_tier=payload.accommodation_tier,
@@ -574,7 +596,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
         def accommodation_cost_fn(resort, start_date, end_date, _prefs):
             return live_accommodation_cost_eur_per_person(
-                resort, start_date, nights=payload.trip_nights,
+                resort, start_date, nights=prefs.nights,
                 group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
             )
 
@@ -596,7 +618,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         dated_options = [t for t in dated_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
 
     candidate_dates = len(candidate_start_dates(
-        payload.earliest_date, payload.latest_date, payload.trip_nights,
+        payload.earliest_date, payload.latest_date, prefs.nights,
         payload.step_days, start_weekday))
 
     results = [
@@ -617,6 +639,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             score_components=t.score_components,
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
+            flight_search_url=google_flights_url(t.resort, t.start_date, t.end_date),
+            accommodation_search_url=google_hotels_url(t.resort),
         )
         for t in dated_options
     ]

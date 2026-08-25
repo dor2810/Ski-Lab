@@ -40,12 +40,12 @@ def main():
     resorts = load_resorts()
 
     # Reproduces the example scenario from the original project spec:
-    # Israeli intermediate/advanced skier, 5 nights, max €1500, cares far
+    # Israeli intermediate/advanced skier, 5 ski days, max €1500, cares far
     # more about skiing/off-piste than luxury, ok with a longer transfer
     # to save money, wants nightlife but doesn't care about fine dining.
     prefs = UserPreferences(
         budget_eur_per_person=1500,
-        trip_nights=5,
+        ski_days=5,
         group_size=2,
         skill_level="advanced",
         accommodation_tier="budget",
@@ -64,7 +64,7 @@ def main():
     results = rank_trips(resorts, prefs, top_n=5)
 
     print(f"Loaded {len(resorts)} resorts from the seed database.")
-    print(f"Budget: €{prefs.budget_eur_per_person}/person · {prefs.trip_nights} nights · "
+    print(f"Budget: €{prefs.budget_eur_per_person}/person · {prefs.ski_days} ski days ({prefs.nights} nights) · "
           f"group of {prefs.group_size}")
     if not results:
         print("\nNo resorts fit within budget at these settings.")
@@ -83,7 +83,7 @@ def main():
     print("Fixed-resort mode demo: 'I already want to go to Livigno'")
     fixed_prefs = UserPreferences(
         budget_eur_per_person=1500,
-        trip_nights=5,
+        ski_days=5,
         group_size=2,
         accommodation_tier="budget",
         target_resort="Livigno",
@@ -103,7 +103,7 @@ def main():
         print("Live flight pricing demo: Val Thorens, Jan 2-9 2027")
         dated_prefs = UserPreferences(
             budget_eur_per_person=1500,
-            trip_nights=5,
+            ski_days=5,
             group_size=2,
             accommodation_tier="budget",
             target_resort="Val Thorens",
@@ -128,10 +128,10 @@ def main():
     # "give me a 10-day range for a 7-day vacation, find good deals in it."
     # Same API::POST /trips/search-dates wraps this exact call.
     print("\n" + "=" * 70)
-    print("Date-range search demo: Val Thorens, 7-night trip, anytime in a 10-day window")
+    print("Date-range search demo: Val Thorens, 7 ski days, anytime in a 10-day window")
     window_prefs = UserPreferences(
         budget_eur_per_person=2300,
-        trip_nights=7,
+        ski_days=7,
         group_size=2,
         accommodation_tier="standard",
         target_resort="Val Thorens",
@@ -148,7 +148,7 @@ def main():
 
         def accom_fn(resort, start_date, end_date, _prefs):
             return live_accommodation_cost_eur_per_person(
-                resort, start_date, nights=window_prefs.trip_nights,
+                resort, start_date, nights=window_prefs.nights,
                 group_size=window_prefs.group_size, rooms_needed=window_prefs.rooms_needed)
 
     dated = search_date_range(

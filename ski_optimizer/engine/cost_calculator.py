@@ -417,8 +417,8 @@ def compute_trip_cost(resort: Resort, prefs: UserPreferences, start_date=None) -
     transfers range EUR22 to EUR220), so each resort's real figure is
     always used. No global constant is ever assumed.
     """
-    nights = prefs.trip_nights
-    ski_days = nights  # Phase 2 simplification: assume ski days == nights
+    nights = prefs.nights          # derived: ski_days + 1, see UserPreferences.nights
+    ski_days = prefs.ski_days
 
     flight = flight_cost_eur(resort)
     transfer = transfer_cost_eur_per_person(
