@@ -1,22 +1,27 @@
-import { LiftPassIcon, TrendIcon, WeatherIcon, PriceIcon, ConfidenceIcon } from "./icons";
+"use client";
 
-const POINTS = [
-  { icon: LiftPassIcon, text: "Real deals from real sources" },
-  { icon: TrendIcon, text: "Live prices and availability" },
-  { icon: WeatherIcon, text: "Snow and weather intelligence" },
-  { icon: PriceIcon, text: "Complete trips, total costs" },
-  { icon: ConfidenceIcon, text: "Book with confidence" },
+import { LiftPassIcon, TrendIcon, WeatherIcon, PriceIcon, ConfidenceIcon } from "./icons";
+import { useTranslation } from "@/lib/i18n/context";
+import type { Dictionary } from "@/lib/i18n/languages";
+
+const POINTS: { icon: typeof LiftPassIcon; key: keyof Dictionary }[] = [
+  { icon: LiftPassIcon, key: "why1" },
+  { icon: TrendIcon, key: "why2" },
+  { icon: WeatherIcon, key: "why3" },
+  { icon: PriceIcon, key: "why4" },
+  { icon: ConfidenceIcon, key: "why5" },
 ];
 
 export function WhySkiLab() {
+  const { t } = useTranslation();
   return (
     <section className="mx-auto max-w-5xl px-6 py-20">
-      <h2 className="text-center font-semibold text-2xl sm:text-3xl mb-12">Why Ski Lab</h2>
+      <h2 className="text-center font-semibold text-2xl sm:text-3xl mb-12">{t("whySkiLabTitle")}</h2>
       <div className="grid gap-8 sm:grid-cols-5">
-        {POINTS.map(({ icon: Icon, text }) => (
-          <div key={text} className="text-center">
+        {POINTS.map(({ icon: Icon, key }) => (
+          <div key={key} className="text-center">
             <Icon size={26} className="mx-auto mb-3 text-sky" />
-            <p className="text-sm text-ice/80">{text}</p>
+            <p className="text-sm text-ice/80">{t(key)}</p>
           </div>
         ))}
       </div>

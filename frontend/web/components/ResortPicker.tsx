@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@/lib/i18n/context";
 
 export type ResortFilterMode = "include" | "exclude";
 
@@ -9,6 +10,12 @@ export type ResortFilterMode = "include" | "exclude";
  * to 2-3 specific resorts ("Only these") or broadly exclude a few
  * ("All except these"), reusing the same multi-select chip list for
  * both -- only the interpretation (include vs exclude) toggles.
+ *
+ * Resort NAMES themselves (Livigno, St. Anton am Arlberg, ...) are
+ * deliberately not translated -- they come from the backend as-is (see
+ * lib/api.ts), and are proper nouns without an authoritative Hebrew
+ * form to draw from. Everything AROUND them (this component's own UI)
+ * is translated.
  */
 export function ResortPicker({
   resortNames,
@@ -23,13 +30,14 @@ export function ResortPicker({
   mode: ResortFilterMode;
   onModeChange: (mode: ResortFilterMode) => void;
 }) {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState("");
   const visible = resortNames.filter((n) => n.toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ice/60">Resorts</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ice/60">{t("resortsLabel")}</p>
         {selected.size > 0 && (
           <div className="flex gap-1 rounded-lg bg-navy p-0.5">
             <button
@@ -39,7 +47,7 @@ export function ResortPicker({
                 mode === "include" ? "bg-signal text-white" : "text-ice/50 hover:text-white"
               }`}
             >
-              Only these
+              {t("resortsOnlyThese")}
             </button>
             <button
               type="button"
@@ -48,22 +56,19 @@ export function ResortPicker({
                 mode === "exclude" ? "bg-signal text-white" : "text-ice/50 hover:text-white"
               }`}
             >
-              Except these
+              {t("resortsExceptThese")}
             </button>
           </div>
         )}
       </div>
 
       {selected.size === 0 && (
-        <p className="mb-2 text-[11px] text-ice/40">
-          None selected = search all resorts. Pick some to search only those, or flip to
-          &ldquo;Except these&rdquo; to exclude them.
-        </p>
+        <p className="mb-2 text-[11px] text-ice/40">{t("resortsNoneSelectedHint")}</p>
       )}
 
       <input
         type="text"
-        placeholder="Filter resorts…"
+        placeholder={t("resortsFilterPlaceholder")}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         className="mb-2 w-full rounded-lg border border-white/15 bg-navy px-3 py-2 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
@@ -71,7 +76,7 @@ export function ResortPicker({
 
       <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-white/10 p-2">
         {resortNames.length === 0 && (
-          <span className="text-xs text-ice/40">Loading resorts…</span>
+          <span className="text-xs text-ice/40">{t("resortsLoading")}</span>
         )}
         {visible.map((name) => {
           const active = selected.has(name);
@@ -94,7 +99,7 @@ export function ResortPicker({
           );
         })}
         {visible.length === 0 && resortNames.length > 0 && (
-          <span className="text-xs text-ice/40">No resorts match &ldquo;{filter}&rdquo;.</span>
+          <span className="text-xs text-ice/40">{t("resortsNoMatch", { filter })}</span>
         )}
       </div>
     </div>

@@ -11,8 +11,10 @@ import { WhySkiLab } from "@/components/WhySkiLab";
 import { Footer } from "@/components/Footer";
 import { searchFixedDates, ApiError, type TripResult } from "@/lib/api";
 import { DEFAULT_RAW_WEIGHTS, normalizeWeights } from "@/components/PrioritySliders";
+import { useTranslation } from "@/lib/i18n/context";
 
 export default function Home() {
+  const { t } = useTranslation();
   // Real search results from the form below (SearchCard always calls
   // /trips/search-dates -- see its own comment on why there's no
   // separate "fixed date" mode any more: a date range no wider than the
@@ -26,7 +28,9 @@ export default function Home() {
   // is replaced outright the first time a real search runs.
   const [preview, setPreview] = useState<TripResult[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  // Raw error data, not a pre-translated string -- so the banner below
+  // stays correct if the user switches language after the fetch fails.
+  const [previewError, setPreviewError] = useState<{ apiMessage: string } | "generic" | null>(null);
 
   // Populate the results section with a REAL search on first load, using
   // sensible defaults -- not hardcoded mock numbers. The brand deck asked
@@ -60,11 +64,7 @@ export default function Home() {
         if (!cancelled) setPreview(data.results);
       } catch (err) {
         if (!cancelled) {
-          setPreviewError(
-            err instanceof ApiError
-              ? `The search engine is warming up or unavailable (${err.message}). Try a search below.`
-              : "Couldn't reach the search engine yet. The free-tier backend may still be starting up -- try a search below in a moment."
-          );
+          setPreviewError(err instanceof ApiError ? { apiMessage: err.message } : "generic");
         }
       } finally {
         if (!cancelled) setPreviewLoading(false);
@@ -99,29 +99,33 @@ export default function Home() {
       <section className="mx-auto max-w-3xl px-6 pb-20">
         {(previewLoading || searching) && (
           <p className="animate-rise-in text-center text-sm text-ice/50">
-            {searching ? "Searching…" : "Finding real trips…"}
+            {searching ? t("searching") : t("findingRealTrips")}
           </p>
         )}
 
         {!previewLoading && previewError && !showingRealSearch && (
-          <p className="text-center text-sm text-amber-300/80">{previewError}</p>
+          <p className="text-center text-sm text-amber-300/80">
+            {previewError === "generic"
+              ? t("previewErrorGeneric")
+              : t("previewErrorApi", { message: previewError.apiMessage })}
+          </p>
         )}
 
         {displayedResults && !searching && (
           <>
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">
-                {showingRealSearch ? "Best trips for your search" : "Example trips right now"}
+                {showingRealSearch ? t("bestTripsForSearch") : t("exampleTripsRightNow")}
               </h2>
               {showingRealSearch && (
                 <span className="text-xs text-ice/40">
-                  {outcome!.livePricingActive ? "Live pricing active" : "Estimated pricing"}
+                  {outcome!.livePricingActive ? t("livePricingActive") : t("estimatedPricing")}
                 </span>
               )}
             </div>
 
             {displayedResults.length === 0 ? (
-              <p className="text-sm text-ice/60">No trips found for those settings — try a wider budget or date range.</p>
+              <p className="text-sm text-ice/60">{t("noTripsFound")}</p>
             ) : (
               <div className="space-y-5">
                 {displayedResults.map((r, i) => (

@@ -1,17 +1,10 @@
-export function formatEUR(value: number): string {
-  return `€${Math.round(value).toLocaleString("en-US")}`;
+export function formatEUR(value: number, locale: string = "en-GB"): string {
+  return `€${Math.round(value).toLocaleString(locale)}`;
 }
 
-export function formatDate(iso: string): string {
+export function formatDate(iso: string, locale: string = "en-GB"): string {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-}
-
-export function seasonLabel(season?: string): string {
-  if (season === "peak") return "Peak";
-  if (season === "high") return "High";
-  if (season === "shoulder") return "Shoulder";
-  return "";
+  return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
 export function todayPlusDays(days: number): string {

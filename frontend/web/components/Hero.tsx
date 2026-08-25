@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "./Logo";
+import { useTranslation } from "@/lib/i18n/context";
 
 /**
  * No real mountain photograph asset was supplied (frontend/images only
@@ -13,6 +14,7 @@ import { Logo } from "./Logo";
  * section's background.
  */
 export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
+  const { t } = useTranslation();
   return (
     <section className="relative overflow-hidden">
       <div
@@ -33,15 +35,13 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
         </div>
 
         <h1 className="font-extrabold leading-[1.05] text-5xl sm:text-6xl lg:text-7xl tracking-tight">
-          Find the perfect line.
+          {t("heroHeadline1")}
           <br />
-          <span className="font-semibold text-ice/90">We do the math.</span>
+          <span className="font-semibold text-ice/90">{t("heroHeadline2")}</span>
         </h1>
 
         <p className="mt-6 text-lg sm:text-xl text-ice/80 max-w-2xl mx-auto">
-          Complete ski trips, priced end to end. Flights, transfers, lodging,
-          lift pass — one real number. Pick exact dates or a whole month and
-          we&rsquo;ll find the best week for you.
+          {t("heroSubhead")}
         </p>
 
         <div className="mt-10 flex items-center justify-center">
@@ -49,7 +49,7 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
             onClick={onPlanTrip}
             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-signal hover:bg-signal/90 transition-colors font-semibold text-white shadow-lg shadow-signal/20"
           >
-            Plan my trip
+            {t("heroCta")}
           </button>
         </div>
       </div>

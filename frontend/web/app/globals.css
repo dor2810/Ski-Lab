@@ -39,6 +39,24 @@ body {
   font-feature-settings: "tnum" 1; /* tabular numerals for price columns */
 }
 
+/* Hebrew (or any future RTL language) support, driven by the `dir`
+   attribute lib/i18n/context.tsx sets on <html>. Two real typography
+   corrections, not just direction: */
+html[dir="rtl"] body {
+  /* Montserrat has no Hebrew glyphs -- Rubik (loaded in layout.tsx)
+     covers both Hebrew and Latin, so brand-name text like "SKI LAB"
+     (deliberately never translated) still renders correctly too. */
+  font-family: var(--font-rubik), Arial, Helvetica, sans-serif;
+}
+html[dir="rtl"] {
+  /* Wide letter-spacing (tracking-wide/tracking-widest, used for
+     labels like step names) is a Latin display-type convention --
+     Hebrew letterforms (especially final forms) read as broken, not
+     stylish, with it. Reset site-wide rather than hunting down every
+     tracking-* class individually. */
+  letter-spacing: normal;
+}
+
 /* Subtle, restrained motion only -- see brand spec section 7. */
 @keyframes rise-in {
   from {

@@ -2,6 +2,7 @@
 
 import type { TripResult } from "@/lib/api";
 import { formatEUR, formatDate } from "@/lib/format";
+import { useTranslation } from "@/lib/i18n/context";
 
 /**
  * Heat-map built entirely from REAL results already returned by
@@ -11,6 +12,7 @@ import { formatEUR, formatDate } from "@/lib/format";
  * guessed color.
  */
 export function PriceCalendar({ results }: { results: TripResult[] }) {
+  const { t, locale } = useTranslation();
   const dated = results.filter((r) => r.start_date);
   if (dated.length === 0) return null;
 
@@ -34,22 +36,22 @@ export function PriceCalendar({ results }: { results: TripResult[] }) {
 
   return (
     <div className="mt-8 rounded-2xl border border-white/10 bg-midnight p-6">
-      <h4 className="mb-4 text-sm font-semibold text-white">Price by start date</h4>
+      <h4 className="mb-4 text-sm font-semibold text-white">{t("priceByStartDate")}</h4>
       <div className="flex flex-wrap gap-2">
         {entries.map(([date, r]) => {
           // Deeper blue = cheaper, per the brand spec.
-          const t = max === min ? 0.5 : 1 - (r.cost.total_eur - min) / (max - min);
-          const bg = `rgba(56, 189, 248, ${0.15 + t * 0.55})`;
+          const tPct = max === min ? 0.5 : 1 - (r.cost.total_eur - min) / (max - min);
+          const bg = `rgba(56, 189, 248, ${0.15 + tPct * 0.55})`;
           return (
             <div
               key={date}
               className="flex w-20 flex-col items-center rounded-lg px-2 py-2.5 text-center"
               style={{ backgroundColor: bg }}
-              title={`${formatDate(date)} — ${formatEUR(r.cost.total_eur)} at ${r.resort.name}`}
+              title={`${formatDate(date, locale)} — ${formatEUR(r.cost.total_eur, locale)} — ${r.resort.name}`}
             >
-              <span className="text-[11px] font-semibold text-white">{formatDate(date)}</span>
+              <span className="text-[11px] font-semibold text-white">{formatDate(date, locale)}</span>
               <span className="text-xs font-bold tabular-nums text-white">
-                {formatEUR(r.cost.total_eur)}
+                {formatEUR(r.cost.total_eur, locale)}
               </span>
             </div>
           );
@@ -57,10 +59,11 @@ export function PriceCalendar({ results }: { results: TripResult[] }) {
       </div>
       {spread > 0 && (
         <p className="mt-4 text-sm text-ice/70">
-          Travelling the week of{" "}
-          <span className="font-semibold text-white">{formatDate(cheapest[0])}</span> saves{" "}
-          <span className="font-semibold text-sky">{formatEUR(spread)}</span> per person versus{" "}
-          {formatDate(priciest[0])}.
+          {t("savesLine", {
+            date1: formatDate(cheapest[0], locale),
+            amount: formatEUR(spread, locale),
+            date2: formatDate(priciest[0], locale),
+          })}
         </p>
       )}
     </div>

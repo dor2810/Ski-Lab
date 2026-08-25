@@ -1,5 +1,8 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/context";
+import type { Dictionary } from "@/lib/i18n/languages";
+
 export type RawWeights = {
   ski_quality: number;
   price: number;
@@ -18,13 +21,13 @@ export const DEFAULT_RAW_WEIGHTS: RawWeights = {
   accommodation: 10,
 };
 
-const LABELS: Record<keyof RawWeights, string> = {
-  ski_quality: "Ski quality",
-  price: "Price",
-  snow: "Snow reliability",
-  nightlife: "Nightlife",
-  convenience: "Convenience",
-  accommodation: "Accommodation comfort",
+const LABEL_KEYS: Record<keyof RawWeights, keyof Dictionary> = {
+  ski_quality: "priorityShiQuality",
+  price: "priorityPrice",
+  snow: "prioritySnow",
+  nightlife: "priorityNightlife",
+  convenience: "priorityConvenience",
+  accommodation: "priorityAccommodation",
 };
 
 /** Sliders don't need to individually sum to 100 -- the displayed % for
@@ -50,13 +53,14 @@ export function PrioritySliders({
   value: RawWeights;
   onChange: (next: RawWeights) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {(Object.keys(LABELS) as (keyof RawWeights)[]).map((key) => (
+      {(Object.keys(LABEL_KEYS) as (keyof RawWeights)[]).map((key) => (
         <div key={key}>
           <div className="mb-1 flex items-center justify-between text-xs">
             <label htmlFor={`slider-${key}`} className="font-medium text-ice/80">
-              {LABELS[key]}
+              {t(LABEL_KEYS[key])}
             </label>
             <span className="tabular-nums font-bold text-sky">
               {normalizePercent(value, key)}%

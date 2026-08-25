@@ -13,6 +13,8 @@ import {
   type TripResult,
 } from "@/lib/api";
 import { todayPlusDays } from "@/lib/format";
+import { useTranslation } from "@/lib/i18n/context";
+import type { Dictionary } from "@/lib/i18n/languages";
 import {
   PrioritySliders,
   DEFAULT_RAW_WEIGHTS,
@@ -27,23 +29,36 @@ export interface SearchOutcome {
   candidateDates: number;
 }
 
-const SKILL_LEVELS: SkillLevel[] = ["beginner", "intermediate", "advanced", "expert"];
-const ACCOM_TIERS: AccommodationTier[] = ["budget", "standard", "luxury"];
-const FOOD_PROFILES: FoodProfile[] = ["budget", "normal", "luxury"];
-const TRANSFER_MODES: { value: TransferMode; label: string }[] = [
-  { value: "shared_shuttle", label: "Shared shuttle" },
-  { value: "private_transfer", label: "Private transfer" },
-  { value: "train", label: "Train" },
-  { value: "bus", label: "Bus" },
+const SKILL_LEVELS: { value: SkillLevel; key: keyof Dictionary }[] = [
+  { value: "beginner", key: "skillBeginner" },
+  { value: "intermediate", key: "skillIntermediate" },
+  { value: "advanced", key: "skillAdvanced" },
+  { value: "expert", key: "skillExpert" },
 ];
-const WEEKDAYS: { value: WeekdayName; label: string }[] = [
-  { value: "monday", label: "Monday" },
-  { value: "tuesday", label: "Tuesday" },
-  { value: "wednesday", label: "Wednesday" },
-  { value: "thursday", label: "Thursday" },
-  { value: "friday", label: "Friday" },
-  { value: "saturday", label: "Saturday" },
-  { value: "sunday", label: "Sunday" },
+const ACCOM_TIERS: { value: AccommodationTier; key: keyof Dictionary }[] = [
+  { value: "budget", key: "tierBudget" },
+  { value: "standard", key: "tierStandard" },
+  { value: "luxury", key: "tierLuxury" },
+];
+const FOOD_PROFILES: { value: FoodProfile; key: keyof Dictionary }[] = [
+  { value: "budget", key: "foodBudget" },
+  { value: "normal", key: "foodNormal" },
+  { value: "luxury", key: "foodLuxury" },
+];
+const TRANSFER_MODES: { value: TransferMode; key: keyof Dictionary }[] = [
+  { value: "shared_shuttle", key: "transferSharedShuttle" },
+  { value: "private_transfer", key: "transferPrivateTransfer" },
+  { value: "train", key: "transferTrain" },
+  { value: "bus", key: "transferBus" },
+];
+const WEEKDAYS: { value: WeekdayName; key: keyof Dictionary }[] = [
+  { value: "monday", key: "weekdayMonday" },
+  { value: "tuesday", key: "weekdayTuesday" },
+  { value: "wednesday", key: "weekdayWednesday" },
+  { value: "thursday", key: "weekdayThursday" },
+  { value: "friday", key: "weekdayFriday" },
+  { value: "saturday", key: "weekdaySaturday" },
+  { value: "sunday", key: "weekdaySunday" },
 ];
 
 function fieldClass() {
@@ -60,6 +75,8 @@ export function SearchCard({
   onOutcome: (outcome: SearchOutcome) => void;
   onSearchStart: () => void;
 }) {
+  const { t } = useTranslation();
+
   // One unified date range: if latest - earliest == trip_nights, this is
   // effectively "exact dates" (a single candidate start date); wider than
   // that, the backend searches every valid start date in between. See
@@ -115,14 +132,14 @@ export function SearchCard({
     setError(null);
 
     if (!(tripNights > 0)) {
-      setError("Trip length must be at least 1 night.");
+      setError(t("errorTripLength"));
       return;
     }
     const windowNights = Math.round(
       (new Date(latest).getTime() - new Date(earliest).getTime()) / 86_400_000
     );
     if (windowNights < tripNights) {
-      setError("The date range must be at least as long as the trip.");
+      setError(t("errorRangeTooShort"));
       return;
     }
 
@@ -155,7 +172,7 @@ export function SearchCard({
         candidateDates: data.candidate_dates_per_resort,
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof ApiError ? err.message : t("errorGeneric"));
     } finally {
       setLoading(false);
     }
@@ -166,13 +183,13 @@ export function SearchCard({
       <div className="rounded-2xl border border-white/10 bg-midnight p-6 sm:p-8">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className={labelClass()}>Departure city</label>
+            <label className={labelClass()}>{t("departureCity")}</label>
             <input value="Tel Aviv (TLV)" disabled className={`${fieldClass()} opacity-60`} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="earliest" className={labelClass()}>Earliest date</label>
+              <label htmlFor="earliest" className={labelClass()}>{t("earliestDate")}</label>
               <input
                 id="earliest" type="date" value={earliest}
                 onChange={(e) => setEarliest(e.target.value)}
@@ -180,7 +197,7 @@ export function SearchCard({
               />
             </div>
             <div>
-              <label htmlFor="latest" className={labelClass()}>Latest return</label>
+              <label htmlFor="latest" className={labelClass()}>{t("latestReturn")}</label>
               <input
                 id="latest" type="date" value={latest}
                 onChange={(e) => setLatest(e.target.value)}
@@ -191,7 +208,7 @@ export function SearchCard({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="nights" className={labelClass()}>Trip length (nights)</label>
+              <label htmlFor="nights" className={labelClass()}>{t("tripLengthNights")}</label>
               <input
                 id="nights" type="number" min={1} max={30} value={tripNights}
                 onChange={(e) => setTripNights(Number(e.target.value))}
@@ -199,23 +216,20 @@ export function SearchCard({
               />
             </div>
             <div>
-              <label htmlFor="weekday" className={labelClass()}>Start day of week</label>
+              <label htmlFor="weekday" className={labelClass()}>{t("startDayOfWeek")}</label>
               <select
                 id="weekday" value={startWeekday}
                 onChange={(e) => setStartWeekday(e.target.value as WeekdayName | "")}
                 className={fieldClass()}
               >
-                <option value="" className="bg-navy">Any day</option>
-                {WEEKDAYS.map(({ value, label }) => (
-                  <option key={value} value={value} className="bg-navy">{label}</option>
+                <option value="" className="bg-navy">{t("anyDay")}</option>
+                {WEEKDAYS.map(({ value, key }) => (
+                  <option key={value} value={value} className="bg-navy">{t(key)}</option>
                 ))}
               </select>
             </div>
           </div>
-          <p className="-mt-3 text-[11px] text-ice/40">
-            Give a wider date range than your trip length and we&rsquo;ll search every valid start
-            date in it (e.g. only Saturdays, if set above) for the best deal.
-          </p>
+          <p className="-mt-3 text-[11px] text-ice/40">{t("rangeHint")}</p>
 
           <ResortPicker
             resortNames={resortNames}
@@ -227,7 +241,7 @@ export function SearchCard({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="travellers" className={labelClass()}>Travellers</label>
+              <label htmlFor="travellers" className={labelClass()}>{t("travellers")}</label>
               <input
                 id="travellers" type="number" min={1} max={20} value={travellers}
                 onChange={(e) => setTravellers(Number(e.target.value))}
@@ -235,21 +249,21 @@ export function SearchCard({
               />
             </div>
             <div>
-              <label htmlFor="skill" className={labelClass()}>Skill level</label>
+              <label htmlFor="skill" className={labelClass()}>{t("skillLevel")}</label>
               <select
                 id="skill" value={skillLevel}
                 onChange={(e) => setSkillLevel(e.target.value as SkillLevel)}
                 className={fieldClass()}
               >
-                {SKILL_LEVELS.map((s) => (
-                  <option key={s} value={s} className="bg-navy">{s[0].toUpperCase() + s.slice(1)}</option>
+                {SKILL_LEVELS.map(({ value, key }) => (
+                  <option key={value} value={value} className="bg-navy">{t(key)}</option>
                 ))}
               </select>
             </div>
           </div>
 
           <div>
-            <label htmlFor="budget" className={labelClass()}>Budget per person (EUR)</label>
+            <label htmlFor="budget" className={labelClass()}>{t("budgetPerPerson")}</label>
             <input
               id="budget" type="number" min={1} value={budget}
               onChange={(e) => setBudget(Number(e.target.value))}
@@ -258,7 +272,7 @@ export function SearchCard({
           </div>
 
           <div>
-            <p className={labelClass()}>Priorities</p>
+            <p className={labelClass()}>{t("priorities")}</p>
             <PrioritySliders value={weights} onChange={setWeights} />
           </div>
 
@@ -268,42 +282,42 @@ export function SearchCard({
               onClick={() => setPrefsOpen((o) => !o)}
               className="text-sm font-semibold text-sky hover:text-sky/80"
             >
-              {prefsOpen ? "Hide optional preferences" : "Optional preferences"}
+              {prefsOpen ? t("hideOptionalPreferences") : t("optionalPreferences")}
             </button>
 
             {prefsOpen && (
               <div className="mt-4 space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="accom" className={labelClass()}>Accommodation tier</label>
+                    <label htmlFor="accom" className={labelClass()}>{t("accommodationTier")}</label>
                     <select
                       id="accom" value={accomTier}
                       onChange={(e) => setAccomTier(e.target.value as AccommodationTier)}
                       className={fieldClass()}
                     >
-                      {ACCOM_TIERS.map((t) => (
-                        <option key={t} value={t} className="bg-navy">{t[0].toUpperCase() + t.slice(1)}</option>
+                      {ACCOM_TIERS.map(({ value, key }) => (
+                        <option key={value} value={value} className="bg-navy">{t(key)}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="food" className={labelClass()}>Food style</label>
+                    <label htmlFor="food" className={labelClass()}>{t("foodStyle")}</label>
                     <select
                       id="food" value={foodProfile}
                       onChange={(e) => setFoodProfile(e.target.value as FoodProfile)}
                       className={fieldClass()}
                     >
-                      {FOOD_PROFILES.map((f) => (
-                        <option key={f} value={f} className="bg-navy">{f[0].toUpperCase() + f.slice(1)}</option>
+                      {FOOD_PROFILES.map(({ value, key }) => (
+                        <option key={value} value={value} className="bg-navy">{t(key)}</option>
                       ))}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <p className={labelClass()}>Transfer types you&apos;ll accept</p>
+                  <p className={labelClass()}>{t("transferTypesAccept")}</p>
                   <div className="flex flex-wrap gap-2">
-                    {TRANSFER_MODES.map(({ value, label }) => {
+                    {TRANSFER_MODES.map(({ value, key }) => {
                       const active = transferModes.has(value);
                       return (
                         <button
@@ -313,25 +327,25 @@ export function SearchCard({
                             active ? "border-sky bg-sky/15 text-sky" : "border-white/15 text-ice/60 hover:border-white/30"
                           }`}
                         >
-                          {label}
+                          {t(key)}
                         </button>
                       );
                     })}
                   </div>
-                  <p className="mt-1 text-[11px] text-ice/40">None selected = no preference.</p>
+                  <p className="mt-1 text-[11px] text-ice/40">{t("transferNonePreference")}</p>
                 </div>
 
                 <div>
-                  <label htmlFor="connections" className={labelClass()}>Maximum flight connections</label>
+                  <label htmlFor="connections" className={labelClass()}>{t("maxFlightConnections")}</label>
                   <select
                     id="connections" value={maxConnections}
                     onChange={(e) => setMaxConnections(e.target.value)}
                     className={fieldClass()}
                   >
-                    <option value="" className="bg-navy">No preference</option>
-                    <option value="0" className="bg-navy">Nonstop only</option>
-                    <option value="1" className="bg-navy">Up to 1 stop</option>
-                    <option value="2" className="bg-navy">Up to 2 stops</option>
+                    <option value="" className="bg-navy">{t("connectionsNoPreference")}</option>
+                    <option value="0" className="bg-navy">{t("connectionsNonstop")}</option>
+                    <option value="1" className="bg-navy">{t("connectionsUpTo1")}</option>
+                    <option value="2" className="bg-navy">{t("connectionsUpTo2")}</option>
                   </select>
                 </div>
               </div>
@@ -349,7 +363,7 @@ export function SearchCard({
             disabled={loading}
             className="w-full rounded-xl bg-signal py-3.5 font-semibold text-white shadow-lg shadow-signal/20 transition-colors hover:bg-signal/90 disabled:opacity-50"
           >
-            {loading ? "Searching…" : "Find my trip"}
+            {loading ? t("searching") : t("findMyTrip")}
           </button>
         </form>
       </div>
