@@ -118,28 +118,26 @@ def alps2alps_search_url() -> str:
     return ALPS2ALPS_BOOKING_FORM_URL
 
 
-# Skiset (skiset.co.uk, confirmed live, 200): a real, major ski/
-# snowboard equipment rental network -- ~800 shops across ~300 resorts,
-# per Skiset's own published coverage -- in France, Austria,
-# Switzerland, Italy, Andorra, and Spain. Confirmed live that Skiset's
-# OWN resort picker on this homepage resolves a resort to an internal
-# ID via an autocomplete API, not a guessable URL slug (checked: a
-# handful of plain /ski-resort/{slug} guesses mostly 404'd) -- so
-# unlike Google Hotels' bare-name search, there's no way to build a
-# resort-specific Skiset link without individually resolving and
-# verifying each resort's own ID, which is real per-resort research,
-# not attempted this pass. This is therefore the real front door, not a
-# resort-specific page -- the user still picks their resort there
-# themselves, same shape as alps2alps_search_url() above.
+# Skiset's own front door -- confirmed live, 200. Used ONLY as the
+# fallback for a resort not in data/equipment_rental_links.py's curated
+# table below (e.g. one added to the spreadsheet later). An earlier
+# pass wrongly assumed Skiset's resort picker only resolves through an
+# internal autocomplete ID with no guessable URL slug -- real per-
+# resort research (see the curated table's own docstring) found that
+# was based on testing the wrong Skiset domain and a couple of bad slug
+# guesses; skiset.co.uk/ski-resort/{slug} and skiset.us/ski-resort/
+# {slug} both resolve directly for most resorts, hence the curated
+# table now existing instead of this bare homepage being the norm.
 SKISET_URL = "https://www.skiset.co.uk/"
 
-# Skiset's own published coverage (see above) doesn't include Bulgaria,
-# Romania, or Slovenia -- this app has resorts in all three (Bansko,
-# Pamporovo, Poiana Brasov, Kranjska Gora, Krvavec). Pointing those at
-# Skiset's front door would be a real, working link to a network that
-# genuinely has nothing there -- worse than a plain search. A Google
-# search for those five instead, same fallback shape as
-# ski_pass_search_url() below.
+# Countries where Skiset's front door is at least a relevant fallback
+# (Skiset itself has real, verified coverage there -- see the curated
+# table). This app also has resorts in Bulgaria, Romania, and Slovenia,
+# where a Skiset link would be real but pointless -- a Google search
+# for those instead, same fallback shape as ski_pass_search_url()
+# below. This only matters for a resort missing from the curated
+# table; every resort currently in this app's data has a real entry
+# there and never reaches this fallback.
 _SKISET_COVERED_COUNTRIES = frozenset({
     "France", "Austria", "Switzerland", "Italy", "Andorra", "Spain",
 })
@@ -147,13 +145,23 @@ _SKISET_COVERED_COUNTRIES = frozenset({
 
 def equipment_search_url(resort: Resort) -> str:
     """
-    A real, working link to start renting ski/snowboard equipment for
-    this resort -- Skiset's own front door when Skiset's published
-    network covers the resort's country, a plain Google search
-    otherwise. Deliberately NOT resort-specific for the Skiset case --
-    see SKISET_URL's own comment on why building one would mean
-    guessing.
+    Where to rent ski/snowboard equipment for this resort -- a real,
+    resort-scoped rental page (Skiset, INTERSPORT Rent, Snowit, or the
+    resort's own official rental page, whichever was actually found and
+    verified) for every one of the 37 resorts in this project's data,
+    from data/equipment_rental_links.py. See that module's own
+    docstring for exactly how each entry was researched and live-
+    verified.
+
+    Falls back to Skiset's bare front door (when Skiset has real
+    coverage in the resort's country) or a plain Google search
+    otherwise, for any resort NOT in that table -- not resort-
+    guaranteed, same tier as ski_pass_search_url()'s own fallback.
     """
+    from ..data.equipment_rental_links import EQUIPMENT_RENTAL_URLS
+    curated = EQUIPMENT_RENTAL_URLS.get(resort.name)
+    if curated:
+        return curated
     if resort.country in _SKISET_COVERED_COUNTRIES:
         return SKISET_URL
     from urllib.parse import quote
