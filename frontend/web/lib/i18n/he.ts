@@ -125,6 +125,7 @@ const he: Record<keyof typeof en, string> = {
   viewFlights: "צפייה בטיסות",
   viewAccommodation: "צפייה במלונות",
   viewTransfer: "צפייה בהסעה",
+  accommodationPropertyNamePrefix: "המחיר עבור:",
   searchLinkDisclaimer: "פותח את תוצאות החיפוש החיות של Google — התוצאה המובילה מקשרת ישירות לטיסה/לינה המתומחרת הזו כשניתן.",
   needsVerificationNote: "חלק מהנתונים עבור אתר זה מסומנים כטעונים אימות.",
   terrainNotAvailable: "פילוח שטח אינו זמין עבור אתר זה.",

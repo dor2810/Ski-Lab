@@ -259,6 +259,22 @@ def test_search_url_omits_ts_when_only_one_date_is_given():
     assert "ts=" not in with_only_checkout
 
 
+def test_search_url_with_property_name_narrows_the_query_text():
+    # Real result, verified live (curl): searching "Hotels in Hôtel Le
+    # Dahu, Chamonix, France" narrows Google's own returned listing from
+    # 62 distinct properties down to 25, with the named property
+    # surfaced at the top -- see this function's own docstring.
+    url = gha.search_url("Chamonix, France", property_name="Hôtel Le Dahu")
+    assert url == (
+        "https://www.google.com/travel/hotels?q=Hotels%20in%20H%C3%B4tel%20Le%20Dahu%2C%20Chamonix%2C%20France"
+        "&hl=en&curr=EUR&gl=us"
+    )
+
+
+def test_search_url_without_property_name_is_unchanged():
+    assert gha.search_url("Chamonix, France") == gha.search_url("Chamonix, France", property_name=None)
+
+
 # --- specific_property_url / _resolve_hotel_mid / _build_qs ---
 #
 # UNVERIFIED end to end (see specific_property_url's own docstring): no

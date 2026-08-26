@@ -11,7 +11,7 @@ from urllib.parse import unquote
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ski_optimizer.data.resort_repository import load_resorts
-from ski_optimizer.engine.links import google_flights_url, google_hotels_url
+from ski_optimizer.engine.links import google_flights_url, google_hotels_url, alps2alps_search_url
 
 
 def _resort(name):
@@ -75,3 +75,18 @@ def test_google_hotels_url_is_dated_and_carries_a_ts_param_when_dates_are_given(
     url = google_hotels_url(r, datetime.date(2027, 1, 10), datetime.date(2027, 1, 17))
     assert url.startswith("https://www.google.com/travel/search?q=")
     assert "&ts=" in url
+
+
+def test_google_hotels_url_narrows_to_a_property_name_when_given():
+    r = _resort("Livigno")
+    url = google_hotels_url(r, property_name="Hotel Bucaneve")
+    decoded = unquote(url)
+    assert "Hotel Bucaneve" in decoded
+    assert "Livigno" in decoded
+
+
+def test_alps2alps_search_url_is_the_real_booking_form():
+    # Confirmed live (curl, 200) -- see engine/links.py's own comment on
+    # why this is the fixed booking-form URL and not a resort-specific
+    # or query-string-prefilled link.
+    assert alps2alps_search_url() == "https://booking.alps2alps.com/booking/index"

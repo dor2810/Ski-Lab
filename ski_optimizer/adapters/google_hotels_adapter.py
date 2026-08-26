@@ -156,7 +156,8 @@ def _build_ts(place_id: str, place_name: str, checkin_date: date, checkout_date:
 
 
 def search_url(place_name: str, checkin_date: Optional[date] = None,
-               checkout_date: Optional[date] = None, currency: str = "EUR") -> str:
+               checkout_date: Optional[date] = None, currency: str = "EUR",
+               property_name: Optional[str] = None) -> str:
     """
     A real Google Hotels deep link for this location -- dated and
     showing real prices when both dates are given. Unlike the flight
@@ -166,19 +167,37 @@ def search_url(place_name: str, checkin_date: Optional[date] = None,
     `ts` blob's place NAME alone (empty place ID), so this whole
     function is pure/offline -- no network call, unlike
     search_accommodation() itself, which does one to actually price
-    properties. Location-level, not one specific hotel: Google Hotels
-    doesn't expose a plain URL scheme for "this one property" without
-    ALSO knowing that property's own place ID, which isn't collected
-    by this module (only the search LOCATION's ID is, and only when
-    actually resolving one for search_accommodation -- see that
-    function).
+    properties. Location-level, not one specific hotel by default:
+    Google Hotels doesn't expose a plain URL scheme for "this one
+    property" without ALSO knowing that property's own place ID, which
+    isn't collected by this module (only the search LOCATION's ID is,
+    and only when actually resolving one for search_accommodation --
+    see that function). specific_property_url() below is the ONE
+    mechanism that reaches a true single-property page, and needs a
+    Knowledge Graph MID for it -- confirmed live to have essentially no
+    coverage of small independent resort hotels (see that function's
+    docstring), so it's often unavailable.
+
+    property_name, when given, is NOT that MID mechanism -- it's a
+    plain-text narrowing, prepended to place_name in both the visible
+    query and the `ts` location field. Verified live for a real result
+    ("Hôtel Le Dahu", Chamonix): narrows Google's returned listing from
+    62 distinct properties down to 25, with the named property surfaced
+    at the top -- a real, measured improvement over the bare resort-wide
+    search, though still a (narrowed) results page, not a guaranteed
+    single-property landing page. Meant as the fallback for exactly the
+    common case specific_property_url() can't reach: property_name
+    comes from the same live scrape that already priced this result
+    (live_accommodation_property_name(), cost_calculator.py), so it's
+    available far more often than a Knowledge Graph match.
     """
     from urllib.parse import quote
 
-    query = f"Hotels in {place_name}"
+    location = f"{property_name}, {place_name}" if property_name else place_name
+    query = f"Hotels in {location}"
     url = f"{SEARCH_URL}?q={quote(query)}&hl=en&curr={currency}&gl=us"
     if checkin_date is not None and checkout_date is not None:
-        ts = _build_ts("", place_name, checkin_date, checkout_date, currency=currency)
+        ts = _build_ts("", location, checkin_date, checkout_date, currency=currency)
         url = url.replace("/hotels?", "/search?") + f"&ts={ts}"
     return url
 

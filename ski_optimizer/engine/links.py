@@ -33,6 +33,10 @@ verified. That history matters for why this file changed shape:
     out to work from a bare place NAME with no resolved place ID at
     all -- verified live -- so the link here can be dated and show real
     prices too, with no extra network call.
+
+alps2alps_search_url() below is the transfer fallback and works
+differently from the two above -- it does NOT search Google at all. See
+its own docstring.
 """
 from datetime import date
 from typing import Optional
@@ -69,6 +73,43 @@ def google_flights_url(resort: Resort, outbound_date: Optional[date] = None,
 
 
 def google_hotels_url(resort: Resort, checkin_date: Optional[date] = None,
-                      checkout_date: Optional[date] = None) -> str:
+                      checkout_date: Optional[date] = None,
+                      property_name: Optional[str] = None) -> str:
+    """
+    property_name narrows this from a resort-wide listing to a search
+    for that one property within the resort -- see
+    google_hotels_adapter.search_url()'s own docstring for what this
+    is (and isn't) verified to do.
+    """
     from ..adapters import google_hotels_adapter
-    return google_hotels_adapter.search_url(f"{resort.name}, {resort.country}", checkin_date, checkout_date)
+    return google_hotels_adapter.search_url(f"{resort.name}, {resort.country}", checkin_date, checkout_date,
+                                            property_name=property_name)
+
+
+# Confirmed live (curl, 200): the real Alps2Alps quote/booking form --
+# https://booking.alps2alps.com/booking/index -- not their plain
+# marketing homepage, and not a guessed resort-specific page. A
+# resort-specific pattern (alps2alps.com/ski-resort-guide-{slug}/) DOES
+# exist for SOME resorts but was confirmed live to 404 for most tried
+# (Val d'Isere, Meribel, Courchevel, Zermatt, Verbier, St. Anton) -- not
+# reliable enough to build from a slug. The booking form itself was
+# also confirmed to take no query-string params for prefilling
+# pickup/dropoff (no such param appears anywhere in its own served
+# JS/CSS asset list), so this can't be dated or routed the way
+# google_flights_url/google_hotels_url are -- it's the same kind of
+# fallback in spirit (always real, always working) but reaches a
+# generic search TOOL, not resort-specific results.
+ALPS2ALPS_BOOKING_FORM_URL = "https://booking.alps2alps.com/booking/index"
+
+
+def alps2alps_search_url() -> str:
+    """
+    The one part of _transfer_search_url's contract that CAN be
+    unconditional -- unlike live_transfer_booking_url() (a specific,
+    live-quoted vehicle for one route/date/group-size), this needs no
+    resort, no date, no group size, and never fails, so it's always
+    available as the fallback that keeps "View Transfer" behaving like
+    "View Flight"/"View Accommodation" -- always a real, working link,
+    never nothing.
+    """
+    return ALPS2ALPS_BOOKING_FORM_URL

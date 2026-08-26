@@ -162,13 +162,19 @@ export interface TripResult {
   // parseable IATA code.
   flight_search_url: string | null;
   accommodation_search_url: string;
-  // A live booking link for the cheapest real transfer quote found
-  // (Alps2Alps) -- null when unavailable (this isn't the top result,
-  // the provider doesn't cover this resort/airport, or no live price
-  // was available for this trip). Display only -- see
+  // The real name of the cheapest live-priced property this result's
+  // accommodation_eur is FOR (e.g. "Hôtel Le Dahu") -- populated for
+  // every live-priced result, not just the top one. null when
+  // accommodation pricing isn't live for this result (no outbound
+  // date, or the live lookup failed -- same cases where cost.
+  // accommodation_price_is_live is false).
+  accommodation_property_name: string | null;
+  // A booking link -- always real and working, same contract as
+  // flight/accommodation above: a live quote for the top result when
+  // available, Alps2Alps' own booking form otherwise. See
   // api/routes/search.py's _transfer_search_url docstring on the
   // backend.
-  transfer_search_url: string | null;
+  transfer_search_url: string;
   // Only ever populated for the single top-ranked result (a live
   // lookup, same reasoning as the booking links above).
   weather: TripWeather | null;

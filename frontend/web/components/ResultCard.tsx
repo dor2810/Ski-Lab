@@ -165,14 +165,19 @@ export function ResultCard({ result }: { result: TripResult }) {
         ))}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      {r.accommodation_property_name && (
+        <p className="mt-4 text-sm text-ice/70">
+          <StayIcon size={14} className="me-1.5 inline-block align-text-bottom text-sky" />
+          {t("accommodationPropertyNamePrefix")} <span className="font-semibold text-white">{r.accommodation_property_name}</span>
+        </p>
+      )}
+
+      <div className={`flex flex-wrap items-center gap-2 ${r.accommodation_property_name ? "mt-2" : "mt-4"}`}>
         {r.flight_search_url && (
           <SearchLinkButton href={r.flight_search_url} label={t("viewFlights")} />
         )}
         <SearchLinkButton href={r.accommodation_search_url} label={t("viewAccommodation")} />
-        {r.transfer_search_url && (
-          <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
-        )}
+        <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
         <span className="text-[11px] text-ice/40">{t("searchLinkDisclaimer")}</span>
       </div>
 

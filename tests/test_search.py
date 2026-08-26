@@ -265,7 +265,10 @@ def test_accommodation_search_url_uses_the_specific_property_link_when_available
 
 def test_accommodation_search_url_falls_back_when_specific_property_url_is_unavailable(authed_client, monkeypatch):
     # The realistic default state (no GOOGLE_KG_API_KEY configured) --
-    # must still carry a real, working resort-level link.
+    # must still carry a real, working link, NARROWED to the real
+    # scraped property name (not just a bare resort-wide search) since
+    # that name is available for free here (same scrape that already
+    # priced this result -- see _accommodation_property_name).
     from ski_optimizer.adapters import google_hotels_adapter
     from ski_optimizer.models import AccommodationOption, AccommodationSearchResult
 
@@ -284,7 +287,10 @@ def test_accommodation_search_url_falls_back_when_specific_property_url_is_unava
     body = resp.json()
     result = body["results"][0]
     assert result["cost"]["accommodation_price_is_live"] is True
+    assert result["accommodation_property_name"] == "Test Hotel"
     assert result["accommodation_search_url"].startswith("https://www.google.com/travel/search?q=")
+    from urllib.parse import unquote
+    assert "Test Hotel" in unquote(result["accommodation_search_url"])
 
 
 def test_transfer_search_url_is_populated_only_for_the_top_result(authed_client, monkeypatch):
@@ -304,11 +310,17 @@ def test_transfer_search_url_is_populated_only_for_the_top_result(authed_client,
     assert len(body["results"]) > 1
     assert len(calls) <= 1
     assert body["results"][0]["transfer_search_url"] == "https://booking.alps2alps.com/fake"
+    # Every OTHER result still gets a real, working link -- just the
+    # generic Alps2Alps booking form, not a live-quoted one (attempt
+    # is gated to the top result only, same as flight/accommodation).
     for result in body["results"][1:]:
-        assert result["transfer_search_url"] is None
+        assert result["transfer_search_url"] == "https://booking.alps2alps.com/booking/index"
 
 
-def test_transfer_search_url_falls_back_to_none_when_the_provider_has_nothing(authed_client, monkeypatch):
+def test_transfer_search_url_falls_back_to_the_booking_form_when_the_provider_has_nothing(authed_client, monkeypatch):
+    # Same "always real, never nothing" contract as flight/
+    # accommodation search URLs -- a failed live quote must not leave
+    # "View Transfer" with nowhere to go.
     from ski_optimizer.api.routes import search as search_route
 
     monkeypatch.setattr(search_route, "live_transfer_booking_url", lambda *a, **k: None)
@@ -317,7 +329,7 @@ def test_transfer_search_url_falls_back_to_none_when_the_provider_has_nothing(au
         "target_resort": "Livigno", "outbound_date": "2027-01-10",
     }, headers=CSRF_HEADERS)
     body = resp.json()
-    assert body["results"][0]["transfer_search_url"] is None
+    assert body["results"][0]["transfer_search_url"] == "https://booking.alps2alps.com/booking/index"
 
 
 def test_only_the_top_result_attempts_a_booking_link(authed_client, monkeypatch):

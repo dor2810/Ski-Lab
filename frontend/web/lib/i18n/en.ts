@@ -130,6 +130,7 @@ const en = {
   viewFlights: "View flights",
   viewAccommodation: "View accommodation",
   viewTransfer: "View transfer",
+  accommodationPropertyNamePrefix: "Priced for:",
   searchLinkDisclaimer: "Opens Google's own live results — the top match links straight to this priced flight/stay when available.",
   needsVerificationNote: "Some data for this resort is flagged as needing verification.",
   terrainNotAvailable: "Terrain breakdown not available for this resort.",
