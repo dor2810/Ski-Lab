@@ -491,6 +491,10 @@ def apply_live_accommodation_price(cost: CostBreakdown, live_price_per_person: f
         misc_eur=round(cost.misc_eur + delta * MISC_COST_RATE, 2),
         flight_price_is_live=cost.flight_price_is_live,
         accommodation_price_is_live=True,
+        # Carried forward explicitly for the same reason the flag above
+        # is: this rebuilds the dataclass field by field, so anything
+        # not named here silently reverts to its default.
+        ski_pass_price_is_researched=cost.ski_pass_price_is_researched,
     )
 
 
@@ -520,6 +524,7 @@ def apply_live_flight_price(cost: CostBreakdown, live_price: float) -> CostBreak
         # order), relying on the default would silently reset an
         # already-live accommodation flag back to False.
         accommodation_price_is_live=cost.accommodation_price_is_live,
+        ski_pass_price_is_researched=cost.ski_pass_price_is_researched,
     )
 
 

@@ -678,3 +678,29 @@ def test_unpriced_resorts_still_use_the_spreadsheet_estimate():
     for name in UNPRICED_RESORTS:
         r = next(x for x in load_resorts() if x.name == name)
         assert ski_pass_cost(r, 6) == r.ski_pass_6day_eur
+
+
+def test_live_repricing_preserves_the_researched_ski_pass_flag():
+    # REGRESSION (found live in production, 2026-08-27): both
+    # apply_live_* helpers rebuild CostBreakdown field by field, so a
+    # newly added flag silently reverts to its default unless it is
+    # named explicitly. ski_pass_price_is_researched was dropped the
+    # moment any live price was applied, so every live-priced result
+    # reported its real researched pass price as an estimate.
+    from ski_optimizer.engine.cost_calculator import (
+        apply_live_flight_price, apply_live_accommodation_price,
+    )
+    from ski_optimizer.models import CostBreakdown
+
+    base = CostBreakdown(
+        flight_eur=200, transfer_eur=50, accommodation_eur=300, ski_pass_eur=350,
+        equipment_eur=100, food_eur=200, misc_eur=60,
+        ski_pass_price_is_researched=True,
+    )
+    assert apply_live_flight_price(base, 275.0).ski_pass_price_is_researched is True
+    assert apply_live_accommodation_price(base, 410.0).ski_pass_price_is_researched is True
+    # And both orderings, since nothing enforces which runs first.
+    both = apply_live_accommodation_price(apply_live_flight_price(base, 275.0), 410.0)
+    assert both.ski_pass_price_is_researched is True
+    assert both.flight_price_is_live is True
+    assert both.accommodation_price_is_live is True
