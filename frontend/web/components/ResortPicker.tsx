@@ -32,7 +32,24 @@ export function ResortPicker({
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
-  const visible = resortNames.filter((n) => n.toLowerCase().includes(filter.toLowerCase()));
+
+  // Selected resorts sort to the front (stable sort preserves each
+  // group's original alphabetical order) -- picking a resort should
+  // make it visibly, immediately part of "what you've chosen", not
+  // leave it wherever it happened to fall alphabetically.
+  const visible = resortNames
+    .filter((n) => n.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a, b) => Number(selected.has(b)) - Number(selected.has(a)));
+
+  // Clearing the filter after a click (not just on select) means
+  // typing a name to find it, tapping it, and immediately seeing the
+  // full list again with your pick now pinned at the front -- exactly
+  // the point of searching for one resort at a time rather than
+  // scrolling the whole list.
+  function handleToggle(name: string) {
+    onToggle(name);
+    setFilter("");
+  }
 
   return (
     <div>
@@ -84,7 +101,7 @@ export function ResortPicker({
             <button
               type="button"
               key={name}
-              onClick={() => onToggle(name)}
+              onClick={() => handleToggle(name)}
               aria-pressed={active}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 active
