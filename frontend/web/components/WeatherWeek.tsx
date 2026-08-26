@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { TripWeather } from "@/lib/api";
 import { formatWeekday } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n/context";
-import { WeatherIcon, SnowIcon } from "./icons";
+import { WeatherIcon, SnowIcon, SnowMountainIcon } from "./icons";
 
 // A single day's temperature range, drawn as a vertical bar from
 // temp_min_c to temp_max_c, scaled against the WEEK's own observed
@@ -42,6 +42,17 @@ function DayBar({
         />
       </div>
       <span className="text-[10px] tabular-nums text-ice/60">{Math.round(day.temp_min_c)}°</span>
+      {/* Base depth (ground snow, cm) -- always shown, even at 0, since
+          "no base" is real information for a trip this far out. Kept
+          visually distinct from the new-snowfall badge below (mountain
+          icon vs. snowflake) so the two aren't read as the same number. */}
+      <div
+        className="flex h-4 items-center gap-0.5 text-[10px] text-white/80"
+        title={t("weatherSnowBaseTooltip")}
+      >
+        <SnowMountainIcon size={10} />
+        <span className="tabular-nums">{Math.round(day.snow_depth_cm)}</span>
+      </div>
       <div className="flex h-4 items-center gap-0.5 text-[10px] text-sky">
         {day.snowfall_cm >= 0.5 ? (
           <>
@@ -95,7 +106,7 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+      <div className="mt-3 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
         <div>
           <div className="text-[11px] text-ice/50">{t("weatherAvgHigh")}</div>
           <div className="text-lg font-bold tabular-nums text-white">
@@ -106,6 +117,17 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
           <div className="text-[11px] text-ice/50">{t("weatherAvgLow")}</div>
           <div className="text-lg font-bold tabular-nums text-white">
             {Math.round(weather.avg_temp_min_c)}°
+          </div>
+        </div>
+        {/* Base depth gets top billing next to the temps -- it's the
+            actual "is there snow to ski on" answer; avg_snowfall_cm
+            (new snow only) is a secondary signal, see its own label. */}
+        <div title={t("weatherSnowBaseTooltip")}>
+          <div className="text-[11px] text-ice/50">{t("weatherSnowBase")}</div>
+          <div className="flex items-center justify-center gap-1 text-lg font-bold tabular-nums text-white">
+            <SnowMountainIcon size={14} className="text-sky" />
+            {Math.round(weather.avg_snow_depth_cm)}
+            <span className="text-xs font-normal text-ice/50">cm</span>
           </div>
         </div>
         <div>

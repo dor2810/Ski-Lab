@@ -378,13 +378,14 @@ def test_weather_carries_a_daily_breakdown_and_an_average(authed_client, monkeyp
 
     days = [
         DailyWeather(date=date(2027, 1, 10), temp_max_c=-1.0, temp_min_c=-8.0, snowfall_cm=2.0,
-                    is_live_forecast=False, years_sampled=5),
+                    snow_depth_cm=45.0, is_live_forecast=False, years_sampled=5),
         DailyWeather(date=date(2027, 1, 11), temp_max_c=-3.0, temp_min_c=-10.0, snowfall_cm=4.0,
-                    is_live_forecast=False, years_sampled=5),
+                    snow_depth_cm=50.0, is_live_forecast=False, years_sampled=5),
     ]
     monkeypatch.setattr(search_route, "get_trip_weather",
                         lambda *a, **k: TripWeatherSummary(days=days, avg_temp_max_c=-2.0,
-                                                           avg_temp_min_c=-9.0, avg_snowfall_cm=3.0))
+                                                           avg_temp_min_c=-9.0, avg_snowfall_cm=3.0,
+                                                           avg_snow_depth_cm=47.5))
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "ski_days": 5,
         "target_resort": "Livigno", "outbound_date": "2027-01-10",
@@ -395,10 +396,12 @@ def test_weather_carries_a_daily_breakdown_and_an_average(authed_client, monkeyp
     assert weather["avg_temp_max_c"] == -2.0
     assert weather["avg_temp_min_c"] == -9.0
     assert weather["avg_snowfall_cm"] == 3.0
+    assert weather["avg_snow_depth_cm"] == 47.5
     assert len(weather["days"]) == 2
     assert weather["days"][0]["date"] == "2027-01-10"
     assert weather["days"][0]["is_live_forecast"] is False
     assert weather["days"][0]["years_sampled"] == 5
+    assert weather["days"][0]["snow_depth_cm"] == 45.0
 
 
 def test_weather_is_none_when_the_provider_has_nothing(authed_client, monkeypatch):
@@ -424,10 +427,11 @@ def test_only_the_top_result_attempts_weather(authed_client, monkeypatch):
 
     calls = []
     day = DailyWeather(date=date(2027, 1, 10), temp_max_c=1.0, temp_min_c=-6.0, snowfall_cm=2.0,
-                       is_live_forecast=False, years_sampled=5)
+                       snow_depth_cm=30.0, is_live_forecast=False, years_sampled=5)
     monkeypatch.setattr(search_route, "get_trip_weather",
                         lambda *a, **k: calls.append(1) or TripWeatherSummary(
-                            days=[day], avg_temp_max_c=1.0, avg_temp_min_c=-6.0, avg_snowfall_cm=2.0))
+                            days=[day], avg_temp_max_c=1.0, avg_temp_min_c=-6.0, avg_snowfall_cm=2.0,
+                            avg_snow_depth_cm=30.0))
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
     }, headers=CSRF_HEADERS)

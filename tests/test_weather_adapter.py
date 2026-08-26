@@ -88,6 +88,7 @@ def test_get_forecast_parses_a_real_shaped_response(monkeypatch):
                 "temperature_2m_max": [-2.5],
                 "temperature_2m_min": [-10.1],
                 "snowfall_sum": [4.2],
+                "snow_depth_max": [0.85],  # meters -- converted to cm
                 "weather_code": [73],
             }
         }
@@ -100,6 +101,7 @@ def test_get_forecast_parses_a_real_shaped_response(monkeypatch):
     assert forecast.temp_max_c == -2.5
     assert forecast.temp_min_c == -10.1
     assert forecast.snowfall_cm == 4.2
+    assert forecast.snow_depth_cm == 85.0
     assert forecast.weather_description == "Moderate snow"
 
 
@@ -111,7 +113,7 @@ def test_get_forecast_caches_identical_queries(monkeypatch):
         return {
             "daily": {
                 "time": ["x"], "temperature_2m_max": [1.0], "temperature_2m_min": [-1.0],
-                "snowfall_sum": [0.0], "weather_code": [0],
+                "snowfall_sum": [0.0], "snow_depth_max": [0.1], "weather_code": [0],
             }
         }
 
@@ -138,6 +140,7 @@ def test_get_historical_average_computes_a_real_mean(monkeypatch):
                 "temperature_2m_max": [-1.0, -3.0, -5.0],
                 "temperature_2m_min": [-8.0, -10.0, -12.0],
                 "snowfall_sum": [0.0, 2.0, 4.0],
+                "snow_depth_max": [0.3, 0.4, 0.5],  # meters
             }
         }
 
@@ -150,6 +153,7 @@ def test_get_historical_average_computes_a_real_mean(monkeypatch):
     assert result.avg_temp_max_c == -3.0
     assert result.avg_temp_min_c == -10.0
     assert result.avg_snowfall_cm == 2.0
+    assert result.avg_snow_depth_cm == 40.0  # mean of 0.3/0.4/0.5m -> 0.4m -> 40cm
     assert result.date_range_label == "Jan 07 - Jan 13"
 
 
@@ -215,6 +219,7 @@ def test_get_forecast_range_parses_a_multi_day_response(monkeypatch):
                 "temperature_2m_max": [15.0, 16.0],
                 "temperature_2m_min": [5.0, 6.0],
                 "snowfall_sum": [0.0, 0.0],
+                "snow_depth_max": [0.0, 0.0],
                 "weather_code": [0, 3],
             }
         }
@@ -227,6 +232,7 @@ def test_get_forecast_range_parses_a_multi_day_response(monkeypatch):
     assert days[0].is_live_forecast is True
     assert days[0].description == "Clear sky"
     assert days[1].description == "Overcast"
+    assert days[0].snow_depth_cm == 0.0
 
 
 # --- get_historical_daily_breakdown ---
@@ -242,6 +248,7 @@ def test_get_historical_daily_breakdown_averages_per_calendar_day(monkeypatch):
                 "temperature_2m_max": [-1.0, -5.0],
                 "temperature_2m_min": [-8.0, -12.0],
                 "snowfall_sum": [1.0, 3.0],
+                "snow_depth_max": [0.2, 0.6],
             }
         }
 
@@ -253,8 +260,10 @@ def test_get_historical_daily_breakdown_averages_per_calendar_day(monkeypatch):
     assert days[0].date == date(2027, 1, 10)
     assert days[0].temp_max_c == -1.0
     assert days[0].years_sampled == 3
+    assert days[0].snow_depth_cm == 20.0
     assert days[1].date == date(2027, 1, 11)
     assert days[1].temp_max_c == -5.0
+    assert days[1].snow_depth_cm == 60.0
 
 
 def test_get_historical_daily_breakdown_makes_one_request_per_year_not_per_day(monkeypatch):
@@ -286,11 +295,11 @@ def test_get_historical_daily_breakdown_skips_a_day_with_no_samples(monkeypatch)
 
 def test_get_trip_weather_combines_forecast_and_historical_days(monkeypatch):
     forecast_day = wa.DailyWeather(date=date.today() + timedelta(days=2), temp_max_c=10.0,
-                                   temp_min_c=2.0, snowfall_cm=0.0, is_live_forecast=True,
-                                   description="Clear sky")
+                                   temp_min_c=2.0, snowfall_cm=0.0, snow_depth_cm=0.0,
+                                   is_live_forecast=True, description="Clear sky")
     historical_day = wa.DailyWeather(date=date.today() + timedelta(days=3), temp_max_c=-2.0,
-                                     temp_min_c=-8.0, snowfall_cm=1.0, is_live_forecast=False,
-                                     years_sampled=5)
+                                     temp_min_c=-8.0, snowfall_cm=1.0, snow_depth_cm=25.0,
+                                     is_live_forecast=False, years_sampled=5)
 
     monkeypatch.setattr(wa, "get_forecast_range", lambda *a, **k: [forecast_day])
     monkeypatch.setattr(wa, "get_historical_daily_breakdown", lambda *a, **k: [historical_day])
@@ -301,6 +310,7 @@ def test_get_trip_weather_combines_forecast_and_historical_days(monkeypatch):
     assert summary.days[0].is_live_forecast is True
     assert summary.days[1].is_live_forecast is False
     assert summary.avg_temp_max_c == 4.0  # (10.0 + -2.0) / 2
+    assert summary.avg_snow_depth_cm == 12.5  # (0.0 + 25.0) / 2
 
 
 def test_get_trip_weather_falls_back_to_historical_for_the_whole_trip_when_forecast_fails(monkeypatch):
@@ -311,8 +321,8 @@ def test_get_trip_weather_falls_back_to_historical_for_the_whole_trip_when_forec
         raise AdapterError("simulated forecast outage")
 
     historical_day = wa.DailyWeather(date=date.today() + timedelta(days=2), temp_max_c=1.0,
-                                     temp_min_c=-3.0, snowfall_cm=0.5, is_live_forecast=False,
-                                     years_sampled=5)
+                                     temp_min_c=-3.0, snowfall_cm=0.5, snow_depth_cm=10.0,
+                                     is_live_forecast=False, years_sampled=5)
     calls = []
 
     def fake_historical(resort, start, end, **kwargs):

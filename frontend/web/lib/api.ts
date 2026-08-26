@@ -117,6 +117,9 @@ export interface DailyWeather {
   temp_max_c: number;
   temp_min_c: number;
   snowfall_cm: number;
+  // Actual ground/base snow depth, NOT recent snowfall (see
+  // snowfall_cm above) -- the real "is there snow to ski on" answer.
+  snow_depth_cm: number;
   description: string | null;
   years_sampled: number | null;
 }
@@ -129,6 +132,7 @@ export interface TripWeather {
   avg_temp_max_c: number;
   avg_temp_min_c: number;
   avg_snowfall_cm: number;
+  avg_snow_depth_cm: number;
 }
 
 export interface TripResult {

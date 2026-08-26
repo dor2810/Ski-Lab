@@ -136,6 +136,8 @@ const he: Record<keyof typeof en, string> = {
   weatherAvgHigh: "מקסימום ממוצע",
   weatherAvgLow: "מינימום ממוצע",
   weatherAvgSnow: "שלג ממוצע",
+  weatherSnowBase: "בסיס שלג",
+  weatherSnowBaseTooltip: "עומק שלג בפועל על הקרקע, לא שלג חדש",
   weatherShowDaily: "הצג יום אחר יום",
   weatherHideDaily: "הסתר יום אחר יום",
   weatherLiveForecast: "תחזית חיה",

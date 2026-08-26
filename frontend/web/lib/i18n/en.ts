@@ -141,6 +141,8 @@ const en = {
   weatherAvgHigh: "Avg high",
   weatherAvgLow: "Avg low",
   weatherAvgSnow: "Avg snowfall",
+  weatherSnowBase: "Snow base",
+  weatherSnowBaseTooltip: "Actual ground snow depth, not new snowfall",
   weatherShowDaily: "Show day by day",
   weatherHideDaily: "Hide day by day",
   weatherLiveForecast: "Live forecast",

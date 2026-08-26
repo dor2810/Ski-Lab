@@ -355,6 +355,7 @@ class WeatherForecast:
     temp_max_c: float
     temp_min_c: float
     snowfall_cm: float
+    snow_depth_cm: float  # actual ground/base snow depth, NOT recent snowfall -- see snowfall_cm
     weather_description: str  # human-readable, decoded from the provider's WMO weather code
 
 
@@ -398,6 +399,7 @@ class HistoricalWeatherAverage:
     avg_temp_max_c: float
     avg_temp_min_c: float
     avg_snowfall_cm: float
+    avg_snow_depth_cm: float  # actual ground/base snow depth, NOT recent snowfall
     years_sampled: int  # how many past years' data actually went into the average
     date_range_label: str  # e.g. "Jan 10 - Jan 17"
 
@@ -419,6 +421,7 @@ class DailyWeather:
     temp_max_c: float
     temp_min_c: float
     snowfall_cm: float
+    snow_depth_cm: float  # actual ground/base snow depth, NOT recent snowfall -- see snowfall_cm
     is_live_forecast: bool
     description: Optional[str] = None       # only ever set for a live-forecast day
     years_sampled: Optional[int] = None      # only ever set for a historical day
@@ -438,6 +441,7 @@ class TripWeatherSummary:
     avg_temp_max_c: float
     avg_temp_min_c: float
     avg_snowfall_cm: float
+    avg_snow_depth_cm: float  # actual ground/base snow depth, NOT recent snowfall
 
 
 # ---------------------------------------------------------------------------

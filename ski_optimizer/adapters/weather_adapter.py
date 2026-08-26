@@ -37,6 +37,19 @@ Needs Resort.latitude/longitude (see that field's own docstring in
 models.py for how they were sourced) -- Open-Meteo takes coordinates,
 not place names.
 
+SNOW CONDITIONS, not just weather: every function here also returns
+snow_depth_cm (ground/base depth) alongside snowfall_cm (NEW snow that
+fell/will fall). Same provider, same two endpoints, same forecast-vs-
+historical split -- Open-Meteo's `snow_depth_max` daily variable
+(meters, converted to cm here) needed no new adapter, no new API key,
+just one more field on the existing request. Live-tested (2026-08-26)
+against Chamonix's coordinates: winter dates (mid-January) returned a
+real, plausible ~0.5m base depth; summer dates correctly returned 0.
+This is the actual "is there snow on the ground" answer a forecast
+temperature can't give on its own -- a mild, dry week can still have a
+great base from earlier storms, and a cold, snowy-looking forecast
+means little if the base is already thin.
+
 VERIFIED LIVE (2026-08-26): both endpoints tested directly against Val
 Thorens' real coordinates -- the forecast endpoint returned real,
 varying multi-day data (correctly resolved to the resort's actual
@@ -93,6 +106,13 @@ def _describe_weather_code(code: Optional[int]) -> str:
     return _WMO_DESCRIPTIONS.get(int(code), f"WMO code {code}")
 
 
+def _m_to_cm(value: Optional[float]) -> float:
+    # Open-Meteo reports snow_depth in meters (unlike snowfall_sum,
+    # which is already cm) -- converted here so every DailyWeather/
+    # WeatherForecast field in this module is in the same unit.
+    return round(value * 100, 1) if value is not None else 0.0
+
+
 def _cache_key(kind: str, resort_name: str, start: datetime.date, end: datetime.date) -> str:
     return "|".join(["weather", kind, resort_name.strip().lower(), str(start), str(end)])
 
@@ -145,7 +165,7 @@ def get_forecast(
 
     data = _fetch_json(FORECAST_URL, {
         "latitude": resort.latitude, "longitude": resort.longitude,
-        "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,weather_code",
+        "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,snow_depth_max,weather_code",
         "timezone": "auto",
         "start_date": target_date.isoformat(), "end_date": target_date.isoformat(),
     })
@@ -160,6 +180,7 @@ def get_forecast(
         temp_max_c=daily["temperature_2m_max"][0],
         temp_min_c=daily["temperature_2m_min"][0],
         snowfall_cm=daily["snowfall_sum"][0],
+        snow_depth_cm=_m_to_cm(daily["snow_depth_max"][0]),
         weather_description=_describe_weather_code(daily["weather_code"][0]),
     )
     if use_cache:
@@ -200,6 +221,7 @@ def get_historical_average(
     all_temp_max: List[float] = []
     all_temp_min: List[float] = []
     all_snowfall: List[float] = []
+    all_snow_depth: List[float] = []
     years_sampled = 0
 
     for years_ago in range(1, years_back + 1):
@@ -216,7 +238,7 @@ def get_historical_average(
         try:
             data = _fetch_json(ARCHIVE_URL, {
                 "latitude": resort.latitude, "longitude": resort.longitude,
-                "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum",
+                "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,snow_depth_max",
                 "timezone": "auto",
                 "start_date": start.isoformat(), "end_date": end.isoformat(),
             })
@@ -227,12 +249,14 @@ def get_historical_average(
         temp_max = [t for t in (daily.get("temperature_2m_max") or []) if t is not None]
         temp_min = [t for t in (daily.get("temperature_2m_min") or []) if t is not None]
         snowfall = [s for s in (daily.get("snowfall_sum") or []) if s is not None]
+        snow_depth = [d for d in (daily.get("snow_depth_max") or []) if d is not None]
         if not temp_max:
             continue
 
         all_temp_max.extend(temp_max)
         all_temp_min.extend(temp_min)
         all_snowfall.extend(snowfall)
+        all_snow_depth.extend(snow_depth)
         years_sampled += 1
 
     if years_sampled == 0:
@@ -244,6 +268,7 @@ def get_historical_average(
         avg_temp_max_c=round(sum(all_temp_max) / len(all_temp_max), 1),
         avg_temp_min_c=round(sum(all_temp_min) / len(all_temp_min), 1),
         avg_snowfall_cm=round(sum(all_snowfall) / len(all_snowfall), 1) if all_snowfall else 0.0,
+        avg_snow_depth_cm=_m_to_cm(sum(all_snow_depth) / len(all_snow_depth)) if all_snow_depth else 0.0,
         years_sampled=years_sampled,
         date_range_label=f"{window_start.strftime('%b %d')} - {window_end.strftime('%b %d')}",
     )
@@ -286,7 +311,7 @@ def get_forecast_range(
 
     data = _fetch_json(FORECAST_URL, {
         "latitude": resort.latitude, "longitude": resort.longitude,
-        "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,weather_code",
+        "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,snow_depth_max,weather_code",
         "timezone": "auto",
         "start_date": clipped_start.isoformat(), "end_date": clipped_end.isoformat(),
     })
@@ -300,6 +325,7 @@ def get_forecast_range(
                 temp_max_c=daily["temperature_2m_max"][i],
                 temp_min_c=daily["temperature_2m_min"][i],
                 snowfall_cm=daily["snowfall_sum"][i],
+                snow_depth_cm=_m_to_cm(daily["snow_depth_max"][i]),
                 is_live_forecast=True,
                 description=_describe_weather_code(daily["weather_code"][i]),
             ))
@@ -341,7 +367,7 @@ def get_historical_daily_breakdown(
             return cached
 
     trip_dates = _trip_dates(start_date, end_date)
-    per_day_samples: Dict[int, List[Tuple[float, float, float]]] = {}
+    per_day_samples: Dict[int, List[Tuple[float, float, float, float]]] = {}
 
     for years_ago in range(1, years_back + 1):
         try:
@@ -352,7 +378,7 @@ def get_historical_daily_breakdown(
         try:
             data = _fetch_json(ARCHIVE_URL, {
                 "latitude": resort.latitude, "longitude": resort.longitude,
-                "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum",
+                "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,snow_depth_max",
                 "timezone": "auto",
                 "start_date": shifted_dates[0].isoformat(), "end_date": shifted_dates[-1].isoformat(),
             })
@@ -366,11 +392,12 @@ def get_historical_daily_breakdown(
                 tmax = daily["temperature_2m_max"][i]
                 tmin = daily["temperature_2m_min"][i]
                 snow = daily["snowfall_sum"][i]
+                depth = daily["snow_depth_max"][i]
             except (IndexError, KeyError):
                 continue
             if tmax is None or tmin is None:
                 continue
-            per_day_samples.setdefault(i, []).append((tmax, tmin, snow or 0.0))
+            per_day_samples.setdefault(i, []).append((tmax, tmin, snow or 0.0, depth or 0.0))
 
     days = []
     for i, trip_date in enumerate(trip_dates):
@@ -382,6 +409,7 @@ def get_historical_daily_breakdown(
             temp_max_c=round(sum(s[0] for s in samples) / len(samples), 1),
             temp_min_c=round(sum(s[1] for s in samples) / len(samples), 1),
             snowfall_cm=round(sum(s[2] for s in samples) / len(samples), 1),
+            snow_depth_cm=_m_to_cm(sum(s[3] for s in samples) / len(samples)),
             is_live_forecast=False,
             years_sampled=len(samples),
         ))
@@ -439,6 +467,7 @@ def get_trip_weather(
         avg_temp_max_c=round(sum(d.temp_max_c for d in all_days) / len(all_days), 1),
         avg_temp_min_c=round(sum(d.temp_min_c for d in all_days) / len(all_days), 1),
         avg_snowfall_cm=round(sum(d.snowfall_cm for d in all_days) / len(all_days), 1),
+        avg_snow_depth_cm=round(sum(d.snow_depth_cm for d in all_days) / len(all_days), 1),
     )
 
 

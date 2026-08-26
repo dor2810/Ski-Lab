@@ -259,6 +259,11 @@ class DailyWeatherOut(BaseModel):
     temp_max_c: float
     temp_min_c: float
     snowfall_cm: float
+    # Actual ground/base snow depth, NOT recent snowfall (see
+    # snowfall_cm) -- adapters/weather_adapter.py's own module
+    # docstring on why both matter: a mild, dry week can still have a
+    # great base from earlier storms, and vice versa.
+    snow_depth_cm: float
     description: Optional[str] = None
     years_sampled: Optional[int] = None
 
@@ -276,6 +281,7 @@ class WeatherOut(BaseModel):
     avg_temp_max_c: float
     avg_temp_min_c: float
     avg_snowfall_cm: float
+    avg_snow_depth_cm: float
 
 
 class TripResultOut(BaseModel):
@@ -406,12 +412,14 @@ def _weather_out(resort: Resort, start_date, end_date, attempt_weather: bool) ->
         days=[
             DailyWeatherOut(date=d.date, is_live_forecast=d.is_live_forecast, temp_max_c=d.temp_max_c,
                             temp_min_c=d.temp_min_c, snowfall_cm=d.snowfall_cm,
+                            snow_depth_cm=d.snow_depth_cm,
                             description=d.description, years_sampled=d.years_sampled)
             for d in summary.days
         ],
         avg_temp_max_c=summary.avg_temp_max_c,
         avg_temp_min_c=summary.avg_temp_min_c,
         avg_snowfall_cm=summary.avg_snowfall_cm,
+        avg_snow_depth_cm=summary.avg_snow_depth_cm,
     )
 
 
