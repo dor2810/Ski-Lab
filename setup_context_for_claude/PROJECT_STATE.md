@@ -1,12 +1,12 @@
 # Ski Lab — Project State
 
-*Updated 2026-08-27. Supersedes the 2026-08-24 version, which was materially wrong by the end: it described 30 resorts (now 37), 270 tests (now 433), SerpApi as the live-pricing backbone (replaced by keyless scrapers), and a Render deployment (migrated to Cloud Run + Firebase Hosting). Read this first; every number below was re-measured against the running system on the date above, not copied forward.*
+*Updated 2026-08-27 (second pass, after the ski-pass/transfer research and the light-theme rework). Supersedes the 2026-08-24 version, which was materially wrong by the end: it described 30 resorts (now 37), 270 tests (now 449), SerpApi as the live-pricing backbone (replaced by keyless scrapers), and a Render deployment (migrated to Cloud Run + Firebase Hosting). Read this first; every number below was re-measured against the running system on the date above, not copied forward.*
 
 ---
 
 ## 1. The verification ledger — read this before trusting anything
 
-**433 of 433 tests pass.** The project is live in production at **https://ski-lab-app.web.app** (frontend) against **https://ski-lab-api-449641203618.us-central1.run.app** (backend).
+**449 of 449 tests pass.** The project is live in production at **https://ski-lab-app.web.app** (frontend) against **https://ski-lab-api-449641203618.us-central1.run.app** (backend).
 
 | Component | Tests | Status |
 |---|---|---|
@@ -22,24 +22,28 @@
 | Response cache | ✅ | 20 tests |
 | Transfer adapter (Alps2Alps, live) | ✅ | 16 tests + verified live |
 | Booking/search links | ✅ | 16 tests |
+| Snow re-ranking (reranker) | ✅ | 10 tests, NEW — was a stub |
 | Rate limiting | ✅ | 8 tests |
 
 ### The one number that matters most, re-measured today
 
-A real production search (Chamonix, 5 ski days, 2 people, Jan 2027) breaks down as:
+A real production search (St. Anton am Arlberg, 5 ski days, 2 people, Jan 2027) now breaks down as:
 
 | Line | € | Source |
 |---|---|---|
-| Flight | 268 | **live** |
-| Accommodation | 201 | **live** |
-| **Ski pass** | **352** | estimate |
-| Food | 288 | estimate |
-| Equipment | 110 | estimate |
-| Transfer | 40 | estimate |
-| Misc (5% buffer) | 63 | estimate |
-| **Total** | **1,322** | **35% live / 65% estimated** |
+| Flight | live quote | **live** |
+| Accommodation | live quote | **live** |
+| **Ski pass** | **352.56** | **sourced** — real published price, per-resort peak band |
+| Transfer | 50.00 | **sourced** — real operator quote |
+| Food | ~288 | estimate (per-day model) |
+| Equipment | ~110 | estimate (per-day model) |
+| Misc (5% buffer) | derived | estimate |
 
-**65% of the headline number is still an estimate, and the single largest line — the ski pass — is a static guess larger than the live flight price.** The blueprint ranks estimate-vs-reality as the #1 project-threatening risk. Two legs are now genuinely live; the other five are not, and nobody has yet checked a full Ski Lab total against a real booked trip. This remains the most important open question in the project.
+**As of the 2026-08-27 research pass this is materially better, but not solved.** The ski pass — the largest line — is no longer a guess for 29 of 37 resorts: it is a REAL published price researched from each resort's own ticketing pages (`data/ski_pass_prices.py`). Transfers went from 15 resorts with no researched data at all to 1. So the total is now roughly: two legs live, two legs genuinely sourced, three still estimated (food, equipment, and the 5% misc buffer).
+
+The estimates that were replaced turned out to be meaningfully wrong, which is the real argument for finishing the job: Méribel's pass was overstated by €118, Bardonecchia's by €106, Courchevel's by €94, while Passo Tonale's PEAK was understated by 45% (€224 estimated vs €325 real).
+
+**Still open:** nobody has yet checked a complete Ski Lab total against a real booked trip. Food and equipment remain per-day model estimates. That end-to-end check is still the most important open question in the project.
 
 ---
 
@@ -51,7 +55,11 @@ A **trip optimization engine**, not a recommendation chatbot, for Israeli travel
 
 **Two query modes, both built and live:** *Plan my trip* (fixed dates, rank resorts) and *Best value* (flexible dates in a window; ranks resort × date combinations).
 
-**Branding:** "Ski Lab." Palette: Crevasse `#0B1526`, Piste Blue `#4A8FE0`, Piste Red `#D64545`, Amber Couloir `#E8A548`. The three accents are **functional** — they encode beginner/intermediate/advanced terrain — and must not be repurposed (never Piste Red for errors).
+**Branding:** "Ski Lab." The three piste accents are **functional** — they encode beginner/intermediate/advanced terrain — and must not be repurposed (never Piste Red for errors; `--color-warn` exists for that).
+
+**The UI is LIGHT as of 2026-08-27**, flipped from the original dark navy. The brand anchor was preserved rather than discarded: Crevasse `#0B1526`, the old page background, is now the primary TEXT colour. Design tokens are semantic (`canvas` / `surface` / `sunken` / `ink` / `muted` / `subtle` / `line` / `signal` / `sky`), NOT literal — the old `navy`/`midnight`/`ice` names had started to describe the wrong things, which is exactly the drift that makes a theme change dangerous. All tokens live in `frontend/web/app/globals.css`.
+
+**The search form leads with one-tap trip styles** (`components/TripStylePresets.tsx`), not the six priority sliders. Someone who skis twice a year cannot answer "snow reliability 15%", and being made to decide is where people abandon the form. Each style sets all six weights plus the accommodation/food tiers at once; the sliders remain behind a fine-tune disclosure for anyone who wants them.
 
 ---
 
@@ -63,6 +71,7 @@ ski_optimizer/
 ├── data/
 │   ├── resort_repository.py       reads Resort objects from the xlsx
 │   ├── ski_pass_links.py          37 curated official ticketing URLs
+│   ├── ski_pass_prices.py         29 REAL published 6-day pass prices
 │   └── equipment_rental_links.py  37 curated rental URLs
 ├── adapters/              ONE FILE PER EXTERNAL SOURCE — nothing else does I/O
 │   ├── google_flights_adapter.py  LIVE, keyless (fast-flights `tfs` protobuf)
@@ -77,7 +86,7 @@ ski_optimizer/
 ├── engine/                PURE LOGIC — no network, no LLM
 │   ├── cost_calculator.py, scoring.py, terrain.py, transfers.py,
 │   ├── date_search.py, weather.py, links.py
-│   └── reranker.py                STUB (never built)
+│   └── reranker.py                snow-condition re-ranking (built 2026-08-27)
 ├── nlp/
 │   ├── explainer.py               templated today, LLM later, same interface
 │   └── preference_parser.py       STUB (never built)
@@ -108,7 +117,8 @@ frontend/web/              Next.js app (the real frontend; older prototypes dele
 ## 5. Data assets
 
 - **`ski_resort_database_seed.xlsx`** — **37 resorts**, 9 countries. 22 resorts have `sourced` terrain data, 4 `sourced_conflicting`, **11 still `estimated`**; 9 resorts carry `needs_verification`.
-- **`transfer_options.xlsx`** — 62 rows covering 30 airport–resort pairs. **15 of 37 resorts have NO researched transfer option at all** and silently fall back to the distance formula: Bansko, Saalbach-Hinterglemm, Poiana Brasov, Kranjska Gora, Formigal, Krvavec, Astún-Candanchú, Bardonecchia, Passo Tonale, Mayrhofen, Zell am See, Les Arcs, Avoriaz, Les Menuires, Vallnord.
+- **`transfer_options.xlsx`** — **88 rows** (was 62). Only **Astún-Candanchú** now lacks a researched transfer option; its bus line is real and timetabled but no operator publishes a fare, so it stays on the distance formula rather than getting an invented number. Rows may now vary by vehicle capacity within a mode, which the engine already supported and which materially improves accuracy (a 3-seat taxi beats an 8-seat minibus for a couple, and the reverse for a group of eight).
+- **`data/ski_pass_prices.py`** — REAL published 6-day adult prices for **29 of 37** resorts, with per-resort peak/shoulder bands where the operator publishes them. Three conventions, chosen deliberately: online/advance rates over counter rates; the LOCAL resort pass over the wider linked-area pass; and per-resort peaks instead of one global multiplier (real ratios run 1.06 to 2.10). The other 8 are documented one by one in `UNPRICED_RESORTS` — mostly structural: Grandvalira and Vallnord price dynamically with no published tariff, and Pamporovo, Formigal and Astún-Candanchú **do not sell a 6-day pass at all**.
 - **`data/ski_pass_links.py`** — official ticketing URL for all 37 resorts, each live-verified (HTTP 200 + page content actually about that resort's passes).
 - **`data/equipment_rental_links.py`** — resort-scoped rental URL for all 37, same verification standard.
 
@@ -139,7 +149,7 @@ Every data field carries a quality tag: `sourced`, `sourced_conflicting`, or `es
 - **11 resorts have estimated terrain data**, 4 more `sourced_conflicting`.
 - **Database is ephemeral** (§4) — accounts lost on every deploy.
 - **Google OAuth is unconfigured.** The "Continue with Google" button is live but cannot work until credentials exist in Google Cloud Console — a step only the project owner can perform.
-- **`engine/reranker.py` is a stub.** Weather and snow depth are fetched and *displayed*, but never move the ranking. This is blueprint Milestone 5, unbuilt.
+- ~~`engine/reranker.py` is a stub~~ **BUILT 2026-08-27** (blueprint Milestone 5). Snow depth now moves the ranking, weighted by the data's own forecast confidence and capped at 0.7 so one week never erases a resort's accumulated record. Hard-gated on the forecast horizon, so a trip beyond ~15 days out costs zero extra requests and is provably unchanged.
 - **`nlp/preference_parser.py` is a stub.** Free-text preference input (blueprint Milestone 6) is unbuilt; the form is the only input path.
 - **The "shift 2 days, save €X" auto-suggestion** (blueprint Milestone 7, stretch) is unbuilt.
 - **`adapters/snow_adapter.py` is a stub and largely superseded** — ground snow depth now comes from Open-Meteo via `weather_adapter.py`. What it would still add is resort-reported conditions (piste status, recent snowfall reports).
@@ -151,11 +161,11 @@ Every data field carries a quality tag: `sourced`, `sourced_conflicting`, or `es
 
 ## 8. Immediate priorities
 
-1. **Sanity-check estimates against real prices.** Still the most important open question (§1). Ski pass is the biggest and most tractable piece — all 37 official price pages are already curated in `data/ski_pass_links.py`.
-2. **Fill the 15 missing transfer routes** (§5) so those resorts' totals stop being partly fictional.
-3. **Move off ephemeral SQLite** (§4) — small change, stops real users losing accounts.
-4. **Google OAuth credentials** — owner-only step; makes an already-shipped button functional.
-5. Then: verify the 11 estimated-terrain resorts; build the reranker (Milestone 5) or NL parsing (Milestone 6).
+1. **Check a complete Ski Lab total against a real booked trip.** Still the most important open question (§1), and now the cheapest it has ever been to answer, since four of seven lines are live or sourced.
+2. **Move off ephemeral SQLite** (§4) — small change, stops real users losing their accounts on every deploy.
+3. **Google OAuth credentials** — owner-only step; makes an already-shipped button functional.
+4. **Food and equipment costs** are the last big estimated lines; equipment especially, since `data/equipment_rental_links.py` already names the exact rental page per resort.
+5. Then: verify the 11 estimated-terrain resorts; NL preference parsing (Milestone 6); the "shift 2 days, save €X" suggestion (Milestone 7).
 
 ---
 
