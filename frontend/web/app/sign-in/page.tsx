@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { ApiError } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n/context";
-import { Logo, Wordmark } from "@/components/Logo";
 
 // A dedicated page, not the inline dropdown ResultCard-style widgets
 // use elsewhere -- the dropdown (see git history, components/
@@ -54,11 +53,6 @@ export default function SignInPage() {
   return (
     <main className="flex min-h-full flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
-        <Link href="/" className="mb-8 flex items-center justify-center gap-2">
-          <Logo size={36} />
-          <Wordmark className="text-lg" />
-        </Link>
-
         <div className="rounded-2xl border border-white/10 bg-midnight p-6 shadow-xl">
           <h1 className="mb-5 text-center text-xl font-bold text-white">
             {mode === "login" ? t("signIn") : t("createAccount")}

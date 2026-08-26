@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Montserrat, Rubik } from "next/font/google";
 import { LanguageProvider } from "@/lib/i18n/context";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AuthProvider } from "@/lib/auth/context";
-import { AuthWidget } from "@/components/AuthWidget";
+import { Header, HEADER_HEIGHT_PX } from "@/components/Header";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -36,10 +35,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-navy text-white">
         <LanguageProvider>
           <AuthProvider>
-            <div className="fixed top-4 end-4 z-50 flex items-center gap-3">
-              <AuthWidget />
-              <LanguageSwitcher />
-            </div>
+            <Header />
+            {/* Spacer matching the fixed header's own height -- Header
+                can't push page content down itself (fixed elements are
+                out of flow), so this stands in for the space it would
+                otherwise take. */}
+            <div style={{ height: HEADER_HEIGHT_PX }} />
             {children}
           </AuthProvider>
         </LanguageProvider>

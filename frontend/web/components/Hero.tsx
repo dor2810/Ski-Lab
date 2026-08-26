@@ -1,6 +1,5 @@
 "use client";
 
-import { Logo } from "./Logo";
 import { useTranslation } from "@/lib/i18n/context";
 
 /**
@@ -26,14 +25,7 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
       />
       <MountainLines />
 
-      <div className="relative mx-auto max-w-5xl px-6 pt-10 pb-28 sm:pt-14 sm:pb-36 text-center">
-        <div className="flex items-center justify-center gap-3 mb-10">
-          <Logo size={40} />
-          <span className="font-extrabold tracking-widest text-lg">
-            SKI <span className="text-sky">LAB</span>
-          </span>
-        </div>
-
+      <div className="relative mx-auto max-w-5xl px-6 pt-16 pb-28 sm:pt-20 sm:pb-36 text-center">
         <h1 className="font-extrabold leading-[1.05] text-5xl sm:text-6xl lg:text-7xl tracking-tight">
           {t("heroHeadline1")}
           <br />
