@@ -163,23 +163,25 @@ def equipment_search_url(resort: Resort) -> str:
 
 def ski_pass_search_url(resort: Resort) -> str:
     """
-    A real, working search for where to buy this resort's lift pass.
+    Where to buy this resort's lift pass -- the resort's own official
+    ticketing page (or a verified authorized reseller where the
+    official site itself blocks automated verification) for every one
+    of the 37 resorts in this project's data, from data/
+    ski_pass_links.py. See that module's own docstring for exactly how
+    each entry was researched and live-verified (curl + content check,
+    not a trusted search snippet), and its two documented caveats
+    (Bardonecchia, Val Gardena).
 
-    Unlike flights/hotels/transfers/equipment, there is no single
-    marketplace (real or otherwise) that sells lift passes across many
-    resorts -- every resort/ski-area runs its own ticketing (spot-
-    checked live: Chamonix's is
-    domaineschamonix.montblancnaturalresort.com, a domain with no
-    predictable relationship to the resort's own name). Hardcoding 37
-    individual official ticketing URLs is real per-resort research, not
-    attempted this pass (see the broad-vs-per-resort scoping decision
-    for equipment_search_url/this function). A plain, resort-named
-    Google search reliably surfaces the resort's own real ticketing
-    page as a top organic result instead -- spot-checked live for
-    Chamonix, landing the real domaineschamonix... page in the first
-    handful of results -- the same "real, working, not resort-
-    guaranteed" tier as google_flights_url's own dateless fallback.
+    Falls back to a plain, resort-named Google search for any resort
+    NOT in that table (e.g. one added to the spreadsheet later, before
+    the table is extended to cover it) -- unlike the curated case this
+    is not resort-guaranteed, same tier as google_flights_url's own
+    dateless fallback, but still real and working.
     """
+    from ..data.ski_pass_links import SKI_PASS_URLS
+    curated = SKI_PASS_URLS.get(resort.name)
+    if curated:
+        return curated
     from urllib.parse import quote
     query = f"buy {resort.name} ski pass lift ticket"
     return f"https://www.google.com/search?q={quote(query)}"

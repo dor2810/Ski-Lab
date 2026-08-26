@@ -113,13 +113,31 @@ def test_equipment_search_url_falls_back_to_a_google_search_for_an_uncovered_cou
     assert "Bulgaria" in decoded
 
 
-def test_ski_pass_search_url_is_a_resort_named_google_search():
-    # No single marketplace sells lift passes across resorts -- see
-    # this function's own docstring -- so every resort, covered or not,
-    # gets the same real search fallback.
+def test_ski_pass_search_url_uses_the_curated_official_link_when_present():
+    # Livigno is one of the 37 curated, live-verified entries in
+    # data/ski_pass_links.py -- see that module's own docstring.
     r = _resort("Livigno")
+    assert ski_pass_search_url(r) == "https://www.skipasslivigno.com/en/skipass-shop-online/"
+
+
+def test_ski_pass_search_url_falls_back_to_a_google_search_for_an_uncurated_resort():
+    # A resort not in the curated table (e.g. added to the spreadsheet
+    # later, before the table is extended) must still get a real,
+    # working link, same fallback tier as google_flights_url's dateless
+    # case.
+    r = _resort("Livigno")
+    r.name = "Not A Real Curated Resort"
     url = ski_pass_search_url(r)
     assert url.startswith("https://www.google.com/search?q=")
     decoded = unquote(url)
-    assert "Livigno" in decoded
-    assert "ski pass" in decoded
+    assert "Not A Real Curated Resort" in decoded
+
+
+def test_every_real_resort_has_a_curated_ski_pass_url():
+    # The curated table (data/ski_pass_links.py) was researched to
+    # cover ALL 37 resorts in this project's data -- catches drift if
+    # either the resort spreadsheet or the curated table changes
+    # without the other being updated to match.
+    from ski_optimizer.data.ski_pass_links import SKI_PASS_URLS
+    real_names = {r.name for r in load_resorts()}
+    assert real_names == set(SKI_PASS_URLS.keys())
