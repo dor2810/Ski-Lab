@@ -115,13 +115,13 @@ export default function Home() {
 
       <section className="mx-auto max-w-3xl px-6 pb-20">
         {(previewLoading || searching) && (
-          <p className="animate-rise-in text-center text-sm text-ice/50">
+          <p className="animate-rise-in text-center text-sm text-subtle">
             {searching ? t("searching") : t("findingRealTrips")}
           </p>
         )}
 
         {!previewLoading && previewError && !showingRealSearch && (
-          <p className="text-center text-sm text-amber-300/80">
+          <p className="text-center text-sm text-warn">
             {previewError === "generic"
               ? t("previewErrorGeneric")
               : t("previewErrorApi", { message: previewError.apiMessage })}
@@ -129,24 +129,24 @@ export default function Home() {
         )}
 
         {!authLoading && !accessToken && !showingRealSearch && (
-          <p className="text-center text-sm text-ice/50">{t("signInToSeeExamples")}</p>
+          <p className="text-center text-sm text-subtle">{t("signInToSeeExamples")}</p>
         )}
 
         {displayedResults && !searching && (
           <>
             <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">
+              <h2 className="text-lg font-semibold text-ink">
                 {showingRealSearch ? t("bestTripsForSearch") : t("exampleTripsRightNow")}
               </h2>
               {showingRealSearch && (
-                <span className="text-xs text-ice/40">
+                <span className="text-xs text-subtle">
                   {outcome!.livePricingActive ? t("livePricingActive") : t("estimatedPricing")}
                 </span>
               )}
             </div>
 
             {displayedResults.length === 0 ? (
-              <p className="text-sm text-ice/60">{t("noTripsFound")}</p>
+              <p className="text-sm text-subtle">{t("noTripsFound")}</p>
             ) : (
               <div className="space-y-5">
                 {displayedResults.map((r, i) => (

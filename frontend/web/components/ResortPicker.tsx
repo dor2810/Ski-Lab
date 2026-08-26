@@ -23,12 +23,19 @@ export function ResortPicker({
   onToggle,
   mode,
   onModeChange,
+  isSignedIn = true,
 }: {
   resortNames: string[];
   selected: Set<string>;
   onToggle: (name: string) => void;
   mode: ResortFilterMode;
   onModeChange: (mode: ResortFilterMode) => void;
+  // The resort list comes from an authenticated endpoint. Without this,
+  // a signed-out visitor sat forever on "Loading resorts…" for a list
+  // that was never going to arrive -- a small lie that reads as a
+  // broken page, which is exactly the kind of thing that makes an
+  // unsure user give up.
+  isSignedIn?: boolean;
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
@@ -54,14 +61,14 @@ export function ResortPicker({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ice/60">{t("resortsLabel")}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtle">{t("resortsLabel")}</p>
         {selected.size > 0 && (
-          <div className="flex gap-1 rounded-lg bg-navy p-0.5">
+          <div className="flex gap-1 rounded-lg bg-canvas p-0.5">
             <button
               type="button"
               onClick={() => onModeChange("include")}
               className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                mode === "include" ? "bg-signal text-white" : "text-ice/50 hover:text-white"
+                mode === "include" ? "bg-signal text-ink" : "text-subtle hover:text-ink"
               }`}
             >
               {t("resortsOnlyThese")}
@@ -70,7 +77,7 @@ export function ResortPicker({
               type="button"
               onClick={() => onModeChange("exclude")}
               className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                mode === "exclude" ? "bg-signal text-white" : "text-ice/50 hover:text-white"
+                mode === "exclude" ? "bg-signal text-ink" : "text-subtle hover:text-ink"
               }`}
             >
               {t("resortsExceptThese")}
@@ -80,7 +87,7 @@ export function ResortPicker({
       </div>
 
       {selected.size === 0 && (
-        <p className="mb-2 text-[11px] text-ice/40">{t("resortsNoneSelectedHint")}</p>
+        <p className="mb-2 text-[11px] text-subtle">{t("resortsNoneSelectedHint")}</p>
       )}
 
       <input
@@ -88,12 +95,14 @@ export function ResortPicker({
         placeholder={t("resortsFilterPlaceholder")}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        className="mb-2 w-full rounded-lg border border-white/15 bg-navy px-3 py-2 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
+        className="mb-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
       />
 
-      <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-white/10 p-2">
+      <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-line p-2">
         {resortNames.length === 0 && (
-          <span className="text-xs text-ice/40">{t("resortsLoading")}</span>
+          <span className="text-xs text-subtle">
+            {isSignedIn ? t("resortsLoading") : t("resortsSignInFirst")}
+          </span>
         )}
         {visible.map((name) => {
           const active = selected.has(name);
@@ -106,9 +115,9 @@ export function ResortPicker({
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 active
                   ? mode === "exclude"
-                    ? "border-red-400/50 bg-red-500/15 text-red-300"
+                    ? "border-warn/50 bg-warn-soft text-warn"
                     : "border-sky bg-sky/15 text-sky"
-                  : "border-white/15 text-ice/60 hover:border-white/30"
+                  : "border-line text-subtle hover:border-line-strong"
               }`}
             >
               {name}
@@ -116,7 +125,7 @@ export function ResortPicker({
           );
         })}
         {visible.length === 0 && resortNames.length > 0 && (
-          <span className="text-xs text-ice/40">{t("resortsNoMatch", { filter })}</span>
+          <span className="text-xs text-subtle">{t("resortsNoMatch", { filter })}</span>
         )}
       </div>
     </div>

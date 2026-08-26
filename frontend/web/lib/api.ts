@@ -108,6 +108,11 @@ export interface CostBreakdown {
   total_eur: number;
   flight_price_is_live: boolean;
   accommodation_price_is_live: boolean;
+  // True = ski_pass_eur is a REAL published 6-day price researched from
+  // the resort's own ticketing pages, not the seed estimate. Not
+  // per-request "live" like the two above, but sourced rather than
+  // guessed -- see api/routes/search.py's CostBreakdownOut.
+  ski_pass_price_is_researched: boolean;
 }
 
 // ONE day of a trip's weather. is_live_forecast true = a real forecast

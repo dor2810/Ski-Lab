@@ -13,6 +13,9 @@ const he: Record<keyof typeof en, string> = {
   heroHeadline2: "אנחנו עושים את החשבון.",
   heroSubhead:
     "טיולי סקי מלאים, מתומחרים מקצה לקצה. טיסות, הסעות, לינה, כרטיס סקי — מספר אמיתי אחד. בחרו תאריכים מדויקים או חודש שלם ואנחנו נמצא לכם את השבוע הכי טוב.",
+  heroTrustLive: "מחירי טיסות ומלונות בזמן אמת",
+  heroTrustTotal: "מחיר סופי אמיתי, לא מחיר פתיחה",
+  heroTrustFree: "חינם, ללא צורך בהזמנה",
   heroCta: "תכננו את הטיול שלי",
 
   // --- Problem section ---
@@ -92,12 +95,33 @@ const he: Record<keyof typeof en, string> = {
   searching: "מחפשים…",
   findMyTrip: "מצאו לי טיול",
 
+  // --- Trip style presets ---
+  styleQuestion: "איזה טיול אתם רוצים?",
+  styleHint: "בחרו אחד ואנחנו נגדיר הכול בהיגיון. אפשר לכוונן אחר כך.",
+  styleBalanced: "קצת מהכול",
+  styleBalancedBlurb: "טיול מאוזן וטוב",
+  styleValue: "הכי משתלם",
+  styleValueBlurb: "הזול ביותר שעדיין טוב",
+  styleSnow: "השלג הכי טוב",
+  styleSnowBlurb: "התנאים הכי אמינים",
+  styleEasy: "קליל ורגוע",
+  styleEasyBlurb: "הסעות קצרות, מדרונות נוחים",
+  styleLively: "תוסס",
+  styleLivelyBlurb: "ברים ואפרה-סקי טובים",
+  styleComfort: "נוחות",
+  styleComfortBlurb: "לינה ואוכל ברמה גבוהה",
+  fineTune: "כוונון עדיפויות",
+  hideFineTune: "הסתירו עדיפויות",
+  fineTuneHint: "רק אם בא לכם. הסגנון שלמעלה כבר הגדיר את אלה.",
+  styleCustom: "מותאם אישית",
+
   // --- Resort picker ---
   resortsLabel: "אתרי סקי",
   resortsOnlyThese: "רק אלה",
   resortsExceptThese: "חוץ מאלה",
   resortsNoneSelectedHint: 'לא נבחר כלום = חיפוש בכל האתרים. בחרו כמה כדי לחפש רק בהם, או עברו ל"חוץ מאלה" כדי להוציא אותם.',
   resortsFilterPlaceholder: "סננו אתרים…",
+  resortsSignInFirst: "התחברו כדי לבחור אתרים מסוימים — או פשוט חפשו בכולם.",
   resortsLoading: "טוען אתרים…",
   resortsNoMatch: 'אין אתרים שתואמים ל"{filter}".',
 
@@ -113,6 +137,8 @@ const he: Record<keyof typeof en, string> = {
   lineFood: "אוכל",
   liveBadge: "לייב",
   estBadge: "מוערך",
+  researchedBadge: "אמיתי",
+  researchedTooltip: "מחיר מפורסם אמיתי מאתר הכרטיסים של האתר — לא הצעת מחיר בזמן אמת, אבל ממקור אמיתי ולא הערכה",
   liveTooltip: "מתומחר ממקור חי, נבדק הרגע",
   estTooltip: "מוערך לפי תעריפים מפורסמים — יש לוודא לפני הזמנה",
   kmPiste: "{km} ק״מ מסלולים",

@@ -18,6 +18,9 @@ const en = {
   heroHeadline2: "We do the math.",
   heroSubhead:
     "Complete ski trips, priced end to end. Flights, transfers, lodging, lift pass — one real number. Pick exact dates or a whole month and we'll find the best week for you.",
+  heroTrustLive: "Live flight & hotel prices",
+  heroTrustTotal: "Real total, not a headline fare",
+  heroTrustFree: "Free, no booking required",
   heroCta: "Plan my trip",
 
   // --- Problem section ---
@@ -97,12 +100,33 @@ const en = {
   searching: "Searching…",
   findMyTrip: "Find my trip",
 
+  // --- Trip style presets ---
+  styleQuestion: "What kind of trip do you want?",
+  styleHint: "Pick one and we'll set everything sensibly. You can fine-tune after.",
+  styleBalanced: "A bit of everything",
+  styleBalancedBlurb: "Good all-round trip",
+  styleValue: "Best value",
+  styleValueBlurb: "Cheapest that's still good",
+  styleSnow: "Best snow",
+  styleSnowBlurb: "Most reliable conditions",
+  styleEasy: "Easy & relaxed",
+  styleEasyBlurb: "Short transfers, gentle slopes",
+  styleLively: "Lively",
+  styleLivelyBlurb: "Good bars and après-ski",
+  styleComfort: "Comfort",
+  styleComfortBlurb: "Nicer places to stay and eat",
+  fineTune: "Fine-tune priorities",
+  hideFineTune: "Hide priorities",
+  fineTuneHint: "Only if you want to. The style above already set these.",
+  styleCustom: "Custom",
+
   // --- Resort picker ---
   resortsLabel: "Resorts",
   resortsOnlyThese: "Only these",
   resortsExceptThese: "Except these",
   resortsNoneSelectedHint: 'None selected = search all resorts. Pick some to search only those, or flip to "Except these" to exclude them.',
   resortsFilterPlaceholder: "Filter resorts…",
+  resortsSignInFirst: "Sign in to pick specific resorts — or just search all of them.",
   resortsLoading: "Loading resorts…",
   resortsNoMatch: 'No resorts match "{filter}".',
 
@@ -118,6 +142,8 @@ const en = {
   lineFood: "Food",
   liveBadge: "LIVE",
   estBadge: "EST.",
+  researchedBadge: "REAL",
+  researchedTooltip: "A real published price from the resort's own ticketing page — not a per-request quote, but sourced rather than estimated",
   liveTooltip: "Priced from a live source, checked just now",
   estTooltip: "Estimated from published rates — verify before booking",
   kmPiste: "{km} km piste",

@@ -19,13 +19,13 @@ export function HowItWorks() {
       <div className="grid gap-10 sm:grid-cols-4">
         {STEPS.map(({ labelKey, icon: Icon, bodyKey }, i) => (
           <div key={labelKey} className="relative text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-midnight border border-white/10">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface border border-line">
               <Icon size={24} className="text-sky" />
             </div>
             <div className="text-xs font-bold tracking-widest text-sky mb-1">
               {String(i + 1).padStart(2, "0")} · {t(labelKey)}
             </div>
-            <p className="text-ice/70 text-sm leading-relaxed">{t(bodyKey)}</p>
+            <p className="text-muted text-sm leading-relaxed">{t(bodyKey)}</p>
           </div>
         ))}
       </div>

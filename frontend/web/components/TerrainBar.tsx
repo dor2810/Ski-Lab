@@ -12,7 +12,7 @@ import { useTranslation } from "@/lib/i18n/context";
 export function TerrainBar({ terrain }: { terrain: TerrainMix | null }) {
   const { t } = useTranslation();
   if (!terrain) {
-    return <p className="text-xs text-ice/50">{t("terrainNotAvailable")}</p>;
+    return <p className="text-xs text-subtle">{t("terrainNotAvailable")}</p>;
   }
 
   const beginner = Math.round(terrain.beginner * 100);
@@ -34,10 +34,10 @@ export function TerrainBar({ terrain }: { terrain: TerrainMix | null }) {
         <div style={{ width: `${intermediate}%` }} className="bg-piste-intermediate" />
         <div style={{ width: `${advanced}%` }} className="bg-piste-advanced" />
       </div>
-      <p className="mt-1.5 text-xs text-ice/60">
+      <p className="mt-1.5 text-xs text-subtle">
         {breakdown}
         {terrain.quality === "estimated" && (
-          <span className="text-ice/40">{t("estimatedSuffix")}</span>
+          <span className="text-subtle">{t("estimatedSuffix")}</span>
         )}
       </p>
     </div>

@@ -53,13 +53,13 @@ export default function SignInPage() {
   return (
     <main className="flex min-h-full flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
-        <div className="rounded-2xl border border-white/10 bg-midnight p-6 shadow-xl">
-          <h1 className="mb-5 text-center text-xl font-bold text-white">
+        <div className="rounded-2xl border border-line bg-surface p-6 shadow-xl">
+          <h1 className="mb-5 text-center text-xl font-bold text-ink">
             {mode === "login" ? t("signIn") : t("createAccount")}
           </h1>
 
           {googleAuthError && (
-            <p className="mb-4 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+            <p className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
               {t("googleSignInFailed")}
             </p>
           )}
@@ -67,15 +67,15 @@ export default function SignInPage() {
           <button
             type="button"
             onClick={loginWithGoogle}
-            className="w-full rounded-lg border border-white/15 py-2.5 text-sm font-semibold text-white hover:border-white/30"
+            className="w-full rounded-lg border border-line py-2.5 text-sm font-semibold text-ink hover:border-line-strong"
           >
             {t("continueWithGoogle")}
           </button>
 
-          <div className="my-4 flex items-center gap-2 text-[11px] text-ice/40">
-            <div className="h-px flex-1 bg-white/10" />
+          <div className="my-4 flex items-center gap-2 text-[11px] text-subtle">
+            <div className="h-px flex-1 bg-sunken" />
             {t("orDivider")}
-            <div className="h-px flex-1 bg-white/10" />
+            <div className="h-px flex-1 bg-sunken" />
           </div>
 
           <form onSubmit={submit} className="space-y-3">
@@ -85,7 +85,7 @@ export default function SignInPage() {
               placeholder={t("emailLabel")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-white/15 bg-navy px-3 py-2.5 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
             />
             <input
               type="password"
@@ -93,15 +93,15 @@ export default function SignInPage() {
               placeholder={t("passwordLabel")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/15 bg-navy px-3 py-2.5 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm text-ink outline-none focus:border-sky focus:ring-1 focus:ring-sky"
             />
 
-            {error && <p className="text-xs text-amber-300/90">{error}</p>}
+            {error && <p className="text-xs text-warn">{error}</p>}
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-signal py-2.5 text-sm font-semibold text-white hover:bg-signal/90 disabled:opacity-60"
+              className="w-full rounded-lg bg-signal py-2.5 text-sm font-semibold text-ink hover:bg-signal/90 disabled:opacity-60"
             >
               {submitting ? t("authWorking") : mode === "login" ? t("signIn") : t("createAccount")}
             </button>
@@ -121,7 +121,7 @@ export default function SignInPage() {
 
         <Link
           href="/"
-          className="mt-6 block text-center text-xs font-medium text-ice/50 hover:text-ice/80"
+          className="mt-6 block text-center text-xs font-medium text-subtle hover:text-muted"
         >
           {t("backToHome")}
         </Link>

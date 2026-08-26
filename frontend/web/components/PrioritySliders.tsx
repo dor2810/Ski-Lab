@@ -59,7 +59,7 @@ export function PrioritySliders({
       {(Object.keys(LABEL_KEYS) as (keyof RawWeights)[]).map((key) => (
         <div key={key}>
           <div className="mb-1 flex items-center justify-between text-xs">
-            <label htmlFor={`slider-${key}`} className="font-medium text-ice/80">
+            <label htmlFor={`slider-${key}`} className="font-medium text-muted">
               {t(LABEL_KEYS[key])}
             </label>
             <span className="tabular-nums font-bold text-sky">

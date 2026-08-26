@@ -21,7 +21,7 @@ export function WhySkiLab() {
         {POINTS.map(({ icon: Icon, key }) => (
           <div key={key} className="text-center">
             <Icon size={26} className="mx-auto mb-3 text-sky" />
-            <p className="text-sm text-ice/80">{t(key)}</p>
+            <p className="text-sm text-muted">{t(key)}</p>
           </div>
         ))}
       </div>

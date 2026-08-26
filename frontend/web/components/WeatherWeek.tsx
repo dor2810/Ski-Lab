@@ -33,21 +33,21 @@ function DayBar({
 
   return (
     <div className="flex w-16 flex-none flex-col items-center gap-1.5">
-      <span className="text-[11px] font-semibold text-ice/70">{formatWeekday(day.date, locale)}</span>
-      <span className="text-[10px] tabular-nums text-white">{Math.round(day.temp_max_c)}°</span>
-      <div className="relative h-20 w-2 rounded-full bg-white/10">
+      <span className="text-[11px] font-semibold text-muted">{formatWeekday(day.date, locale)}</span>
+      <span className="text-[10px] tabular-nums text-ink">{Math.round(day.temp_max_c)}°</span>
+      <div className="relative h-20 w-2 rounded-full bg-sunken">
         <div
-          className={`absolute w-2 rounded-full ${day.temp_max_c <= 0 ? "bg-sky" : "bg-amber-300/80"}`}
+          className={`absolute w-2 rounded-full ${day.temp_max_c <= 0 ? "bg-sky" : "bg-warn/70"}`}
           style={{ top: `${barTop}%`, bottom: `${barBottom}%` }}
         />
       </div>
-      <span className="text-[10px] tabular-nums text-ice/60">{Math.round(day.temp_min_c)}°</span>
+      <span className="text-[10px] tabular-nums text-subtle">{Math.round(day.temp_min_c)}°</span>
       {/* Base depth (ground snow, cm) -- always shown, even at 0, since
           "no base" is real information for a trip this far out. Kept
           visually distinct from the new-snowfall badge below (mountain
           icon vs. snowflake) so the two aren't read as the same number. */}
       <div
-        className="flex h-4 items-center gap-0.5 text-[10px] text-white/80"
+        className="flex h-4 items-center gap-0.5 text-[10px] text-ink/80"
         title={t("weatherSnowBaseTooltip")}
       >
         <SnowMountainIcon size={10} />
@@ -66,7 +66,7 @@ function DayBar({
           have to truncate illegibly. The full explanation is still
           available on hover/long-press via title. */}
       <span
-        className={`h-1.5 w-1.5 rounded-full ${day.is_live_forecast ? "bg-sky" : "bg-ice/40"}`}
+        className={`h-1.5 w-1.5 rounded-full ${day.is_live_forecast ? "bg-sky" : "bg-line-strong"}`}
         title={
           day.is_live_forecast
             ? t("weatherLiveForecast")
@@ -92,9 +92,9 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
   const weekMax = Math.max(...weather.days.map((d) => d.temp_max_c));
 
   return (
-    <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+    <div className="mt-4 rounded-xl border border-line bg-sunken p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <WeatherIcon size={16} className="text-sky" />
           {t("weatherTitle")}
         </div>
@@ -108,14 +108,14 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
         <div>
-          <div className="text-[11px] text-ice/50">{t("weatherAvgHigh")}</div>
-          <div className="text-lg font-bold tabular-nums text-white">
+          <div className="text-[11px] text-subtle">{t("weatherAvgHigh")}</div>
+          <div className="text-lg font-bold tabular-nums text-ink">
             {Math.round(weather.avg_temp_max_c)}°
           </div>
         </div>
         <div>
-          <div className="text-[11px] text-ice/50">{t("weatherAvgLow")}</div>
-          <div className="text-lg font-bold tabular-nums text-white">
+          <div className="text-[11px] text-subtle">{t("weatherAvgLow")}</div>
+          <div className="text-lg font-bold tabular-nums text-ink">
             {Math.round(weather.avg_temp_min_c)}°
           </div>
         </div>
@@ -123,25 +123,25 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
             actual "is there snow to ski on" answer; avg_snowfall_cm
             (new snow only) is a secondary signal, see its own label. */}
         <div title={t("weatherSnowBaseTooltip")}>
-          <div className="text-[11px] text-ice/50">{t("weatherSnowBase")}</div>
-          <div className="flex items-center justify-center gap-1 text-lg font-bold tabular-nums text-white">
+          <div className="text-[11px] text-subtle">{t("weatherSnowBase")}</div>
+          <div className="flex items-center justify-center gap-1 text-lg font-bold tabular-nums text-ink">
             <SnowMountainIcon size={14} className="text-sky" />
             {Math.round(weather.avg_snow_depth_cm)}
-            <span className="text-xs font-normal text-ice/50">cm</span>
+            <span className="text-xs font-normal text-subtle">cm</span>
           </div>
         </div>
         <div>
-          <div className="text-[11px] text-ice/50">{t("weatherAvgSnow")}</div>
-          <div className="flex items-center justify-center gap-1 text-lg font-bold tabular-nums text-white">
+          <div className="text-[11px] text-subtle">{t("weatherAvgSnow")}</div>
+          <div className="flex items-center justify-center gap-1 text-lg font-bold tabular-nums text-ink">
             <SnowIcon size={14} className="text-sky" />
             {Math.round(weather.avg_snowfall_cm)}
-            <span className="text-xs font-normal text-ice/50">cm</span>
+            <span className="text-xs font-normal text-subtle">cm</span>
           </div>
         </div>
       </div>
 
       {expanded && (
-        <div className="mt-4 flex gap-3 overflow-x-auto border-t border-white/10 pt-4">
+        <div className="mt-4 flex gap-3 overflow-x-auto border-t border-line pt-4">
           {weather.days.map((d) => (
             <DayBar key={d.date} day={d} weekMin={weekMin} weekMax={weekMax} locale={locale} />
           ))}

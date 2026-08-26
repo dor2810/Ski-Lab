@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${montserrat.variable} ${rubik.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-navy text-white">
+      <body className="min-h-full flex flex-col bg-canvas text-ink">
         <LanguageProvider>
           <AuthProvider>
             <Header />

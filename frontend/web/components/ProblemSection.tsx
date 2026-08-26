@@ -18,8 +18,8 @@ export function ProblemSection() {
         {PROBLEMS.map(({ icon: Icon, titleKey, bodyKey }) => (
           <div key={titleKey} className="text-center sm:text-start">
             <Icon size={28} className="text-sky mb-4 mx-auto sm:mx-0" />
-            <h3 className="font-semibold text-lg text-white mb-2">{t(titleKey)}</h3>
-            <p className="text-ice/70 text-sm leading-relaxed">{t(bodyKey)}</p>
+            <h3 className="font-semibold text-lg text-ink mb-2">{t(titleKey)}</h3>
+            <p className="text-muted text-sm leading-relaxed">{t(bodyKey)}</p>
           </div>
         ))}
       </div>

@@ -19,8 +19,24 @@ import {
   ExternalLinkIcon,
 } from "./icons";
 
-function LivePill({ live }: { live: boolean }) {
+// Three honest states, not two. "LIVE" = quoted per-request just now;
+// "REAL" = a genuinely published price we researched (lift passes,
+// transfers), which is sourced but not per-request; "EST." = the seed
+// spreadsheet's estimate. Collapsing the middle case into either
+// neighbour would misrepresent it in one direction or the other.
+function SourcePill({ kind }: { kind: "live" | "researched" | "estimated" }) {
   const { t } = useTranslation();
+  if (kind === "researched") {
+    return (
+      <span
+        className="ms-1.5 inline-block rounded-full bg-signal-soft px-2 py-0.5 text-[10px] font-bold tracking-wide text-signal align-middle"
+        title={t("researchedTooltip")}
+      >
+        {t("researchedBadge")}
+      </span>
+    );
+  }
+  const live = kind === "live";
   return live ? (
     <span
       className="ms-1.5 inline-block rounded-full bg-sky/20 px-2 py-0.5 text-[10px] font-bold tracking-wide text-sky align-middle"
@@ -30,7 +46,7 @@ function LivePill({ live }: { live: boolean }) {
     </span>
   ) : (
     <span
-      className="ms-1.5 inline-block rounded-full bg-ice/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-ice/60 align-middle"
+      className="ms-1.5 inline-block rounded-full bg-sunken px-2 py-0.5 text-[10px] font-bold tracking-wide text-subtle align-middle"
       title={t("estTooltip")}
     >
       {t("estBadge")}
@@ -74,7 +90,7 @@ function SearchLinkButton({ href, label }: { href: string; label: string }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-sky hover:border-sky/60 hover:bg-sky/10"
+      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-sky hover:border-sky/60 hover:bg-sky/10"
     >
       <ExternalLinkIcon size={13} />
       {label}
@@ -82,19 +98,23 @@ function SearchLinkButton({ href, label }: { href: string; label: string }) {
   );
 }
 
-function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Dictionary; value: number; live: boolean | null }[] {
+type SourceKind = "live" | "researched" | "estimated" | null;
+
+function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Dictionary; value: number; source: SourceKind }[] {
   return [
-    { icon: FlightIcon, labelKey: "lineFlight", value: r.cost.flight_eur, live: r.cost.flight_price_is_live },
-    { icon: TransferIcon, labelKey: "lineTransfer", value: r.cost.transfer_eur, live: null },
+    { icon: FlightIcon, labelKey: "lineFlight", value: r.cost.flight_eur,
+      source: r.cost.flight_price_is_live ? "live" : "estimated" },
+    { icon: TransferIcon, labelKey: "lineTransfer", value: r.cost.transfer_eur, source: null },
     {
       icon: StayIcon,
       labelKey: "lineAccommodation",
       value: r.cost.accommodation_eur,
-      live: r.cost.accommodation_price_is_live,
+      source: r.cost.accommodation_price_is_live ? "live" : "estimated",
     },
-    { icon: LiftPassIcon, labelKey: "lineLiftPass", value: r.cost.ski_pass_eur, live: null },
-    { icon: GondolaIcon, labelKey: "lineEquipment", value: r.cost.equipment_eur, live: null },
-    { icon: FoodIcon, labelKey: "lineFood", value: r.cost.food_eur, live: null },
+    { icon: LiftPassIcon, labelKey: "lineLiftPass", value: r.cost.ski_pass_eur,
+      source: r.cost.ski_pass_price_is_researched ? "researched" : "estimated" },
+    { icon: GondolaIcon, labelKey: "lineEquipment", value: r.cost.equipment_eur, source: null },
+    { icon: FoodIcon, labelKey: "lineFood", value: r.cost.food_eur, source: null },
   ];
 }
 
@@ -108,12 +128,12 @@ export function ResultCard({ result }: { result: TripResult }) {
     <article
       className={`animate-rise-in rounded-2xl border p-6 sm:p-7 ${
         r.within_budget
-          ? "border-white/10 bg-midnight"
-          : "border-amber-400/40 bg-midnight ring-1 ring-amber-400/20"
+          ? "border-line bg-surface"
+          : "border-warn/40 bg-surface ring-1 ring-warn/20"
       }`}
     >
       {!r.within_budget && (
-        <div className="mb-4 rounded-lg bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-300">
+        <div className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-xs font-semibold text-warn">
           {t("overBudgetBanner")}
         </div>
       )}
@@ -122,13 +142,13 @@ export function ResultCard({ result }: { result: TripResult }) {
         <div>
           {/* Resort/country names are proper nouns from the backend --
               deliberately not translated, see ResortPicker's comment. */}
-          <h3 className="text-xl font-bold text-white">{r.resort.name}</h3>
-          <p className="text-sm text-ice/60">{r.resort.country}</p>
+          <h3 className="text-xl font-bold text-ink">{r.resort.name}</h3>
+          <p className="text-sm text-subtle">{r.resort.country}</p>
           {r.start_date && r.end_date && (
             <p className="mt-1 text-sm text-sky">
               {formatDate(r.start_date, locale)} – {formatDate(r.end_date, locale)}
               {r.season && SEASON_KEYS[r.season] && (
-                <span className="ms-2 rounded bg-white/5 px-1.5 py-0.5 text-[11px] font-semibold text-ice/70">
+                <span className="ms-2 rounded bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-muted">
                   {t(SEASON_KEYS[r.season])}
                 </span>
               )}
@@ -138,10 +158,10 @@ export function ResultCard({ result }: { result: TripResult }) {
 
         <div className="flex items-center gap-4">
           <div className="text-end">
-            <div className="text-3xl font-extrabold tabular-nums text-white">
+            <div className="text-3xl font-extrabold tabular-nums text-ink">
               {formatEUR(r.cost.total_eur, locale)}
             </div>
-            <div className="text-xs text-ice/50">{t("perPersonTotal")}</div>
+            <div className="text-xs text-subtle">{t("perPersonTotal")}</div>
           </div>
           <div
             className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 border-sky/60 text-sm font-bold text-sky"
@@ -152,23 +172,23 @@ export function ResultCard({ result }: { result: TripResult }) {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-        {lineItems(r).map(({ icon: Icon, labelKey, value, live }) => (
+      <div className="mt-6 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {lineItems(r).map(({ icon: Icon, labelKey, value, source }) => (
           <div key={labelKey} className="flex items-center gap-2 text-sm">
             <Icon size={16} className="flex-none text-sky" />
-            <span className="text-ice/70">{t(labelKey)}</span>
-            <span className="ms-auto font-semibold tabular-nums text-white">
+            <span className="whitespace-nowrap text-muted">{t(labelKey)}</span>
+            <span className="ms-auto whitespace-nowrap font-semibold tabular-nums text-ink">
               {formatEUR(value, locale)}
             </span>
-            {live !== null && <LivePill live={live} />}
+            {source !== null && <SourcePill kind={source} />}
           </div>
         ))}
       </div>
 
       {r.accommodation_property_name && (
-        <p className="mt-4 text-sm text-ice/70">
+        <p className="mt-4 text-sm text-muted">
           <StayIcon size={14} className="me-1.5 inline-block align-text-bottom text-sky" />
-          {t("accommodationPropertyNamePrefix")} <span className="font-semibold text-white">{r.accommodation_property_name}</span>
+          {t("accommodationPropertyNamePrefix")} <span className="font-semibold text-ink">{r.accommodation_property_name}</span>
         </p>
       )}
 
@@ -180,7 +200,7 @@ export function ResultCard({ result }: { result: TripResult }) {
         <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
         <SearchLinkButton href={r.equipment_search_url} label={t("viewEquipment")} />
         <SearchLinkButton href={r.ski_pass_search_url} label={t("viewSkiPass")} />
-        <span className="text-[11px] text-ice/40">{t("searchLinkDisclaimer")}</span>
+        <span className="text-[11px] text-subtle">{t("searchLinkDisclaimer")}</span>
       </div>
 
       <WeatherWeek weather={r.weather} />
@@ -189,7 +209,7 @@ export function ResultCard({ result }: { result: TripResult }) {
         <TerrainBar terrain={r.resort.terrain} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-ice/60">
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-subtle">
         <span>{t("kmPiste", { km: r.resort.piste_km })}</span>
         <span className="flex items-center gap-1">
           <PinIcon size={12} /> {t("minFromAirport", { min: Math.round(r.resort.transfer_time_minutes), airport: r.resort.nearest_airport })}
@@ -204,7 +224,7 @@ export function ResultCard({ result }: { result: TripResult }) {
       {/* r.explanation comes pre-translated from the backend (see
           nlp/explainer.py's lang param) and already starts with the
           localized "Why:" equivalent -- no separate label needed here. */}
-      <p className="mt-4 text-sm leading-relaxed text-ice/80">{r.explanation}</p>
+      <p className="mt-4 text-sm leading-relaxed text-muted">{r.explanation}</p>
 
       <button
         onClick={() => setExpanded((e) => !e)}
@@ -214,15 +234,15 @@ export function ResultCard({ result }: { result: TripResult }) {
       </button>
 
       {expanded && (
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-white/10 pt-4 text-xs sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-line pt-4 text-xs sm:grid-cols-3">
           {Object.entries(r.score_components).map(([dim, val]) => (
-            <div key={dim} className="flex justify-between text-ice/60">
+            <div key={dim} className="flex justify-between text-subtle">
               <span className="capitalize">{DIMENSION_KEYS[dim] ? t(DIMENSION_KEYS[dim]) : dim.replace("_", " ")}</span>
-              <span className="tabular-nums text-ice/80">{Math.round(val * 100)}%</span>
+              <span className="tabular-nums text-muted">{Math.round(val * 100)}%</span>
             </div>
           ))}
           {r.resort.needs_verification && (
-            <p className="col-span-full mt-1 text-amber-300/80">{t("needsVerificationNote")}</p>
+            <p className="col-span-full mt-1 text-warn">{t("needsVerificationNote")}</p>
           )}
         </div>
       )}

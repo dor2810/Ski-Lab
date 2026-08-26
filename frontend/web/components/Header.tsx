@@ -21,7 +21,7 @@ export const HEADER_HEIGHT_PX = 64;
 export function Header() {
   return (
     <header
-      className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-midnight/90 backdrop-blur-sm"
+      className="fixed inset-x-0 top-0 z-50 border-b border-line bg-surface/90 backdrop-blur-sm"
       style={{ height: HEADER_HEIGHT_PX }}
     >
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">

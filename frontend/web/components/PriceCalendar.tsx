@@ -35,8 +35,8 @@ export function PriceCalendar({ results }: { results: TripResult[] }) {
   const spread = priciest[1].cost.total_eur - cheapest[1].cost.total_eur;
 
   return (
-    <div className="mt-8 rounded-2xl border border-white/10 bg-midnight p-6">
-      <h4 className="mb-4 text-sm font-semibold text-white">{t("priceByStartDate")}</h4>
+    <div className="mt-8 rounded-2xl border border-line bg-surface p-6">
+      <h4 className="mb-4 text-sm font-semibold text-ink">{t("priceByStartDate")}</h4>
       <div className="flex flex-wrap gap-2">
         {entries.map(([date, r]) => {
           // Deeper blue = cheaper, per the brand spec.
@@ -49,8 +49,8 @@ export function PriceCalendar({ results }: { results: TripResult[] }) {
               style={{ backgroundColor: bg }}
               title={`${formatDate(date, locale)} — ${formatEUR(r.cost.total_eur, locale)} — ${r.resort.name}`}
             >
-              <span className="text-[11px] font-semibold text-white">{formatDate(date, locale)}</span>
-              <span className="text-xs font-bold tabular-nums text-white">
+              <span className="text-[11px] font-semibold text-ink">{formatDate(date, locale)}</span>
+              <span className="text-xs font-bold tabular-nums text-ink">
                 {formatEUR(r.cost.total_eur, locale)}
               </span>
             </div>
@@ -58,7 +58,7 @@ export function PriceCalendar({ results }: { results: TripResult[] }) {
         })}
       </div>
       {spread > 0 && (
-        <p className="mt-4 text-sm text-ice/70">
+        <p className="mt-4 text-sm text-muted">
           {t("savesLine", {
             date1: formatDate(cheapest[0], locale),
             amount: formatEUR(spread, locale),

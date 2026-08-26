@@ -30,11 +30,11 @@ export function AuthWidget() {
   if (user) {
     return (
       <div className="flex items-center gap-2 text-xs">
-        <span className="hidden text-ice/60 sm:inline">{user.display_name || user.email}</span>
+        <span className="hidden text-subtle sm:inline">{user.display_name || user.email}</span>
         <button
           type="button"
           onClick={logout}
-          className="rounded-lg border border-white/15 px-2.5 py-1.5 font-semibold text-ice/70 hover:border-white/30 hover:text-white"
+          className="rounded-lg border border-line px-2.5 py-1.5 font-semibold text-muted hover:border-line-strong hover:text-ink"
         >
           {t("signOut")}
         </button>
@@ -45,7 +45,7 @@ export function AuthWidget() {
   return (
     <Link
       href="/sign-in"
-      className="rounded-lg bg-signal px-3 py-1.5 text-xs font-semibold text-white hover:bg-signal/90"
+      className="rounded-lg bg-signal px-3 py-1.5 text-xs font-semibold text-ink hover:bg-signal/90"
     >
       {t("signIn")}
     </Link>

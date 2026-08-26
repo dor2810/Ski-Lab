@@ -14,7 +14,7 @@ export function LanguageSwitcher() {
 
   return (
     <div
-      className="inline-flex gap-1 rounded-lg bg-midnight/80 p-1 backdrop-blur-sm border border-white/10"
+      className="inline-flex gap-1 rounded-lg bg-surface/80 p-1 backdrop-blur-sm border border-line"
       role="group"
       aria-label={t("languageLabel")}
     >
@@ -25,7 +25,7 @@ export function LanguageSwitcher() {
           onClick={() => setLanguageCode(lang.code)}
           aria-pressed={lang.code === code}
           className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-            lang.code === code ? "bg-signal text-white" : "text-ice/60 hover:text-white"
+            lang.code === code ? "bg-signal text-ink" : "text-subtle hover:text-ink"
           }`}
         >
           {lang.nativeName}

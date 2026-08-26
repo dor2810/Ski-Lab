@@ -1,30 +1,77 @@
 @import "tailwindcss";
 
+/*
+ * SKI LAB — light theme.
+ *
+ * Flipped from the original dark-navy theme on 2026-08-27. The brand
+ * identity is PRESERVED rather than discarded: Crevasse (#0B1526), the
+ * old page background, is now the primary TEXT colour, so the palette's
+ * anchor hue still sets the mood of every screen. Signal blue is
+ * unchanged as the action colour, where it reads better on light than
+ * it ever did on navy.
+ *
+ * Naming is semantic (canvas / surface / ink / line), not literal
+ * (navy / midnight / ice). The old literal names had started to lie
+ * about what they were for, which is exactly the kind of drift that
+ * makes a theme change dangerous.
+ *
+ * The neutrals are deliberately NOT pure grey: every one carries a
+ * slight cool bias toward Signal blue, so the greys read as chosen
+ * rather than defaulted, and sit harmoniously under the accent.
+ */
 :root {
-  /* Ski Lab palette -- EXACT hex values from the brand sheet. Do not
-     substitute Tailwind's default blues/greys for these. */
-  --color-navy: #0b1320; /* Deep navy -- primary dark background */
-  --color-midnight: #1c2541; /* Midnight blue -- cards, panels, elevated surfaces */
-  --color-signal: #2563eb; /* Signal blue -- primary actions, links, key emphasis */
-  --color-sky: #38bdf8; /* Sky blue -- secondary accent, highlights, icon strokes */
-  --color-ice: #e2e8f0; /* Ice grey -- body text on dark, muted labels */
-  --color-white: #ffffff;
+  /* Surfaces, lightest-used to most-recessed. */
+  --color-canvas: #f4f7fb;        /* page background -- off-white, cool bias */
+  --color-surface: #ffffff;       /* cards, panels, elevated surfaces */
+  --color-sunken: #eef3f9;        /* inputs, wells, inset areas */
 
-  /* Piste-grading colors -- ONLY for terrain-difficulty bars. Never
-     reused elsewhere in the UI (see brand spec: no red/green outside
-     this one context). */
-  --color-piste-beginner: #22c55e;
-  --color-piste-easy: #3b82f6;
-  --color-piste-intermediate: #ef4444;
+  /* Text, strongest to faintest. `ink` IS the old brand Crevasse. */
+  --color-ink: #0b1526;           /* headings, prices, primary copy */
+  --color-muted: #56657c;         /* secondary copy, descriptions */
+  --color-subtle: #8593a8;        /* labels, captions, metadata */
+
+  /* Structure. */
+  --color-line: #dde5ef;          /* borders, dividers, card outlines */
+  --color-line-strong: #c3d0e0;   /* hover/active borders */
+
+  /* Actions and accents. */
+  --color-signal: #2563eb;        /* primary actions, links, key emphasis */
+  --color-signal-soft: #eaf1fe;   /* tinted action backgrounds */
+  --color-sky: #0369a1;           /* secondary accent -- DARKENED from the
+                                     dark theme's #38bdf8, which fails
+                                     contrast on white */
+  --color-sky-soft: #e0f2fe;
+
+  /* Semantic status. Separate from the accent, and separate again from
+     the piste-grading colours below. */
+  --color-warn: #b45309;
+  --color-warn-soft: #fef3c7;
+
+  /* Piste-grading colours -- ONLY for terrain-difficulty bars. Never
+     reused elsewhere in the UI (see brand spec: these encode
+     beginner/intermediate/advanced and must not be repurposed, so no
+     Piste Red for errors -- that is what --color-warn is for). */
+  --color-piste-beginner: #16a34a;
+  --color-piste-easy: #2563eb;
+  --color-piste-intermediate: #dc2626;
   --color-piste-advanced: #1e293b;
 }
 
 @theme inline {
-  --color-navy: var(--color-navy);
-  --color-midnight: var(--color-midnight);
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-sunken: var(--color-sunken);
+  --color-ink: var(--color-ink);
+  --color-muted: var(--color-muted);
+  --color-subtle: var(--color-subtle);
+  --color-line: var(--color-line);
+  --color-line-strong: var(--color-line-strong);
   --color-signal: var(--color-signal);
+  --color-signal-soft: var(--color-signal-soft);
   --color-sky: var(--color-sky);
-  --color-ice: var(--color-ice);
+  --color-sky-soft: var(--color-sky-soft);
+  --color-warn: var(--color-warn);
+  --color-warn-soft: var(--color-warn-soft);
   --color-piste-beginner: var(--color-piste-beginner);
   --color-piste-easy: var(--color-piste-easy);
   --color-piste-intermediate: var(--color-piste-intermediate);
@@ -33,10 +80,25 @@
 }
 
 body {
-  background: var(--color-navy);
-  color: var(--color-white);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
   font-feature-settings: "tnum" 1; /* tabular numerals for price columns */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One shared card elevation, so panels can't drift apart visually.
+   Deliberately soft and low-contrast: on a light canvas, a heavy drop
+   shadow reads as dated, while none at all lets white cards dissolve
+   into the background. */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgb(11 21 38 / 0.04), 0 4px 16px rgb(11 21 38 / 0.04);
+}
+.card-lifted {
+  box-shadow: 0 2px 4px rgb(11 21 38 / 0.05), 0 12px 32px rgb(11 21 38 / 0.07);
 }
 
 /* Hebrew (or any future RTL language) support, driven by the `dir`
@@ -84,25 +146,36 @@ html[dir="rtl"] {
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
+  height: 6px;
   border-radius: 9999px;
-  background: var(--color-midnight);
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 9999px;
-  background: var(--color-sky);
+  background: var(--color-signal);
   cursor: pointer;
-  border: 2px solid var(--color-navy);
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 1px 4px rgb(11 21 38 / 0.25);
 }
 input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 9999px;
-  background: var(--color-sky);
+  background: var(--color-signal);
   cursor: pointer;
-  border: 2px solid var(--color-navy);
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 1px 4px rgb(11 21 38 / 0.25);
+}
+
+/* Visible keyboard focus everywhere -- the dark theme relied on
+   ring-sky, which is too faint against a light canvas. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
 }
