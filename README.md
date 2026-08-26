@@ -134,10 +134,10 @@ use 46% of it.
 spreadsheet has explicit Beginner %/Intermediate %/Advanced % columns
 plus a `Terrain Data Quality` flag (`sourced`, `sourced_conflicting`, or
 `estimated`) — see `migrate_terrain_columns.py` for how the original
-free-text column was converted. 16 of 30 resorts have genuinely
-sourced breakdowns, 1 (Zermatt) has published sources that
-disagree significantly (flagged `sourced_conflicting`, orange in the
-spreadsheet), and the remaining 13 are estimates inferred from
+free-text column was converted. 22 of 37 resorts have genuinely
+sourced breakdowns, 4 have published sources that disagree
+significantly (flagged `sourced_conflicting`, orange in the
+spreadsheet), and the remaining 11 are estimates inferred from
 qualitative descriptions (flagged `estimated`, yellow). Every
 explanation says plainly which kind of number it's showing rather than
 presenting an estimate with the same confidence as a sourced figure.
@@ -168,7 +168,7 @@ vs. inferred, and re-verify anything time-sensitive before a real trip.
 
 
 - Ski days == trip nights (no separate travel-day handling yet).
-- 13 of 30 resorts' terrain splits are estimates inferred from prose
+- 11 of 37 resorts' terrain splits are estimates inferred from prose
   descriptions rather than a published numeric breakdown (flagged
   `estimated` in the spreadsheet and in every explanation that uses
   them) — worth prioritizing in a verification pass.

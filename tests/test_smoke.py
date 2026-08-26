@@ -14,9 +14,9 @@ from ski_optimizer.engine.cost_calculator import compute_trip_cost
 from ski_optimizer.engine.terrain import parse_terrain_mix
 
 
-def test_load_resorts_returns_thirty():
+def test_load_resorts_returns_all_resorts():
     resorts = load_resorts()
-    assert len(resorts) == 30
+    assert len(resorts) == 37
 
 
 def test_all_resorts_have_positive_core_fields():
@@ -209,10 +209,21 @@ def test_ischgl_flags_conflicting_snowfall_sources():
 
 
 def test_missing_terrain_data_does_not_crash_scoring():
-    # Zermatt has no parseable terrain text -- scoring must still work.
+    # Historically Zermatt had no parseable terrain text and stood in for
+    # this scenario; it's since been researched (see
+    # test_zermatt_is_flagged_sourced_conflicting) and no resort in the
+    # current dataset has a None terrain_mix anymore (see
+    # test_all_resorts_now_have_terrain_data) -- so relying on the real
+    # catalog to exercise this path stopped testing anything. scoring.py
+    # still has an explicit `if resort.terrain_mix is None` branch
+    # (engine/scoring.py's _ski_quality_score), so test it directly with
+    # a synthetic resort instead of hoping the real data exhibits the gap.
+    import dataclasses
     resorts = load_resorts()
+    mutated = [dataclasses.replace(r, terrain_mix=None) if r.name == "Zermatt" else r
+               for r in resorts]
     prefs = UserPreferences(budget_eur_per_person=2000, ski_days=5,
                              group_size=2, skill_level="beginner")
-    results = rank_trips(resorts, prefs, top_n=30)
-    names = [t.resort.name for t in results]
-    assert "Zermatt" in names
+    results = rank_trips(mutated, prefs, top_n=len(mutated))
+    names = {t.resort.name for t in results}
+    assert names == {r.name for r in resorts}

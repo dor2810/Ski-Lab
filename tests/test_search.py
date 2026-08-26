@@ -114,7 +114,7 @@ def test_search_returns_ranked_results_within_budget(authed_client):
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["query_resort_count"] == 30
+    assert body["query_resort_count"] == 37
     assert len(body["results"]) > 0
     for result in body["results"]:
         assert result["cost"]["total_eur"] <= 1500
@@ -510,11 +510,11 @@ def test_list_resort_names_requires_authentication_by_default(monkeypatch):
     assert resp.status_code == 401
 
 
-def test_list_resort_names_returns_thirty(authed_client):
+def test_list_resort_names_returns_all_resorts(authed_client):
     resp = authed_client.get("/trips/resorts")
     assert resp.status_code == 200
     names = resp.json()
-    assert len(names) == 30
+    assert len(names) == 37
     assert names == sorted(names)
 
 

@@ -193,7 +193,7 @@ def test_search_dates_with_valid_target_resort_returns_only_that_one(authed_clie
     # query_resort_count reports the full dataset size, matching
     # /trips/search's convention -- the narrowing itself is proven by
     # the results, not this count (see engine.scoring.narrow_resort_pool).
-    assert body["query_resort_count"] == 30
+    assert body["query_resort_count"] == 37
     for result in body["results"]:
         assert result["resort"]["name"] == "Livigno"
 
