@@ -126,6 +126,13 @@ def load_resorts(path: Path = DEFAULT_DATA_PATH) -> List[Resort]:
          off_piste, snow_rel, nightlife, family, airport, dist_km,
          transfer_time_text, pass_price, accom_price, notes, source,
          terrain_note, ext_quality, ext_note) = row[:31]
+        # Latitude/Longitude/Coordinate Source -- added for
+        # adapters/weather_adapter.py (see Resort.latitude's own
+        # docstring in models.py). len(row) guard keeps this backward
+        # compatible with any older sheet snapshot that predates these
+        # columns, degrading to None rather than an IndexError.
+        latitude = row[31] if len(row) > 31 else None
+        longitude = row[32] if len(row) > 32 else None
 
         if beg_pct is not None and inter_pct is not None and adv_pct is not None:
             terrain_mix = TerrainMix.from_percentages(
@@ -167,5 +174,7 @@ def load_resorts(path: Path = DEFAULT_DATA_PATH) -> List[Resort]:
             terrain_park=terrain_park,
             israeli_flight_access=flight_access,
             extended_data_quality=str(ext_quality) if ext_quality else "estimated",
+            latitude=float(latitude) if latitude is not None else None,
+            longitude=float(longitude) if longitude is not None else None,
         ))
     return resorts

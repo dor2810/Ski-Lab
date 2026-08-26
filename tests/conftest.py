@@ -63,3 +63,25 @@ def _no_real_hotel_scraping(monkeypatch):
 
     monkeypatch.setattr(primp.Client, "get", _blocked)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_real_weather_requests(monkeypatch):
+    # adapters/weather_adapter.py (Open-Meteo) needs no API key either --
+    # same hazard as the two above, at requests.get instead of
+    # fast_flights/primp. Other adapters (flight_adapter.py,
+    # serpapi_hotel_adapter.py, accommodation_adapter.py) also use
+    # requests, but those are unswapped SerpApi/Booking fallbacks gated
+    # behind an API key that's never set in the test environment, so
+    # they never reach this call for real regardless -- blocking it here
+    # is still correct for them, just redundant.
+    import requests
+
+    def _blocked(*_args, **_kwargs):
+        raise RuntimeError(
+            "requests.get was called for real during a test run -- "
+            "mock adapters.weather_adapter._fetch_json instead (see conftest.py's docstring)."
+        )
+
+    monkeypatch.setattr(requests, "get", _blocked)
+    yield

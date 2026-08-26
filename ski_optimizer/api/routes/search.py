@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ...data.resort_repository import load_resorts
 from ...models import (
-    Resort, UserPreferences,
+    Resort, UserPreferences, HistoricalWeatherAverage, WeatherForecast,
     VALID_SKILL_LEVELS, VALID_ACCOMMODATION_TIERS,
     VALID_FOOD_PROFILES, VALID_EQUIPMENT_TIERS, VALID_WEIGHT_KEYS,
 )
@@ -38,6 +38,7 @@ from ...engine.links import google_flights_url, google_hotels_url
 from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
+from ...engine.weather import get_resort_weather
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
@@ -241,6 +242,29 @@ class CostBreakdownOut(BaseModel):
     accommodation_price_is_live: bool
 
 
+class WeatherOut(BaseModel):
+    """
+    Either a REAL forecast for this exact trip date (is_live_forecast
+    True -- only possible when the date is within
+    adapters/weather_adapter.py's ~16-day forecast horizon, description
+    set, years_sampled/date_range_label None) or a historical average
+    across several past years' real recorded weather for the same
+    calendar window (is_live_forecast False -- the common case, since
+    most trips are searched/booked months ahead; description None,
+    years_sampled/date_range_label set instead). See that module's
+    get_forecast()/get_historical_average() docstrings for exactly what
+    each covers and why a trip only ever gets one or the other, never
+    neither with invented numbers.
+    """
+    is_live_forecast: bool
+    temp_max_c: float
+    temp_min_c: float
+    snowfall_cm: float
+    description: Optional[str] = None
+    years_sampled: Optional[int] = None
+    date_range_label: Optional[str] = None
+
+
 class TripResultOut(BaseModel):
     resort: ResortOut
     cost: CostBreakdownOut
@@ -257,6 +281,9 @@ class TripResultOut(BaseModel):
     # airport field has no parseable IATA code.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    # See WeatherOut's own docstring. Only ever populated for the single
+    # top-ranked result -- see _weather_for()'s docstring on why.
+    weather: Optional[WeatherOut] = None
 
 
 class SearchResponse(BaseModel):
@@ -324,6 +351,36 @@ def _flight_search_url(resort: Resort, outbound_date, return_date, flight_price_
         if booking:
             return booking
     return google_flights_url(resort, outbound_date, return_date)
+
+
+def _weather_out(resort: Resort, target_date, attempt_weather: bool) -> Optional[WeatherOut]:
+    """
+    WeatherOut for this result, or None -- see engine.weather.
+    get_resort_weather()'s own docstring for the forecast-vs-historical
+    choice and every reason this can come back empty (no coordinates,
+    every provider request failing).
+
+    attempt_weather gates this per-result for the SAME reason
+    _flight_search_url/_accommodation_search_url's matching parameter
+    does: a historical average costs several real, sequential live
+    requests (one per sampled year -- see get_resort_weather's own
+    years_back note), so this is attempted for only the single top
+    result per response, never for every result in a list.
+    """
+    if not attempt_weather or target_date is None:
+        return None
+    weather = get_resort_weather(resort, target_date)
+    if weather is None:
+        return None
+    if isinstance(weather, WeatherForecast):
+        return WeatherOut(is_live_forecast=True, temp_max_c=weather.temp_max_c,
+                          temp_min_c=weather.temp_min_c, snowfall_cm=weather.snowfall_cm,
+                          description=weather.weather_description)
+    if isinstance(weather, HistoricalWeatherAverage):
+        return WeatherOut(is_live_forecast=False, temp_max_c=weather.avg_temp_max_c,
+                          temp_min_c=weather.avg_temp_min_c, snowfall_cm=weather.avg_snowfall_cm,
+                          years_sampled=weather.years_sampled, date_range_label=weather.date_range_label)
+    return None
 
 
 def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, nights: int,
@@ -462,6 +519,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             accommodation_search_url=_accommodation_search_url(
                 t.resort, payload.outbound_date, return_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            weather=_weather_out(t.resort, payload.outbound_date, attempt_weather=(i == 0)),
         )
         for i, t in enumerate(trip_options)
     ]
@@ -597,6 +655,7 @@ class DatedTripResultOut(BaseModel):
     # See TripResultOut's matching fields -- same contract.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    weather: Optional[WeatherOut] = None
 
 
 class SearchDateRangeResponse(BaseModel):
@@ -728,6 +787,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             accommodation_search_url=_accommodation_search_url(
                 t.resort, t.start_date, t.end_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            weather=_weather_out(t.resort, t.start_date, attempt_weather=(i == 0)),
         )
         for i, t in enumerate(dated_options)
     ]

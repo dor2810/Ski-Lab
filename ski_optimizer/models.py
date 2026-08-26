@@ -60,6 +60,16 @@ class Resort:
     # transfer_minutes_for(code) rather than the averaged field whenever
     # the arrival airport is known.
     transfer_minutes_by_airport: dict = field(default_factory=dict)
+    # Resort-village coordinates (not the wider ski AREA's centroid) --
+    # feeds adapters/weather_adapter.py, which needs real lat/lon, not a
+    # geocode-per-request live dependency for something that never
+    # moves. Sourced from Open-Meteo's own free geocoding API, spot-
+    # checked against known real values; a few resorts needed a nearby-
+    # village proxy (see resort_repository.py's own note on which and
+    # why). None (not 0.0) when absent -- 0,0 is a real ocean point off
+    # the African coast, the classic silent-wrong-default trap.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     def transfer_minutes_for(self, airport_iata: Optional[str] = None) -> float:
         """
@@ -326,6 +336,42 @@ class AccommodationSearchResult:
     """What an accommodation search returns."""
     options: list                                # List[AccommodationOption]
     from_cache: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Weather data (from adapters/weather_adapter.py)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class WeatherForecast:
+    """
+    A real daily forecast for one date -- BOUNDARY TYPE for
+    adapters/weather_adapter.py, same role as FlightOption/
+    AccommodationOption. Only exists for dates within the provider's
+    actual forecast horizon (see get_forecast()'s docstring); a date
+    beyond that returns None rather than this with invented numbers.
+    """
+    date: _date
+    temp_max_c: float
+    temp_min_c: float
+    snowfall_cm: float
+    weather_description: str  # human-readable, decoded from the provider's WMO weather code
+
+
+@dataclass
+class HistoricalWeatherAverage:
+    """
+    "What's it usually like around these dates" -- averaged across
+    several past years' real recorded weather for the SAME calendar
+    window, not a forecast. Useful for trips too far out for
+    get_forecast() to cover (the overwhelming majority of ski-trip
+    searches, booked months ahead).
+    """
+    avg_temp_max_c: float
+    avg_temp_min_c: float
+    avg_snowfall_cm: float
+    years_sampled: int  # how many past years' data actually went into the average
+    date_range_label: str  # e.g. "Jan 10 - Jan 17"
 
 
 # ---------------------------------------------------------------------------

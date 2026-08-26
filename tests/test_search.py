@@ -338,6 +338,83 @@ def test_only_the_top_result_attempts_a_booking_link(authed_client, monkeypatch)
         assert result["accommodation_search_url"] != "https://fake/hotel"
 
 
+def test_weather_uses_live_forecast_for_a_near_term_date(authed_client, monkeypatch):
+    from ski_optimizer.api.routes import search as search_route
+    from ski_optimizer.models import WeatherForecast
+    from datetime import date
+
+    monkeypatch.setattr(search_route, "get_resort_weather",
+                        lambda *a, **k: WeatherForecast(date=date(2027, 1, 10), temp_max_c=-2.0,
+                                                        temp_min_c=-9.0, snowfall_cm=3.5,
+                                                        weather_description="Moderate snow"))
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    weather = body["results"][0]["weather"]
+    assert weather is not None
+    assert weather["is_live_forecast"] is True
+    assert weather["description"] == "Moderate snow"
+    assert weather["years_sampled"] is None
+
+
+def test_weather_uses_historical_average_when_no_forecast_is_available(authed_client, monkeypatch):
+    from ski_optimizer.api.routes import search as search_route
+    from ski_optimizer.models import HistoricalWeatherAverage
+
+    monkeypatch.setattr(search_route, "get_resort_weather",
+                        lambda *a, **k: HistoricalWeatherAverage(
+                            avg_temp_max_c=1.0, avg_temp_min_c=-6.0, avg_snowfall_cm=2.0,
+                            years_sampled=5, date_range_label="Jan 07 - Jan 13"))
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    weather = body["results"][0]["weather"]
+    assert weather is not None
+    assert weather["is_live_forecast"] is False
+    assert weather["years_sampled"] == 5
+    assert weather["date_range_label"] == "Jan 07 - Jan 13"
+
+
+def test_weather_is_none_when_the_provider_has_nothing(authed_client, monkeypatch):
+    from ski_optimizer.api.routes import search as search_route
+
+    monkeypatch.setattr(search_route, "get_resort_weather", lambda *a, **k: None)
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert body["results"][0]["weather"] is None
+
+
+def test_only_the_top_result_attempts_weather(authed_client, monkeypatch):
+    # Mirrors test_only_the_top_result_attempts_a_booking_link -- a
+    # historical average costs several real, sequential live requests
+    # (one per sampled year), so this must never be attempted for every
+    # result in a broad search.
+    from ski_optimizer.api.routes import search as search_route
+    from ski_optimizer.models import HistoricalWeatherAverage
+
+    calls = []
+    monkeypatch.setattr(search_route, "get_resort_weather",
+                        lambda *a, **k: calls.append(1) or HistoricalWeatherAverage(
+                            avg_temp_max_c=1.0, avg_temp_min_c=-6.0, avg_snowfall_cm=2.0,
+                            years_sampled=5, date_range_label="Jan 07 - Jan 13"))
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert len(body["results"]) > 1
+    assert len(calls) <= 1
+    assert body["results"][0]["weather"] is not None
+    for result in body["results"][1:]:
+        assert result["weather"] is None
+
+
 def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(authed_client):
     # Nothing fits 10 EUR/person -- the API no longer returns an empty
     # list for this (see rank_trips' over-budget-fallback docstring), it
