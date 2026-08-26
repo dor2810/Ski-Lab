@@ -1,0 +1,40 @@
+name: Deploy frontend to Firebase Hosting
+
+# Static-export frontend only (frontend/web, output: "export" in
+# next.config.ts -- see firebase.json at repo root). The backend
+# (ski_optimizer/) deploys separately via Render, triggered by Render
+# itself, not this workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/web/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-hosting-deploy.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend/web
+
+      - name: Build static export
+        run: npm run build
+        working-directory: frontend/web
+
+      - name: Deploy to Firebase Hosting
+        run: npx firebase deploy --only hosting --project ski-lab-app --non-interactive
+        working-directory: frontend/web
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

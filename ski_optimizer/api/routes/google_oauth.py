@@ -34,7 +34,11 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+_FRONTEND_URL_RAW = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+# FRONTEND_URL is comma-separated (see api/main.py's CORS setup, which
+# allow-lists every entry) -- a browser redirect can only ever go to
+# ONE URL, so this takes the first as the primary deploy target.
+FRONTEND_URL = _FRONTEND_URL_RAW.split(",")[0].strip()
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 
 

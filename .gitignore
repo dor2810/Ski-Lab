@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .pytest_cache/
+
+# Firebase CLI's local deploy-hash cache -- machine-local, not useful
+# to commit (see firebase.json/.firebaserc, which ARE committed).
+.firebase/

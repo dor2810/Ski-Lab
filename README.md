@@ -7,11 +7,11 @@ Israeli travelers going to European ski resorts. See `project-structure.md`
 in the original chat output for the full phase-by-phase rationale behind
 this layout — this README covers what's actually implemented today.
 
-*Note on naming: the product is branded "Ski Lab" (see
-`frontend/prototype/README.md` and this session's brand sheet for the
-visual identity). The Python package itself stays `ski_optimizer` --
-renaming a package ripples through every import statement and isn't
-worth doing for a branding change alone; the two names coexist.*
+*Note on naming: the product is branded "Ski Lab" (see the brand sheet
+in `frontend/brand/` for the visual identity). The Python package
+itself stays `ski_optimizer` -- renaming a package ripples through
+every import statement and isn't worth doing for a branding change
+alone; the two names coexist.*
 
 ## Status: Phase 2 complete (static cost calculator + scoring engine)
 

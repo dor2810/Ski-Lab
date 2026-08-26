@@ -112,41 +112,6 @@ def test_pass_cost_is_still_monotonically_increasing_in_days():
     assert totals == sorted(totals), "more days must never cost less in total"
 
 
-def test_js_prototype_pass_multipliers_match_python():
-    """
-    The frontend prototype embeds its own JS port of this cost model, and
-    its README claims the two mirror each other. Changing the Python
-    curve without updating the JS silently broke that claim once already
-    (the two engines priced the same trip differently). This test greps
-    the JSX for its multiplier table and asserts it matches -- crude, but
-    it fails loudly instead of drifting quietly.
-
-    Skipped if the prototype file isn't present (e.g. a backend-only
-    checkout), since it isn't a backend dependency.
-    """
-    import re
-    from ski_optimizer.engine.cost_calculator import (
-        _PASS_DAY_MULTIPLIER, _PASS_LONG_TRIP_MULTIPLIER,
-    )
-    jsx = (Path(__file__).resolve().parent.parent
-           / "frontend" / "prototype" / "SkiTripOptimizer.jsx")
-    if not jsx.exists():
-        return  # nothing to check
-
-    text = jsx.read_text()
-    match = re.search(r"const PASS_DAY_MULTIPLIER = \{([^}]*)\}", text)
-    assert match, "PASS_DAY_MULTIPLIER not found in the JSX prototype"
-    js_values = {int(k): float(v) for k, v in re.findall(r"(\d+):\s*([\d.]+)", match.group(1))}
-    assert js_values == _PASS_DAY_MULTIPLIER, (
-        f"JS prototype pass multipliers have drifted from Python.\n"
-        f"  JS:     {js_values}\n  Python: {_PASS_DAY_MULTIPLIER}"
-    )
-
-    long_match = re.search(r"const PASS_LONG_TRIP_MULTIPLIER = ([\d.]+)", text)
-    assert long_match, "PASS_LONG_TRIP_MULTIPLIER not found in the JSX prototype"
-    assert float(long_match.group(1)) == _PASS_LONG_TRIP_MULTIPLIER
-
-
 # --- enum validation (previously silent fallbacks) ---
 
 def test_rejects_unknown_skill_level():

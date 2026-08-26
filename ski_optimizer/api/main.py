@@ -13,6 +13,11 @@ authenticated responses). allow_credentials stays on for the OAuth
 login/callback navigations (see SessionMiddleware below); it's not
 needed for our own bearer-token auth (see routes/auth.py), which the
 frontend attaches as an explicit Authorization header, not a cookie.
+
+FRONTEND_URL accepts a comma-separated list, not just one origin --
+the frontend is deployed to two places at once (Render's static site
+and Firebase Hosting, see firebase.json at repo root), and both need
+to be able to call this API.
 """
 import os
 
@@ -26,13 +31,14 @@ from . import security
 from .routes import auth, google_oauth, search
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(",") if origin.strip()]
 SESSION_SECRET = os.environ.get("SECRET_KEY", "")  # required for Authlib's OAuth state; see security.py
 
 app = FastAPI(title="Ski Lab API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,  # needed for the Authlib session cookie during the Google OAuth redirect dance
     allow_methods=["*"],
     allow_headers=["*"],

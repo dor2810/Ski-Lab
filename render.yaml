@@ -32,10 +32,13 @@ services:
         value: "30"
       - key: EMAIL_BACKEND
         value: console
-      # Used for CORS allow-listing (see api/main.py) -- must exactly
-      # match ski-lab-app's actual URL below, scheme included.
+      # Used for CORS allow-listing (see api/main.py) -- comma-separated,
+      # must exactly match the frontend's actual deployed URL(s), scheme
+      # included. The Render static site below is kept as a fallback;
+      # ski-lab-app.web.app (Firebase Hosting, see firebase.json) is the
+      # primary deploy, auto-published from GitHub on push to main.
       - key: FRONTEND_URL
-        value: https://ski-lab-app.onrender.com
+        value: https://ski-lab-app.web.app,https://ski-lab-app.onrender.com
       # From a Google Cloud Console OAuth 2.0 Client ID (Web application
       # type) -- doesn't exist yet, enter these in the Render dashboard
       # once it does (see .env.example for the full setup note). Google
@@ -61,9 +64,9 @@ services:
     # doesn't apply; omitting it is the fix, not a different plan value.
     #
     # This builds the real Next.js app in frontend/web (see its own
-    # README) -- NOT frontend/app (the earlier plain-HTML page, kept in
-    # the repo but no longer deployed) and NOT frontend/prototype (the
-    # much older JS-engine-port demo, never deployed). `next build` with
+    # README). The earlier plain-HTML page (frontend/app) and the
+    # JS-engine-port demo (frontend/prototype) that predated it are
+    # deleted -- this is the only frontend now. `next build` with
     # `output: "export"` in next.config.ts produces static HTML/CSS/JS
     # in frontend/web/out, which is what gets published.
     buildCommand: cd frontend/web && npm ci && npm run build

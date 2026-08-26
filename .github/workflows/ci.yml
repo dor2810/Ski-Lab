@@ -1,0 +1,45 @@
+name: CI
+
+# Runs on every push and PR -- the deploy workflow (firebase-hosting-
+# deploy.yml) has no test gate of its own, so this is what actually
+# stops a broken commit from reaching production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # fast-flights requires >= 3.10; matches render.yaml
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend/web
+
+      - name: Build (includes full TypeScript type-check)
+        run: npm run build
+        working-directory: frontend/web
