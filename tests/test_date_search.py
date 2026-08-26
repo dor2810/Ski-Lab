@@ -415,14 +415,23 @@ def test_best_date_per_resort_deduplicates():
 
 
 def test_price_sensitivity_reports_a_real_spread():
+    # Pinned to a specific resort (target_resort) with a generous budget,
+    # rather than "whichever resort search_date_range ranks #1" -- that
+    # used to be Bansko, until a terrain-data correction (see
+    # data/ski_resort_database_seed.xlsx) shifted rankings and exposed
+    # this test's real coupling: search_date_range correctly drops
+    # over-budget dates (see its own docstring), so a resort whose
+    # affordable dates all happen to cluster in one season legitimately
+    # has spread_eur == 0. That's not a bug -- but it means "top result"
+    # is the wrong thing to assert a real spread against; a specific,
+    # affordably-priced-in-both-months resort is a stable target instead.
     def flight_fn(resort, start, end, prefs):
         return 300.0 if start.month == 2 else 180.0
 
-    results = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
-                                datetime.date(2027, 2, 28), top_n=500,
+    results = search_date_range(load_resorts(), _prefs(target_resort="Chamonix", budget_eur_per_person=3000),
+                                datetime.date(2027, 1, 10), datetime.date(2027, 2, 28), top_n=500,
                                 flight_cost_fn=flight_fn)
-    name = results[0].resort.name
-    sens = price_sensitivity(results, name)
+    sens = price_sensitivity(results, "Chamonix")
     assert sens is not None
     assert sens["spread_eur"] > 0
     assert sens["cheapest_eur"] <= sens["most_expensive_eur"]
