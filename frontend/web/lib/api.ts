@@ -7,16 +7,21 @@
  * every authenticated call here takes an explicit accessToken and
  * sends it as `Authorization: Bearer <token>`. This project already
  * tried cookie-based sessions and hit a structural wall: the frontend
- * and API live on different onrender.com subdomains (onrender.com is
- * on the Public Suffix List, so they're different SITES to a browser),
- * and a growing number of browsers block or restrict third-party
- * (cross-site) cookies by default regardless of SameSite. A bearer
- * token the client attaches explicitly sidesteps that whole failure
- * class. See lib/auth/context.tsx for where accessToken actually comes
- * from and how it's kept fresh.
+ * (Firebase Hosting, web.app) and API (Cloud Run, run.app) live on
+ * different domains, both on the Public Suffix List, so they're
+ * different SITES to a browser, and a growing number of browsers
+ * block or restrict third-party (cross-site) cookies by default
+ * regardless of SameSite. A bearer token the client attaches
+ * explicitly sidesteps that whole failure class. See
+ * lib/auth/context.tsx for where accessToken actually comes from and
+ * how it's kept fresh.
  */
 
-const PROD_API_BASE = "https://ski-lab-api.onrender.com";
+// Cloud Run's default URL (see Dockerfile + the ski-lab-api Cloud Run
+// service, region us-central1 -- chosen because it's one of Cloud
+// Run's always-free-tier regions). Backend was previously on Render;
+// migrated off it entirely, see git history for that cutover.
+const PROD_API_BASE = "https://ski-lab-api-449641203618.us-central1.run.app";
 
 function apiBase(): string {
   if (typeof window === "undefined") return PROD_API_BASE; // build-time SSG pass, never actually fetched

@@ -1,6 +1,6 @@
 # Ski Lab
 
-Deploys automatically to Render on every push to `main` — see `render.yaml`.
+Frontend deploys to Firebase Hosting (`.github/workflows/firebase-hosting-deploy.yml`, or `firebase deploy --only hosting` manually) on every push to `main` that touches `frontend/web/**`. Backend deploys to Cloud Run (`Dockerfile`) via `gcloud run deploy ski-lab-api --source .`, region us-central1, scale-to-zero. `render.yaml` is retained but no longer the live deploy target -- the project moved off Render.
 
 AI-powered ski vacation planning and optimization system, initially for
 Israeli travelers going to European ski resorts. See `project-structure.md`

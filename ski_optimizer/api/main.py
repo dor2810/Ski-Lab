@@ -15,9 +15,11 @@ needed for our own bearer-token auth (see routes/auth.py), which the
 frontend attaches as an explicit Authorization header, not a cookie.
 
 FRONTEND_URL accepts a comma-separated list, not just one origin --
-the frontend is deployed to two places at once (Render's static site
-and Firebase Hosting, see firebase.json at repo root), and both need
-to be able to call this API.
+kept as a list (not simplified back to a single string) so a preview/
+staging frontend origin can be added later without another code
+change, not because there's more than one production origin today
+(there was, briefly, during the Render -> Firebase Hosting + Cloud Run
+migration; see git history).
 """
 import os
 

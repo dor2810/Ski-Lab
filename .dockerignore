@@ -1,0 +1,14 @@
+# Only ski_optimizer/, data/, and requirements.txt actually go into the
+# image (see Dockerfile) -- everything else here just wastes upload
+# time to Cloud Build otherwise.
+.venv/
+frontend/
+tests/
+node_modules/
+.git/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+setup_context_for_claude/
+.firebase/
