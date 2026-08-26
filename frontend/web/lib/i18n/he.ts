@@ -194,6 +194,7 @@ const he: Record<keyof typeof en, string> = {
   googleSignInFailed: "ההתחברות עם Google לא הושלמה -- ייתכן שביטלתם אותה, או שהחיבור פג. נסו שוב.",
   signInToSearch: "התחברו כדי לחפש טיולים.",
   signInToSeeExamples: "התחברו כדי לראות טיולים לדוגמה.",
+  backToHome: "→ חזרה ל-Ski Lab",
 };
 
 export default he;

@@ -27,7 +27,7 @@ const rubik = Rubik({
 export const metadata: Metadata = {
   title: "Ski Lab — Find the perfect line",
   description:
-    "Ski Lab prices complete ski trips end to end -- flights, transfers, lodging, lift pass -- across 30 European resorts, and ranks them for real, not a guess.",
+    "Ski Lab prices complete ski trips end to end -- flights, transfers, lodging, lift pass -- across 37 European resorts, and ranks them for real, not a guess.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

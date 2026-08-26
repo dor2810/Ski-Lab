@@ -1,29 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
-import { ApiError } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n/context";
 
+// Header-corner widget: signed-out state is just a link to the
+// dedicated /sign-in page (see that page's own comment for why it's a
+// full page now, not an inline dropdown -- the dropdown overflowed the
+// viewport on narrow phone screens).
 export function AuthWidget() {
-  const {
-    user, isLoading, googleAuthError, dismissGoogleError,
-    login, register, logout, loginWithGoogle,
-  } = useAuth();
+  const { user, isLoading, googleAuthError, logout } = useAuth();
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
-  // Auto-open so a user bounced back from a canceled/failed Google
-  // sign-in immediately sees why, instead of the page silently landing
-  // back on "Sign in" with no explanation.
+  // A user bounced back from a canceled/failed Google sign-in should
+  // immediately see why, wherever they land -- Google's own redirect
+  // always returns to "/" (see api/routes/google_oauth.py's
+  // FRONTEND_URL), so this fires from there and forwards to the page
+  // that can actually show the error and offer a retry.
   useEffect(() => {
-    if (googleAuthError) setOpen(true);
-  }, [googleAuthError]);
+    if (googleAuthError && pathname !== "/sign-in") router.push("/sign-in");
+  }, [googleAuthError, pathname, router]);
 
   if (isLoading) return null;
 
@@ -42,106 +42,12 @@ export function AuthWidget() {
     );
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (mode === "register" && password.length < 12) {
-      setError(t("authPasswordTooShort"));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      if (mode === "login") {
-        await login(email, password);
-      } else {
-        await register(email, password);
-      }
-      setOpen(false);
-      setEmail("");
-      setPassword("");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("authErrorGeneric"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => {
-          setOpen((o) => !o);
-          dismissGoogleError();
-        }}
-        aria-expanded={open}
-        className="rounded-lg bg-signal px-3 py-1.5 text-xs font-semibold text-white hover:bg-signal/90"
-      >
-        {t("signIn")}
-      </button>
-
-      {open && (
-        <div className="absolute end-0 top-full z-50 mt-2 w-72 rounded-xl border border-white/10 bg-midnight p-4 shadow-xl">
-          {googleAuthError && (
-            <p className="mb-3 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
-              {t("googleSignInFailed")}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={loginWithGoogle}
-            className="w-full rounded-lg border border-white/15 py-2 text-sm font-semibold text-white hover:border-white/30"
-          >
-            {t("continueWithGoogle")}
-          </button>
-
-          <div className="my-3 flex items-center gap-2 text-[11px] text-ice/40">
-            <div className="h-px flex-1 bg-white/10" />
-            {t("orDivider")}
-            <div className="h-px flex-1 bg-white/10" />
-          </div>
-
-          <form onSubmit={submit} className="space-y-2">
-            <input
-              type="email"
-              required
-              placeholder={t("emailLabel")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-white/15 bg-navy px-3 py-2 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
-            />
-            <input
-              type="password"
-              required
-              placeholder={t("passwordLabel")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/15 bg-navy px-3 py-2 text-sm text-white outline-none focus:border-sky focus:ring-1 focus:ring-sky"
-            />
-
-            {error && <p className="text-xs text-amber-300/90">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-lg bg-signal py-2 text-sm font-semibold text-white hover:bg-signal/90 disabled:opacity-60"
-            >
-              {submitting ? t("authWorking") : mode === "login" ? t("signIn") : t("createAccount")}
-            </button>
-          </form>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMode((m) => (m === "login" ? "register" : "login"));
-              setError(null);
-            }}
-            className="mt-3 text-xs font-medium text-sky hover:text-sky/80"
-          >
-            {mode === "login" ? t("authSwitchToRegister") : t("authSwitchToLogin")}
-          </button>
-        </div>
-      )}
-    </div>
+    <Link
+      href="/sign-in"
+      className="rounded-lg bg-signal px-3 py-1.5 text-xs font-semibold text-white hover:bg-signal/90"
+    >
+      {t("signIn")}
+    </Link>
   );
 }

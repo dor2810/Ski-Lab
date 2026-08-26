@@ -21,11 +21,14 @@ This separation is intentional and mirrors the architecture doc: nothing
 here should silently become load-bearing for an actual purchase decision
 without first being replaced by a real data source.
 """
+import logging
 import re
 from datetime import timedelta
 from typing import Optional
 
 from ..models import Resort, UserPreferences, CostBreakdown
+
+logger = logging.getLogger(__name__)
 
 # --- Flight estimates: round-trip EUR per person from Tel Aviv, by country. ---
 # PLACEHOLDER. Real numbers depend heavily on season/dates/airline and need
@@ -224,7 +227,10 @@ def live_flight_cost_eur(
     except Exception:
         # Deliberately broad: a flight-provider outage should degrade
         # the trip estimate, not take down a whole search. The caller
-        # sees None and falls back visibly.
+        # sees None and falls back visibly. Logged (not raised) so the
+        # actual reason is diagnosable server-side without changing
+        # that user-facing contract.
+        logger.exception("live_flight_cost_eur failed for %s", resort.name)
         return None
 
 
@@ -317,7 +323,8 @@ def live_accommodation_cost_eur_per_person(
     except Exception:
         # Deliberately broad, matching live_flight_cost_eur: a hotel-
         # provider outage should degrade the trip estimate, not take
-        # down a whole search.
+        # down a whole search. Logged (not raised) for the same reason.
+        logger.exception("live_accommodation_cost_eur_per_person failed for %s", resort.name)
         return None
 
 

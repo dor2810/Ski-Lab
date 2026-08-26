@@ -199,6 +199,7 @@ const en = {
   googleSignInFailed: "Google sign-in didn't complete -- you may have canceled it, or the session expired. Try again.",
   signInToSearch: "Sign in to search for trips.",
   signInToSeeExamples: "Sign in to see example trips.",
+  backToHome: "← Back to Ski Lab",
 } as const;
 
 export default en;

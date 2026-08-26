@@ -316,3 +316,18 @@ def test_resolve_hotel_mid_extracts_the_id_from_a_real_shaped_response(monkeypat
     import primp
     monkeypatch.setattr(primp.Client, "get", lambda self, *a, **k: _FakeResp())
     assert gha._resolve_hotel_mid("Hotel Marielle", "Val Thorens", "fake-key") == "/g/11cn3169b8"
+
+
+def test_resolve_hotel_mid_also_accepts_the_older_m_format(monkeypatch):
+    # REGRESSION: the original check only accepted /g/... (newer
+    # "topic" MID) and silently rejected /m/... (older, Freebase-
+    # derived, still a live/valid Knowledge Graph ID) -- confirmed live
+    # against the real API (2026-08-26): "Ritz-Carlton Hotel Company"
+    # resolves to exactly this format (kg:/m/0288kpv), not /g/.
+    class _FakeResp:
+        def json(self):
+            return {"itemListElement": [{"result": {"@id": "kg:/m/0288kpv", "name": "Ritz-Carlton"}}]}
+
+    import primp
+    monkeypatch.setattr(primp.Client, "get", lambda self, *a, **k: _FakeResp())
+    assert gha._resolve_hotel_mid("Ritz-Carlton", "New York", "fake-key") == "/m/0288kpv"

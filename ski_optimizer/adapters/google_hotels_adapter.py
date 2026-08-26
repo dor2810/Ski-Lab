@@ -245,7 +245,14 @@ def _resolve_hotel_mid(hotel_name: str, area_name: str, api_key: str) -> Optiona
     if not items:
         return None
     kg_id = (items[0].get("result") or {}).get("@id", "")
-    if not kg_id.startswith("kg:/g/"):
+    # Google's entity-ID namespace has two live formats: /g/... (newer
+    # "topic" MIDs) and /m/... (older, Freebase-derived, still valid --
+    # confirmed live, e.g. "Ritz-Carlton Hotel Company" resolves to
+    # kg:/m/0288kpv). The original /g/-only check silently rejected
+    # every /m/ result, which -- confirmed against several real major
+    # hotel brands -- is a meaningful share of what Knowledge Graph
+    # actually returns for lodging entities.
+    if not (kg_id.startswith("kg:/g/") or kg_id.startswith("kg:/m/")):
         return None
     return kg_id[len("kg:"):]
 
