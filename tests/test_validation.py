@@ -20,7 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ski_optimizer.data.resort_repository import load_resorts, _parse_transfer_minutes
 from ski_optimizer.models import UserPreferences
-from ski_optimizer.engine.cost_calculator import compute_trip_cost, ski_pass_cost, apply_live_flight_price
+from ski_optimizer.engine.cost_calculator import (
+    compute_trip_cost, ski_pass_cost, apply_live_flight_price,
+    _SEASON_MULTIPLIER, SEASON_PEAK,
+)
 from ski_optimizer.engine.scoring import rank_trips
 from ski_optimizer.engine.terrain import TerrainMix
 
@@ -84,12 +87,29 @@ def test_accepts_realistic_room_configurations():
 
 # --- ski pass day-count curve ---
 
-def test_six_day_pass_matches_the_sourced_spreadsheet_price_exactly():
+def test_six_day_pass_matches_its_own_source_price_exactly():
     # The multiplier curve is normalized so day 6 == 1.0. If this ever
-    # fails, the curve has silently started distorting sourced data.
+    # fails, the curve has silently started distorting source data.
+    #
+    # "Source price" is now per-resort: the 29 resorts with a researched
+    # published price (data/ski_pass_prices.py) must match THAT, and the
+    # 8 without must still match the spreadsheet estimate. This used to
+    # compare everything to the spreadsheet, which stopped being the
+    # source of truth on 2026-08-27.
+    from ski_optimizer.data.ski_pass_prices import SKI_PASS_PRICES
+
     for r in load_resorts():
-        assert abs(ski_pass_cost(r, 6) - r.ski_pass_6day_eur) < 0.01, (
-            f"{r.name}: 6-day pass no longer matches spreadsheet"
+        entry = SKI_PASS_PRICES.get(r.name)
+        if entry is None:
+            expected = r.ski_pass_6day_eur
+        elif entry.shoulder_eur is not None:
+            expected = entry.shoulder_eur
+        else:
+            # Peak-only entry: no date means the shoulder baseline, which
+            # the engine scales down from the peak anchor.
+            expected = entry.peak_eur * (1.0 / _SEASON_MULTIPLIER[SEASON_PEAK])
+        assert abs(ski_pass_cost(r, 6) - expected) < 0.01, (
+            f"{r.name}: 6-day pass no longer matches its own source price"
         )
 
 
@@ -612,3 +632,49 @@ def test_rank_trips_only_reprices_up_to_live_reprice_n_candidates():
 
     rank_trips(resorts, prefs, top_n=5, flight_cost_fn=fn, live_reprice_n=3)
     assert len(calls) == 3, f"expected exactly 3 live-price calls, got {len(calls)}"
+
+
+# --- Researched ski pass prices (data/ski_pass_prices.py) ---
+
+def test_researched_peak_price_is_used_verbatim_not_multiplied():
+    # The whole point of per-resort peaks: Passo Tonale's real peak is
+    # EUR325 against a EUR155 shoulder (ratio 2.10). The old global 1.18
+    # multiplier would have produced ~EUR183 -- understating peak by
+    # nearly EUR150. The engine must use the published figure directly.
+    import datetime
+    from ski_optimizer.data.ski_pass_prices import SKI_PASS_PRICES
+
+    resort = next(r for r in load_resorts() if r.name == "Passo Tonale")
+    entry = SKI_PASS_PRICES["Passo Tonale"]
+    peak = ski_pass_cost(resort, 6, start_date=datetime.date(2027, 2, 14))
+    assert peak == entry.peak_eur == 325.00
+    shoulder = ski_pass_cost(resort, 6, start_date=datetime.date(2027, 3, 25))
+    assert shoulder == entry.shoulder_eur == 155.00
+
+
+def test_high_season_is_bracketed_by_the_two_real_figures():
+    # SEASON_HIGH must land strictly between the resort's own published
+    # shoulder and peak, not snap to either endpoint.
+    import datetime
+    from ski_optimizer.data.ski_pass_prices import SKI_PASS_PRICES
+
+    resort = next(r for r in load_resorts() if r.name == "Livigno")
+    e = SKI_PASS_PRICES["Livigno"]
+    high = ski_pass_cost(resort, 6, start_date=datetime.date(2027, 1, 20))
+    assert e.shoulder_eur < high < e.peak_eur
+
+
+def test_unpriced_resorts_still_use_the_spreadsheet_estimate():
+    # The 8 resorts with no honestly-obtainable published price must
+    # degrade to the old behaviour, not break or silently read zero.
+    from ski_optimizer.data.ski_pass_prices import SKI_PASS_PRICES, UNPRICED_RESORTS
+
+    names = {r.name for r in load_resorts()}
+    assert set(UNPRICED_RESORTS) | set(SKI_PASS_PRICES) == names, (
+        "every resort must be either researched or explicitly documented as unpriced"
+    )
+    assert not (set(UNPRICED_RESORTS) & set(SKI_PASS_PRICES)), "a resort cannot be both"
+
+    for name in UNPRICED_RESORTS:
+        r = next(x for x in load_resorts() if x.name == name)
+        assert ski_pass_cost(r, 6) == r.ski_pass_6day_eur

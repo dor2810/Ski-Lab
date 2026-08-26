@@ -467,6 +467,13 @@ class CostBreakdown:
     # adapters/serpapi_hotel_adapter.py via
     # cost_calculator.apply_live_accommodation_price.
     accommodation_price_is_live: bool = False
+    # Same idea for ski_pass_eur -- False = the seed spreadsheet's
+    # estimate; True = a REAL published 6-day price researched from the
+    # resort's own ticketing pages (data/ski_pass_prices.py, 29 of 37
+    # resorts). Not "live" like the two above -- nobody is quoting this
+    # per-request -- but genuinely sourced rather than guessed, which is
+    # the distinction that matters to a user reading the number.
+    ski_pass_price_is_researched: bool = False
 
     @property
     def total_eur(self) -> float:

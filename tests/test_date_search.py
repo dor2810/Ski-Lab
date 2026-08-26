@@ -69,11 +69,24 @@ def test_peak_pass_costs_more_than_shoulder():
     assert 440 <= peak <= 460, f"peak {peak} should land near the real EUR450"
 
 
-def test_pass_cost_without_date_is_unchanged():
-    # Back-compatibility: fixed-date callers that pass no date must get
-    # exactly what they got before season bands existed.
+def test_pass_cost_without_date_is_the_unadjusted_baseline():
+    # Back-compatibility: callers that pass no date must get the
+    # UNADJUSTED baseline rate, never a season-inflated one.
+    #
+    # The baseline is now per-resort: the researched shoulder price for
+    # the 29 resorts in data/ski_pass_prices.py, the spreadsheet
+    # estimate for the 8 without. This used to assert the spreadsheet
+    # figure for every resort, which stopped being true on 2026-08-27
+    # when real published prices replaced the estimates.
+    from ski_optimizer.data.ski_pass_prices import SKI_PASS_PRICES
+
     for r in load_resorts():
-        assert ski_pass_cost(r, 6) == r.ski_pass_6day_eur
+        entry = SKI_PASS_PRICES.get(r.name)
+        if entry is not None and entry.shoulder_eur is not None:
+            assert ski_pass_cost(r, 6) == entry.shoulder_eur
+        elif entry is None:
+            assert ski_pass_cost(r, 6) == r.ski_pass_6day_eur
+        # peak-only entries are covered by test_validation's own check
 
 
 def test_trip_cost_rises_in_peak_season():

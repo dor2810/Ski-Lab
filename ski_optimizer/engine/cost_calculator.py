@@ -128,26 +128,102 @@ def season_band_multiplier(start_date) -> float:
     return _SEASON_MULTIPLIER[season_band(start_date)]
 
 
+def _researched_6day_price(resort: Resort, start_date) -> Optional[float]:
+    """
+    The researched 6-day price for this resort at this date's season
+    band, or None when the resort has no researched entry (see
+    data/ski_pass_prices.py's UNPRICED_RESORTS for exactly which
+    resorts and why).
+
+    Three cases, in descending order of confidence:
+      - BOTH bands published: return the band's own real price. No
+        global multiplier involved at all -- this is the whole point of
+        researching per-resort peaks, since real ratios run 1.06 to
+        2.10 and no single constant can represent that.
+      - ONE band published: scale from it with the global multiplier,
+        which is what the old estimate did anyway -- but from a real
+        anchor instead of a spreadsheet guess.
+      - SEASON_HIGH between a published shoulder and peak: interpolate
+        at the global multiplier's own relative position between its
+        shoulder and peak values, so "high" stays properly bracketed by
+        the two real figures rather than jumping straight to peak.
+    """
+    from ..data.ski_pass_prices import SKI_PASS_PRICES
+
+    entry = SKI_PASS_PRICES.get(resort.name)
+    if entry is None:
+        return None
+
+    band = season_band(start_date)
+    shoulder, peak = entry.shoulder_eur, entry.peak_eur
+
+    if shoulder is not None and peak is not None:
+        if band == SEASON_PEAK:
+            return peak
+        if band == SEASON_SHOULDER:
+            return shoulder
+        # SEASON_HIGH: place it between the two REAL figures at the same
+        # relative position the global multipliers put it (1.10 of the
+        # way from 1.00 to 1.18, i.e. ~56%), rather than snapping to an
+        # endpoint.
+        span = _SEASON_MULTIPLIER[SEASON_PEAK] - _SEASON_MULTIPLIER[SEASON_SHOULDER]
+        frac = (_SEASON_MULTIPLIER[SEASON_HIGH] - _SEASON_MULTIPLIER[SEASON_SHOULDER]) / span
+        return shoulder + (peak - shoulder) * frac
+
+    # Only one band researched -- scale from that anchor.
+    if shoulder is not None:
+        return shoulder * season_band_multiplier(start_date)
+    return peak * (season_band_multiplier(start_date) / _SEASON_MULTIPLIER[SEASON_PEAK])
+
+
 def ski_pass_cost(resort: Resort, days: int, start_date=None) -> float:
     """
-    Ski pass cost, adjusted for both day-count and (when a date is given)
-    SEASON BAND.
+    Ski pass cost, adjusted for both day-count and (when a date is
+    given) SEASON BAND.
 
-    VERIFIED DATA ISSUE this addresses: Ski Arlberg publishes EUR450 for
-    a 6-day main-season pass and EUR380 for shoulder season. Our
-    spreadsheet stores EUR380 -- the CHEAPER end. Without a season
-    adjustment, every peak-season trip is understated by roughly 18%,
+    Prefers the REAL researched 6-day price for this resort
+    (data/ski_pass_prices.py, 29 of 37 resorts) over the spreadsheet's
+    `ski_pass_6day_eur` estimate. This matters more than any other cost
+    line: a production search on 2026-08-27 showed the ski pass was the
+    single largest component of a trip total (EUR352 of EUR1,322,
+    larger than the live flight price) and was pure guesswork.
+
+    VERIFIED DATA ISSUE the season handling addresses: Ski Arlberg
+    publishes EUR450 for a 6-day main-season pass and EUR380 for
+    shoulder. The spreadsheet stores EUR380 -- the CHEAPER end -- so
+    without a season adjustment every peak trip is understated ~18%,
     which matters enormously for date-range search, since that is
-    precisely a comparison across dates.
+    precisely a comparison across dates. The researched table now
+    carries each resort's OWN peak figure where published, because the
+    real spread (1.06 at Soelden to 2.10 at Passo Tonale) is far too
+    wide for one global constant.
 
-    start_date=None preserves the old behaviour exactly (shoulder-rate,
-    no adjustment), so fixed-date callers that don't pass a date are
-    unaffected.
+    start_date=None preserves the old behaviour (shoulder/baseline, no
+    adjustment), so callers without a date are unaffected.
     """
+    six_day = _researched_6day_price(resort, start_date)
+    if six_day is not None:
+        # The researched figure already reflects this date's season
+        # band, so only the day-count adjustment remains.
+        per_day = six_day / 6.0
+        multiplier = _PASS_DAY_MULTIPLIER.get(days, _PASS_LONG_TRIP_MULTIPLIER)
+        return round(per_day * days * multiplier, 2)
+
     per_day = resort.ski_pass_6day_eur / 6.0
     multiplier = _PASS_DAY_MULTIPLIER.get(days, _PASS_LONG_TRIP_MULTIPLIER)
     base = per_day * days * multiplier
     return round(base * season_band_multiplier(start_date), 2)
+
+
+def ski_pass_price_is_researched(resort: Resort) -> bool:
+    """
+    Whether this resort's ski pass cost comes from a real published
+    price rather than the spreadsheet estimate -- so the UI can tag it
+    honestly, exactly like flight_price_is_live/
+    accommodation_price_is_live already do.
+    """
+    from ..data.ski_pass_prices import SKI_PASS_PRICES
+    return resort.name in SKI_PASS_PRICES
 
 
 # --- Equipment rental: flat per-day rate by tier. ---
@@ -630,4 +706,5 @@ def compute_trip_cost(resort: Resort, prefs: UserPreferences, start_date=None) -
         equipment_eur=equipment,
         food_eur=food,
         misc_eur=misc,
+        ski_pass_price_is_researched=ski_pass_price_is_researched(resort),
     )

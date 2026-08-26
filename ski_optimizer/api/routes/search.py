@@ -246,6 +246,12 @@ class CostBreakdownOut(BaseModel):
     total_eur: float
     flight_price_is_live: bool
     accommodation_price_is_live: bool
+    # True = ski_pass_eur is a REAL published 6-day price researched
+    # from the resort's own ticketing pages (data/ski_pass_prices.py),
+    # not the seed spreadsheet's estimate. Not per-request "live" like
+    # the two above, but sourced rather than guessed -- which is the
+    # distinction that matters to a user reading the number.
+    ski_pass_price_is_researched: bool = False
 
 
 class DailyWeatherOut(BaseModel):
@@ -643,6 +649,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 misc_eur=t.cost.misc_eur, total_eur=t.cost.total_eur,
                 flight_price_is_live=t.cost.flight_price_is_live,
                 accommodation_price_is_live=t.cost.accommodation_price_is_live,
+                ski_pass_price_is_researched=t.cost.ski_pass_price_is_researched,
             ),
             score=t.score,
             score_components=t.score_components,
@@ -923,6 +930,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 misc_eur=t.cost.misc_eur, total_eur=t.cost.total_eur,
                 flight_price_is_live=t.cost.flight_price_is_live,
                 accommodation_price_is_live=t.cost.accommodation_price_is_live,
+                ski_pass_price_is_researched=t.cost.ski_pass_price_is_researched,
             ),
             score=t.score,
             score_components=t.score_components,
