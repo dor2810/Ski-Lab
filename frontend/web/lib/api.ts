@@ -105,6 +105,32 @@ export interface CostBreakdown {
   accommodation_price_is_live: boolean;
 }
 
+// ONE day of a trip's weather. is_live_forecast true = a real forecast
+// (only possible within ~15 days out; description set, years_sampled
+// null) -- false = a historical average for that SAME calendar day
+// across several past years (description null, years_sampled set).
+// See adapters/weather_adapter.get_trip_weather's docstring on the
+// backend for why a trip's days can be a genuine mix of both.
+export interface DailyWeather {
+  date: string; // YYYY-MM-DD
+  is_live_forecast: boolean;
+  temp_max_c: number;
+  temp_min_c: number;
+  snowfall_cm: number;
+  description: string | null;
+  years_sampled: number | null;
+}
+
+// A whole trip's weather: one DailyWeather per day from check-in to
+// check-out inclusive, plus an overall average. days can be shorter
+// than the full trip length if some days genuinely have no data.
+export interface TripWeather {
+  days: DailyWeather[];
+  avg_temp_max_c: number;
+  avg_temp_min_c: number;
+  avg_snowfall_cm: number;
+}
+
 export interface TripResult {
   resort: Resort;
   cost: CostBreakdown;
@@ -116,12 +142,27 @@ export interface TripResult {
   start_date?: string;
   end_date?: string;
   season?: "peak" | "high" | "shoulder";
-  // Deep links to Google's own live search results -- NOT a booking
-  // link for this exact priced itinerary (see engine/links.py's module
-  // docstring on the backend for why). flight_search_url is null when
-  // the resort's airport field has no parseable IATA code.
+  // Deep links to Google's own live search results. For the single
+  // top-ranked result, these usually land directly on the specific
+  // priced flight/hotel when a live quote could be matched to a real
+  // bookable page; every other result (and any case where that match
+  // failed) gets Google's plain search results instead -- see
+  // api/routes/search.py's _flight_search_url/_accommodation_search_url
+  // on the backend for the exact fallback contract.
+  // flight_search_url is null when the resort's airport field has no
+  // parseable IATA code.
   flight_search_url: string | null;
   accommodation_search_url: string;
+  // A live booking link for the cheapest real transfer quote found
+  // (Alps2Alps) -- null when unavailable (this isn't the top result,
+  // the provider doesn't cover this resort/airport, or no live price
+  // was available for this trip). Display only -- see
+  // api/routes/search.py's _transfer_search_url docstring on the
+  // backend.
+  transfer_search_url: string | null;
+  // Only ever populated for the single top-ranked result (a live
+  // lookup, same reasoning as the booking links above).
+  weather: TripWeather | null;
 }
 
 export interface SearchResponse {

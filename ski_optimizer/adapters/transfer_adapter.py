@@ -112,24 +112,33 @@ def resolve_location(query: str, location_type: Optional[str] = None, use_cache:
     airport without filtering silently resolved to the wrong location
     type and the pricing request 422'd. Bare data[0] is only safe when
     the caller doesn't care which type it gets.
+
+    A NO-MATCH RESULT IS NEVER CACHED -- ANOTHER REAL BUG this caught
+    live in production: a genuinely-covered resort (Chamonix -- verified
+    directly against the provider) came back None on every search for
+    over an hour, while a different resort worked fine moments later.
+    The provider's own coverage doesn't change hour to hour; a single
+    transient blip (network hiccup, a momentary empty response) does,
+    and this function used to cache THAT as if it were a permanent
+    "this place isn't covered" fact, for the same TTL as a real price
+    quote. A successful resolution IS still cached (an opaque id for a
+    real place is stable and cheap to trust); only "found nothing" is
+    always re-checked, since this call is cheap and low-volume (at most
+    one per distinct resort/airport name, not per search).
     """
     key = _cache_key("location", query.strip().lower(), location_type or "")
     if use_cache:
         cached = get_cache().get(key)
-        if cached is not None:
-            return cached if cached != "" else None
+        if cached:
+            return cached
 
     data = _fetch_json("/locations/search", {"q": query})
     if not isinstance(data, list) or not data:
-        if use_cache:
-            get_cache().set(key, "")
         return None
 
     match = next((item for item in data if item.get("type") == location_type), None) \
         if location_type else data[0]
     if match is None:
-        if use_cache:
-            get_cache().set(key, "")
         return None
 
     code = match["code"]

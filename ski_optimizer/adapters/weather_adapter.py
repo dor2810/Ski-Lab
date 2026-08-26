@@ -24,6 +24,15 @@ scraping. Two separate endpoints, two separate jobs:
     searched and booked months before any real forecast could cover
     them.
 
+Both of the above answer for ONE date. get_forecast_range(),
+get_historical_daily_breakdown(), and get_trip_weather() are the same
+two ideas extended across a WHOLE trip (check-in..check-out), one
+DailyWeather per day -- forecast where possible, historical average per
+calendar day otherwise, mixed within the same trip when its dates
+straddle the forecast horizon. get_trip_weather() is the one callers
+actually want; the other two are its building blocks (fetched
+efficiently -- one bulk request per data source, not one per day).
+
 Needs Resort.latitude/longitude (see that field's own docstring in
 models.py for how they were sourced) -- Open-Meteo takes coordinates,
 not place names.
@@ -38,20 +47,26 @@ matching network-blocking fixture) -- that verification isn't
 something an offline test can keep re-proving on every run.
 """
 import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from ..models import HistoricalWeatherAverage, Resort, WeatherForecast
+from ..models import DailyWeather, HistoricalWeatherAverage, Resort, TripWeatherSummary, WeatherForecast
 from .base import AdapterError
 from .response_cache import get_cache
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-# Open-Meteo forecasts out to 16 days; a request past that just returns
-# clamped/empty data rather than an error, so this is enforced here
-# instead -- see get_forecast()'s docstring on why "no data" beats a
-# forecast the provider can't actually stand behind.
-MAX_FORECAST_DAYS = 16
+# Open-Meteo's real forecast horizon, empirically confirmed live: a
+# request for end_date=today+16 returned "Parameter 'end_date' is out
+# of allowed range" with the actual allowed upper bound at today+15 --
+# NOT +16 as originally assumed from the docs' "up to 16 days" phrasing
+# (off-by-one between "16 days of data" and "16 days from today").
+# get_trip_weather() also treats a forecast-range failure defensively
+# (falls through to historical for those days) rather than trusting
+# this constant to be perfectly exact forever -- Open-Meteo's own
+# model-refresh timing could plausibly shift the real boundary by a day
+# in either direction.
+MAX_FORECAST_DAYS = 15
 
 # WMO weather interpretation codes (the same table Open-Meteo's own
 # docs publish) -- decoded here rather than left as a bare integer,
@@ -235,6 +250,196 @@ def get_historical_average(
     if use_cache:
         get_cache().set(key, result)
     return result
+
+
+def _trip_dates(start_date: datetime.date, end_date: datetime.date) -> List[datetime.date]:
+    n = (end_date - start_date).days
+    return [start_date + datetime.timedelta(days=i) for i in range(n + 1)]
+
+
+def get_forecast_range(
+    resort: Resort, start_date: datetime.date, end_date: datetime.date, use_cache: bool = True,
+) -> List[DailyWeather]:
+    """
+    Real forecasts for every date in [start_date, end_date] that falls
+    within Open-Meteo's actual forecast horizon (today..+MAX_FORECAST_
+    DAYS) -- ONE bulk request covers the whole span (Open-Meteo's
+    forecast API natively takes a start_date/end_date range), not one
+    request per day. Dates outside the horizon are simply absent from
+    the result -- see get_historical_daily_breakdown() for how those
+    get covered instead, and get_trip_weather() for how the two are
+    combined into one trip.
+    """
+    _require_coordinates(resort)
+    today = datetime.date.today()
+    horizon_end = today + datetime.timedelta(days=MAX_FORECAST_DAYS)
+    clipped_start = max(start_date, today)
+    clipped_end = min(end_date, horizon_end)
+    if clipped_start > clipped_end:
+        return []
+
+    key = _cache_key("forecast_range", resort.name, clipped_start, clipped_end)
+    if use_cache:
+        cached = get_cache().get(key)
+        if cached is not None:
+            return cached
+
+    data = _fetch_json(FORECAST_URL, {
+        "latitude": resort.latitude, "longitude": resort.longitude,
+        "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum,weather_code",
+        "timezone": "auto",
+        "start_date": clipped_start.isoformat(), "end_date": clipped_end.isoformat(),
+    })
+    daily = data.get("daily") or {}
+    times = daily.get("time") or []
+    days = []
+    for i, t in enumerate(times):
+        try:
+            days.append(DailyWeather(
+                date=datetime.date.fromisoformat(t),
+                temp_max_c=daily["temperature_2m_max"][i],
+                temp_min_c=daily["temperature_2m_min"][i],
+                snowfall_cm=daily["snowfall_sum"][i],
+                is_live_forecast=True,
+                description=_describe_weather_code(daily["weather_code"][i]),
+            ))
+        except (IndexError, KeyError, TypeError, ValueError):
+            continue  # one malformed day shouldn't sink the rest of the range
+    if use_cache:
+        get_cache().set(key, days)
+    return days
+
+
+def get_historical_daily_breakdown(
+    resort: Resort, start_date: datetime.date, end_date: datetime.date,
+    years_back: int = 5, use_cache: bool = True,
+) -> List[DailyWeather]:
+    """
+    One real historical average PER CALENDAR DAY in [start_date,
+    end_date], each averaged across years_back past years' real
+    recorded weather for that SAME calendar day -- e.g. this trip's
+    "Jan 10" is averaged against the last 5 January 10ths, "Jan 11"
+    against the last 5 January 11ths, and so on. Unlike
+    get_historical_average()'s single blended window, no +/-window_days
+    smoothing is needed here: each day already gets years_back real
+    samples of its own.
+
+    EFFICIENT ON PURPOSE: fetches ONE request PER YEAR spanning the
+    WHOLE date range (not one request per day per year, which would be
+    years_back x trip_length requests for even a modest week-long
+    trip) -- Open-Meteo's archive API already returns a full daily
+    series for a date range in one call, so shifting the whole range
+    back by each year and making ONE call per year is years_back
+    requests total.
+    """
+    _require_coordinates(resort)
+
+    key = _cache_key("historical_range", resort.name, start_date, end_date)
+    if use_cache:
+        cached = get_cache().get(key)
+        if cached is not None:
+            return cached
+
+    trip_dates = _trip_dates(start_date, end_date)
+    per_day_samples: Dict[int, List[Tuple[float, float, float]]] = {}
+
+    for years_ago in range(1, years_back + 1):
+        try:
+            shifted_dates = [d.replace(year=d.year - years_ago) for d in trip_dates]
+        except ValueError:
+            continue  # a Feb 29 in this trip has no match in a non-leap shifted year -- skip that year
+
+        try:
+            data = _fetch_json(ARCHIVE_URL, {
+                "latitude": resort.latitude, "longitude": resort.longitude,
+                "daily": "temperature_2m_max,temperature_2m_min,snowfall_sum",
+                "timezone": "auto",
+                "start_date": shifted_dates[0].isoformat(), "end_date": shifted_dates[-1].isoformat(),
+            })
+        except AdapterError:
+            continue
+
+        daily = data.get("daily") or {}
+        times = daily.get("time") or []
+        for i in range(min(len(times), len(trip_dates))):
+            try:
+                tmax = daily["temperature_2m_max"][i]
+                tmin = daily["temperature_2m_min"][i]
+                snow = daily["snowfall_sum"][i]
+            except (IndexError, KeyError):
+                continue
+            if tmax is None or tmin is None:
+                continue
+            per_day_samples.setdefault(i, []).append((tmax, tmin, snow or 0.0))
+
+    days = []
+    for i, trip_date in enumerate(trip_dates):
+        samples = per_day_samples.get(i)
+        if not samples:
+            continue
+        days.append(DailyWeather(
+            date=trip_date,
+            temp_max_c=round(sum(s[0] for s in samples) / len(samples), 1),
+            temp_min_c=round(sum(s[1] for s in samples) / len(samples), 1),
+            snowfall_cm=round(sum(s[2] for s in samples) / len(samples), 1),
+            is_live_forecast=False,
+            years_sampled=len(samples),
+        ))
+
+    if use_cache:
+        get_cache().set(key, days)
+    return days
+
+
+def get_trip_weather(
+    resort: Resort, start_date: datetime.date, end_date: datetime.date,
+    historical_years_back: int = 5,
+) -> Optional[TripWeatherSummary]:
+    """
+    Weather for a WHOLE trip (check-in..check-out inclusive), one day
+    at a time -- see get_forecast_range()/get_historical_daily_
+    breakdown()'s own docstrings. A trip whose dates straddle
+    Open-Meteo's forecast horizon gets real forecast days for the near
+    part and historical-average days for the rest, not one data source
+    forced onto every day.
+
+    Returns None only when NOTHING could be produced for any day in the
+    range (e.g. no coordinates, or every request failing) -- a partial
+    result (some days missing) is still returned, since a shorter-than-
+    requested week is still real information, not nothing.
+    """
+    try:
+        forecast_days = get_forecast_range(resort, start_date, end_date)
+        forecast_covered_through = max((d.date for d in forecast_days), default=None)
+    except AdapterError:
+        # The forecast leg failing (a transient request error, or
+        # MAX_FORECAST_DAYS drifting from the provider's real boundary
+        # -- see that constant's own comment) shouldn't cost those
+        # days entirely -- historical_start below falls back to
+        # start_date itself, so the WHOLE trip gets historical coverage
+        # instead of the forecast-eligible days silently vanishing.
+        forecast_days = []
+        forecast_covered_through = None
+
+    historical_start = (
+        forecast_covered_through + datetime.timedelta(days=1)
+        if forecast_covered_through is not None else start_date
+    )
+    historical_days: List[DailyWeather] = []
+    if historical_start <= end_date:
+        historical_days = get_historical_daily_breakdown(
+            resort, historical_start, end_date, years_back=historical_years_back)
+
+    all_days = sorted(forecast_days + historical_days, key=lambda d: d.date)
+    if not all_days:
+        return None
+
+    return TripWeatherSummary(
+        days=all_days,
+        avg_temp_max_c=round(sum(d.temp_max_c for d in all_days) / len(all_days), 1),
+        avg_temp_min_c=round(sum(d.temp_min_c for d in all_days) / len(all_days), 1),
+        avg_snowfall_cm=round(sum(d.snowfall_cm for d in all_days) / len(all_days), 1),
+    )
 
 
 def clear_cache() -> None:

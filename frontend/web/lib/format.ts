@@ -7,6 +7,13 @@ export function formatDate(iso: string, locale: string = "en-GB"): string {
   return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
+// Short weekday label for a single day in a weather breakdown, e.g.
+// "Sun" / "יום א׳" depending on locale.
+export function formatWeekday(iso: string, locale: string = "en-GB"): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(locale, { weekday: "short" });
+}
+
 // Formats a Date's LOCAL calendar date as YYYY-MM-DD. Deliberately not
 // `d.toISOString().slice(0, 10)` -- toISOString converts to UTC first,
 // which silently shifts the date back a day for anyone in a timezone

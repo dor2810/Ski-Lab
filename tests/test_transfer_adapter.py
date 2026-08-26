@@ -103,6 +103,26 @@ def test_resolve_location_is_none_when_the_type_filter_matches_nothing():
         mod._fetch_json = orig
 
 
+def test_resolve_location_does_not_cache_a_no_match_result(monkeypatch):
+    # REGRESSION, caught live in production: Chamonix (genuinely covered
+    # -- verified directly against the provider) came back None for
+    # every search for over an hour after one transient no-match
+    # response got cached as if it were permanent. A failed lookup must
+    # always be retried on the next call, not remembered.
+    calls = {"n": 0}
+
+    def fake_fetch(path, params):
+        calls["n"] += 1
+        return [] if calls["n"] == 1 else [{"code": "resort-11", "name": "Chamonix", "type": "resort"}]
+
+    monkeypatch.setattr(ta, "_fetch_json", fake_fetch)
+    first = ta.resolve_location("chamonix", location_type="resort", use_cache=True)
+    second = ta.resolve_location("chamonix", location_type="resort", use_cache=True)
+    assert first is None
+    assert second == "resort-11"
+    assert calls["n"] == 2  # both calls actually hit the provider -- the failure wasn't cached
+
+
 def test_resolve_location_caches_identical_queries(monkeypatch):
     call_count = {"n": 0}
 

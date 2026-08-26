@@ -129,11 +129,23 @@ const en = {
   hideTripDetails: "Hide trip details",
   viewFlights: "View flights",
   viewAccommodation: "View accommodation",
-  searchLinkDisclaimer: "Opens Google's live search results, not a booking for this exact price shown above.",
+  viewTransfer: "View transfer",
+  searchLinkDisclaimer: "Opens Google's own live results — the top match links straight to this priced flight/stay when available.",
   needsVerificationNote: "Some data for this resort is flagged as needing verification.",
   terrainNotAvailable: "Terrain breakdown not available for this resort.",
   terrainBreakdown: "{beginner}% beginner · {intermediate}% intermediate · {advanced}% advanced",
   estimatedSuffix: " (estimated)",
+
+  // --- Weather (result card) ---
+  weatherTitle: "Weather this week",
+  weatherAvgHigh: "Avg high",
+  weatherAvgLow: "Avg low",
+  weatherAvgSnow: "Avg snowfall",
+  weatherShowDaily: "Show day by day",
+  weatherHideDaily: "Hide day by day",
+  weatherLiveForecast: "Live forecast",
+  weatherHistoricalAvg: "{years}-yr average",
+  weatherNoData: "No weather data available for this resort.",
 
   // --- Price calendar ---
   priceByStartDate: "Price by start date",

@@ -182,6 +182,162 @@ def test_get_historical_average_is_none_when_every_year_fails(monkeypatch):
     assert wa.get_historical_average(resort, date(2027, 1, 10), years_back=3, use_cache=False) is None
 
 
+# --- get_forecast_range ---
+
+def test_get_forecast_range_clips_to_the_horizon(monkeypatch):
+    calls = []
+
+    def fake_fetch(url, params):
+        calls.append((params["start_date"], params["end_date"]))
+        return {"daily": {"time": [], "temperature_2m_max": [], "temperature_2m_min": [],
+                          "snowfall_sum": [], "weather_code": []}}
+
+    monkeypatch.setattr(wa, "_fetch_json", fake_fetch)
+    resort = _resort()
+    far_future_end = date.today() + timedelta(days=wa.MAX_FORECAST_DAYS + 30)
+    wa.get_forecast_range(resort, date.today(), far_future_end, use_cache=False)
+    start, end = calls[0]
+    assert end == (date.today() + timedelta(days=wa.MAX_FORECAST_DAYS)).isoformat()
+
+
+def test_get_forecast_range_is_empty_when_the_whole_range_is_beyond_the_horizon():
+    resort = _resort()
+    far_start = date.today() + timedelta(days=wa.MAX_FORECAST_DAYS + 10)
+    far_end = far_start + timedelta(days=3)
+    assert wa.get_forecast_range(resort, far_start, far_end, use_cache=False) == []
+
+
+def test_get_forecast_range_parses_a_multi_day_response(monkeypatch):
+    def fake_fetch(url, params):
+        return {
+            "daily": {
+                "time": ["2026-08-28", "2026-08-29"],
+                "temperature_2m_max": [15.0, 16.0],
+                "temperature_2m_min": [5.0, 6.0],
+                "snowfall_sum": [0.0, 0.0],
+                "weather_code": [0, 3],
+            }
+        }
+
+    monkeypatch.setattr(wa, "_fetch_json", fake_fetch)
+    resort = _resort()
+    days = wa.get_forecast_range(resort, date.today() + timedelta(days=2),
+                                 date.today() + timedelta(days=3), use_cache=False)
+    assert len(days) == 2
+    assert days[0].is_live_forecast is True
+    assert days[0].description == "Clear sky"
+    assert days[1].description == "Overcast"
+
+
+# --- get_historical_daily_breakdown ---
+
+def test_get_historical_daily_breakdown_averages_per_calendar_day(monkeypatch):
+    # Each fetched "year" returns the SAME two-day series, so each
+    # trip day's average should equal that constant value exactly --
+    # and each day must keep its OWN sample, not get pooled together.
+    def fake_fetch(url, params):
+        return {
+            "daily": {
+                "time": [params["start_date"], params["end_date"]],
+                "temperature_2m_max": [-1.0, -5.0],
+                "temperature_2m_min": [-8.0, -12.0],
+                "snowfall_sum": [1.0, 3.0],
+            }
+        }
+
+    monkeypatch.setattr(wa, "_fetch_json", fake_fetch)
+    resort = _resort()
+    days = wa.get_historical_daily_breakdown(resort, date(2027, 1, 10), date(2027, 1, 11),
+                                              years_back=3, use_cache=False)
+    assert len(days) == 2
+    assert days[0].date == date(2027, 1, 10)
+    assert days[0].temp_max_c == -1.0
+    assert days[0].years_sampled == 3
+    assert days[1].date == date(2027, 1, 11)
+    assert days[1].temp_max_c == -5.0
+
+
+def test_get_historical_daily_breakdown_makes_one_request_per_year_not_per_day(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_fetch(url, params):
+        calls["n"] += 1
+        return {"daily": {"temperature_2m_max": [1.0] * 7, "temperature_2m_min": [-1.0] * 7,
+                          "snowfall_sum": [0.0] * 7}}
+
+    monkeypatch.setattr(wa, "_fetch_json", fake_fetch)
+    resort = _resort()
+    wa.get_historical_daily_breakdown(resort, date(2027, 1, 10), date(2027, 1, 16),
+                                      years_back=4, use_cache=False)
+    assert calls["n"] == 4  # years_back requests, NOT years_back * 7 days
+
+
+def test_get_historical_daily_breakdown_skips_a_day_with_no_samples(monkeypatch):
+    monkeypatch.setattr(wa, "_fetch_json", lambda url, params: {"daily": {
+        "temperature_2m_max": [], "temperature_2m_min": [], "snowfall_sum": [],
+    }})
+    resort = _resort()
+    days = wa.get_historical_daily_breakdown(resort, date(2027, 1, 10), date(2027, 1, 10),
+                                              years_back=2, use_cache=False)
+    assert days == []
+
+
+# --- get_trip_weather ---
+
+def test_get_trip_weather_combines_forecast_and_historical_days(monkeypatch):
+    forecast_day = wa.DailyWeather(date=date.today() + timedelta(days=2), temp_max_c=10.0,
+                                   temp_min_c=2.0, snowfall_cm=0.0, is_live_forecast=True,
+                                   description="Clear sky")
+    historical_day = wa.DailyWeather(date=date.today() + timedelta(days=3), temp_max_c=-2.0,
+                                     temp_min_c=-8.0, snowfall_cm=1.0, is_live_forecast=False,
+                                     years_sampled=5)
+
+    monkeypatch.setattr(wa, "get_forecast_range", lambda *a, **k: [forecast_day])
+    monkeypatch.setattr(wa, "get_historical_daily_breakdown", lambda *a, **k: [historical_day])
+    resort = _resort()
+    summary = wa.get_trip_weather(resort, date.today() + timedelta(days=2), date.today() + timedelta(days=3))
+    assert summary is not None
+    assert len(summary.days) == 2
+    assert summary.days[0].is_live_forecast is True
+    assert summary.days[1].is_live_forecast is False
+    assert summary.avg_temp_max_c == 4.0  # (10.0 + -2.0) / 2
+
+
+def test_get_trip_weather_falls_back_to_historical_for_the_whole_trip_when_forecast_fails(monkeypatch):
+    # REGRESSION: a forecast-leg failure used to silently drop the
+    # would-have-been-forecastable days entirely instead of falling
+    # back to historical for them too.
+    def raise_adapter_error(*a, **k):
+        raise AdapterError("simulated forecast outage")
+
+    historical_day = wa.DailyWeather(date=date.today() + timedelta(days=2), temp_max_c=1.0,
+                                     temp_min_c=-3.0, snowfall_cm=0.5, is_live_forecast=False,
+                                     years_sampled=5)
+    calls = []
+
+    def fake_historical(resort, start, end, **kwargs):
+        calls.append((start, end))
+        return [historical_day]
+
+    monkeypatch.setattr(wa, "get_forecast_range", raise_adapter_error)
+    monkeypatch.setattr(wa, "get_historical_daily_breakdown", fake_historical)
+    resort = _resort()
+    target_start = date.today() + timedelta(days=2)
+    summary = wa.get_trip_weather(resort, target_start, target_start)
+    assert summary is not None
+    assert len(summary.days) == 1
+    # historical was asked to cover from the TRIP START, not from
+    # after some horizon boundary -- the forecast leg produced nothing.
+    assert calls[0][0] == target_start
+
+
+def test_get_trip_weather_is_none_when_nothing_is_available(monkeypatch):
+    monkeypatch.setattr(wa, "get_forecast_range", lambda *a, **k: [])
+    monkeypatch.setattr(wa, "get_historical_daily_breakdown", lambda *a, **k: [])
+    resort = _resort()
+    assert wa.get_trip_weather(resort, date(2027, 1, 10), date(2027, 1, 16)) is None
+
+
 def test_get_historical_average_skips_feb_29_years_cleanly(monkeypatch):
     # target_date.replace(year=...) raises ValueError for Feb 29 in a
     # non-leap year -- must skip that one year, not crash the whole call.

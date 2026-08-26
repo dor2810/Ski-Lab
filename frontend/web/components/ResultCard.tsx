@@ -6,6 +6,7 @@ import { formatEUR, formatDate } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
 import { TerrainBar } from "./TerrainBar";
+import { WeatherWeek } from "./WeatherWeek";
 import {
   FlightIcon,
   TransferIcon,
@@ -56,13 +57,17 @@ const DIMENSION_KEYS: Record<string, keyof Dictionary> = {
   accommodation: "priorityAccommodation",
 };
 
-// Deep links to Google's own live search results, NOT a booking link
-// for this exact priced itinerary -- see api/engine/links.py's module
-// docstring on the backend for why (resolving the provider's opaque
-// booking_token into a real bookable page needs a live API call per
-// result, which this project's rate-limited quota can't spend on every
-// card in every search). searchLinkDisclaimer makes that explicit
-// rather than letting the link imply more precision than it has.
+// Deep links to Google's own live results. For the single top-ranked
+// card, flight/accommodation links usually land directly on the
+// specific priced flight/hotel -- resolving that needs a live lookup
+// per card, which this project's rate-limited quota can only spend on
+// the one result actually being shown as the best match, not on every
+// card in a list (see api/routes/search.py's _flight_search_url/
+// _accommodation_search_url on the backend for the exact contract and
+// fallback). Every other card, and any case where that live match
+// failed, gets Google's plain search results instead --
+// searchLinkDisclaimer says as much rather than implying every link
+// is equally precise.
 function SearchLinkButton({ href, label }: { href: string; label: string }) {
   return (
     <a
@@ -165,8 +170,13 @@ export function ResultCard({ result }: { result: TripResult }) {
           <SearchLinkButton href={r.flight_search_url} label={t("viewFlights")} />
         )}
         <SearchLinkButton href={r.accommodation_search_url} label={t("viewAccommodation")} />
+        {r.transfer_search_url && (
+          <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
+        )}
         <span className="text-[11px] text-ice/40">{t("searchLinkDisclaimer")}</span>
       </div>
+
+      <WeatherWeek weather={r.weather} />
 
       <div className="mt-6">
         <TerrainBar terrain={r.resort.terrain} />

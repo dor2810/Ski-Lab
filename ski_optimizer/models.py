@@ -402,6 +402,44 @@ class HistoricalWeatherAverage:
     date_range_label: str  # e.g. "Jan 10 - Jan 17"
 
 
+@dataclass
+class DailyWeather:
+    """
+    ONE day of a trip's weather -- a real forecast when the day falls
+    within adapters/weather_adapter.py's ~16-day horizon
+    (is_live_forecast True, description set), otherwise a historical
+    average for that SAME calendar day across several past years
+    (is_live_forecast False, years_sampled set) -- see
+    get_forecast_range()/get_historical_daily_breakdown()'s own
+    docstrings. Each day decides independently, so a trip whose dates
+    straddle the forecast horizon gets a genuine mix, not one data
+    source forced onto the whole trip.
+    """
+    date: _date
+    temp_max_c: float
+    temp_min_c: float
+    snowfall_cm: float
+    is_live_forecast: bool
+    description: Optional[str] = None       # only ever set for a live-forecast day
+    years_sampled: Optional[int] = None      # only ever set for a historical day
+
+
+@dataclass
+class TripWeatherSummary:
+    """
+    A whole trip's weather -- one DailyWeather per calendar day from
+    check-in to check-out inclusive, plus an overall average across
+    every one of those days (mixing forecast and historical days
+    together when the trip straddles the horizon -- still an honest
+    "what to expect this week" figure, since both sources answer the
+    same underlying question, just for different date ranges).
+    """
+    days: list  # List[DailyWeather], sorted by date
+    avg_temp_max_c: float
+    avg_temp_min_c: float
+    avg_snowfall_cm: float
+
+
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------

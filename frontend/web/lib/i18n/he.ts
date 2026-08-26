@@ -124,11 +124,23 @@ const he: Record<keyof typeof en, string> = {
   hideTripDetails: "הסתירו פרטי טיול",
   viewFlights: "צפייה בטיסות",
   viewAccommodation: "צפייה במלונות",
-  searchLinkDisclaimer: "פותח תוצאות חיפוש חיות של Google, לא הזמנה במחיר המדויק שמוצג למעלה.",
+  viewTransfer: "צפייה בהסעה",
+  searchLinkDisclaimer: "פותח את תוצאות החיפוש החיות של Google — התוצאה המובילה מקשרת ישירות לטיסה/לינה המתומחרת הזו כשניתן.",
   needsVerificationNote: "חלק מהנתונים עבור אתר זה מסומנים כטעונים אימות.",
   terrainNotAvailable: "פילוח שטח אינו זמין עבור אתר זה.",
   terrainBreakdown: "{beginner}% מתחילים · {intermediate}% בינוני · {advanced}% מתקדמים",
   estimatedSuffix: " (מוערך)",
+
+  // --- Weather (result card) ---
+  weatherTitle: "מזג האוויר השבוע",
+  weatherAvgHigh: "מקסימום ממוצע",
+  weatherAvgLow: "מינימום ממוצע",
+  weatherAvgSnow: "שלג ממוצע",
+  weatherShowDaily: "הצג יום אחר יום",
+  weatherHideDaily: "הסתר יום אחר יום",
+  weatherLiveForecast: "תחזית חיה",
+  weatherHistoricalAvg: "ממוצע {years} שנים",
+  weatherNoData: "אין נתוני מזג אוויר זמינים עבור אתר זה.",
 
   // --- Price calendar ---
   priceByStartDate: "מחיר לפי תאריך התחלה",
