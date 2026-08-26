@@ -9,6 +9,14 @@ each adapter assembles its own message shape by calling these.
 
 
 def varint(n: int) -> bytes:
+    # Protobuf varints are unsigned. A negative n never reaches 0 via
+    # `n >>= 7` (Python ints are infinite-precision two's complement --
+    # right-shifting a negative value stays negative forever), so this
+    # would hang instead of encoding garbage. Caught in code review:
+    # reachable from _build_ts's night-count field if a caller ever
+    # passes checkout_date <= checkin_date.
+    if n < 0:
+        raise ValueError(f"varint() requires a non-negative value, got {n}")
     out = bytearray()
     while True:
         b = n & 0x7F

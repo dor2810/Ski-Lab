@@ -284,29 +284,41 @@ def _to_resort_out(r: Resort) -> ResortOut:
 
 
 def _flight_search_url(resort: Resort, outbound_date, return_date, flight_price_is_live: bool,
-                       max_connections: int) -> Optional[str]:
+                       max_connections: int, attempt_booking_link: bool) -> Optional[str]:
     """
     A booking-page deep link for the specific flight that was just
     live-priced, when available -- falling back to the plain,
     reliable route/date search-results link (google_flights_url())
     for every case that isn't: no live price for this result
     (flight_price_is_live False -- nothing to build a booking link
-    FROM), no outbound_date, or live_flight_booking_url() itself
-    returning None (its own docstring covers every reason: no booking
-    ingredients, an expired selection token, a failed round-trip
-    return-leg fetch). This fallback is deliberate and automatic, not
-    just a git-revert safety net -- see
-    adapters/google_flights_adapter.booking_url()'s module comment on
-    what's verified vs. not about the booking link's long-term
-    reliability.
+    FROM), no outbound_date, attempt_booking_link False (see below),
+    or live_flight_booking_url() itself returning None (its own
+    docstring covers every reason: no booking ingredients, an expired
+    selection token, a failed round-trip return-leg fetch). This
+    fallback is deliberate and automatic, not just a git-revert safety
+    net -- see adapters/google_flights_adapter.booking_url()'s module
+    comment on what's verified vs. not about the booking link's
+    long-term reliability.
 
-    Only attempted when flight_price_is_live is True: that means
+    attempt_booking_link gates this per-result, not just
+    flight_price_is_live: caught in code review -- for a ROUND TRIP,
+    live_flight_booking_url() costs one EXTRA, uncached live request
+    (booking_url()'s own "choose return" fetch, see that function's
+    docstring) on top of the pricing search. Attempting that for EVERY
+    live-priced result in a response (up to top_n / live_reprice_n)
+    would silently multiply live Google requests per API call well
+    beyond what live_pricing_allowed()'s one-shot budget spend accounts
+    for -- callers pass attempt_booking_link=True for only the single
+    top result to bound this to at most one extra live request per
+    response, matching that budget's actual intent.
+
     live_flight_cost_eur() already ran search_flights() for this exact
-    (resort, dates) combination moments ago, so live_flight_booking_url()
-    re-running the same search is a response-cache hit, not a second
-    live scrape (see that function's own docstring).
+    (resort, dates) combination moments ago when flight_price_is_live is
+    True, so live_flight_booking_url() re-running the same search is a
+    response-cache hit for the PRICING half -- the round-trip return-leg
+    fetch above is the only genuinely new request.
     """
-    if flight_price_is_live and outbound_date is not None:
+    if attempt_booking_link and flight_price_is_live and outbound_date is not None:
         booking = live_flight_booking_url(resort, outbound_date, return_date, origin_airport="TLV",
                                           max_connections=max_connections)
         if booking:
@@ -315,7 +327,8 @@ def _flight_search_url(resort: Resort, outbound_date, return_date, flight_price_
 
 
 def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, nights: int,
-                              rooms_needed: int, accommodation_price_is_live: bool) -> str:
+                              rooms_needed: int, accommodation_price_is_live: bool,
+                              attempt_booking_link: bool) -> str:
     """
     A deep link to ONE specific property that was just live-priced,
     when available -- falling back to the resort-level, dated search
@@ -324,8 +337,16 @@ def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, night
     _flight_search_url() above -- see that function's docstring, and
     adapters/google_hotels_adapter.specific_property_url()'s own
     docstring on what's unverified about the specific-property link.
+
+    attempt_booking_link gates this per-result for the same reason as
+    _flight_search_url()'s matching parameter: specific_property_url()
+    makes a genuinely separate, uncached live request to the Knowledge
+    Graph Search API, not covered by response_cache.py or
+    live_pricing_allowed()'s budget -- callers pass True for only the
+    single top result to bound this to at most one extra live request
+    per response.
     """
-    if accommodation_price_is_live and checkin_date is not None:
+    if attempt_booking_link and accommodation_price_is_live and checkin_date is not None:
         booking = live_accommodation_booking_url(
             resort, checkin_date, nights, rooms_needed, f"{resort.name}, {resort.country}")
         if booking:
@@ -436,12 +457,13 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
             flight_search_url=_flight_search_url(t.resort, payload.outbound_date, return_date,
-                                                 t.cost.flight_price_is_live, payload.max_connections),
+                                                 t.cost.flight_price_is_live, payload.max_connections,
+                                                 attempt_booking_link=(i == 0)),
             accommodation_search_url=_accommodation_search_url(
                 t.resort, payload.outbound_date, return_date, prefs.nights, prefs.rooms_needed,
-                t.cost.accommodation_price_is_live),
+                t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
         )
-        for t in trip_options
+        for i, t in enumerate(trip_options)
     ]
 
     return SearchResponse(query_resort_count=len(_resort_cache),
@@ -701,12 +723,13 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             explanation=explain(t, skill_level=payload.skill_level),
             within_budget=t.within_budget,
             flight_search_url=_flight_search_url(t.resort, t.start_date, t.end_date,
-                                                 t.cost.flight_price_is_live, payload.max_connections),
+                                                 t.cost.flight_price_is_live, payload.max_connections,
+                                                 attempt_booking_link=(i == 0)),
             accommodation_search_url=_accommodation_search_url(
                 t.resort, t.start_date, t.end_date, prefs.nights, prefs.rooms_needed,
-                t.cost.accommodation_price_is_live),
+                t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
         )
-        for t in dated_options
+        for i, t in enumerate(dated_options)
     ]
 
     return SearchDateRangeResponse(

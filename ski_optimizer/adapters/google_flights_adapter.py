@@ -124,7 +124,15 @@ def _extract_booking_ingredients(raw_card) -> Optional[str]:
             return None
         packed = json.dumps({"token": token, "segments": segments})
         return base64.urlsafe_b64encode(packed.encode("utf-8")).decode("ascii")
-    except (IndexError, TypeError, KeyError):
+    except (IndexError, TypeError, KeyError, ValueError):
+        # ValueError included per code review: a malformed date triplet
+        # (e.g. missing a component) raises it during tuple unpacking in
+        # _format_date_triplet, which isn't an IndexError/TypeError/
+        # KeyError -- caught live, this crashed the WHOLE flight parse
+        # in _parse_flight_result (no try/except wraps this call there),
+        # discarding an otherwise-good price/itinerary over an optional
+        # field. Contradicted this function's own "best-effort, never
+        # breaks the actual parse" docstring promise.
         return None
 
 

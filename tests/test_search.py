@@ -287,6 +287,57 @@ def test_accommodation_search_url_falls_back_when_specific_property_url_is_unava
     assert result["accommodation_search_url"].startswith("https://www.google.com/travel/search?q=")
 
 
+def test_only_the_top_result_attempts_a_booking_link(authed_client, monkeypatch):
+    # REGRESSION (caught in code review): a round-trip booking_url()
+    # costs one extra, uncached live request (the "choose return" fetch
+    # -- see that function's docstring), and specific_property_url()
+    # costs a separate live Knowledge Graph API request. Attempting
+    # either for EVERY live-priced result in a response (up to top_n)
+    # would silently multiply live requests per API call well beyond
+    # live_pricing_allowed()'s one-shot budget spend. Only the single
+    # top result should ever attempt one.
+    from ski_optimizer.adapters import google_flights_adapter, google_hotels_adapter
+    from ski_optimizer.models import (
+        FlightOption, FlightSearchResult, AccommodationOption, AccommodationSearchResult,
+    )
+
+    def fake_search_flights(**_kwargs):
+        return FlightSearchResult(options=[
+            FlightOption(price_eur=250.0, origin_airport="TLV", destination_airport="GVA",
+                        airline="Test Air", total_duration_minutes=200, stops=0,
+                        booking_token="fake-token"),
+        ])
+
+    def fake_search_accommodation(*_args, **_kwargs):
+        return AccommodationSearchResult(options=[
+            AccommodationOption(price_eur_per_night=100.0, property_name="Test Hotel"),
+        ])
+
+    flight_booking_calls = []
+    accommodation_booking_calls = []
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights", fake_search_flights)
+    monkeypatch.setattr(google_flights_adapter, "booking_url",
+                        lambda *a, **k: flight_booking_calls.append(1) or "https://fake/flight")
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", fake_search_accommodation)
+    monkeypatch.setattr(google_hotels_adapter, "specific_property_url",
+                        lambda *a, **k: accommodation_booking_calls.append(1) or "https://fake/hotel")
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert len(body["results"]) > 1  # a broad search actually returns multiple resorts
+
+    assert len(flight_booking_calls) <= 1
+    assert len(accommodation_booking_calls) <= 1
+    assert body["results"][0]["flight_search_url"] == "https://fake/flight"
+    assert body["results"][0]["accommodation_search_url"] == "https://fake/hotel"
+    for result in body["results"][1:]:
+        assert result["flight_search_url"] != "https://fake/flight"
+        assert result["accommodation_search_url"] != "https://fake/hotel"
+
+
 def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(authed_client):
     # Nothing fits 10 EUR/person -- the API no longer returns an empty
     # list for this (see rank_trips' over-budget-fallback docstring), it
