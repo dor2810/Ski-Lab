@@ -45,6 +45,7 @@ from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
 from ...engine.weather import get_trip_weather
+from ...engine.reranker import rerank_with_conditions
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
@@ -504,6 +505,30 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
     return live_accommodation_property_name(resort, checkin_date, nights, rooms_needed)
 
 
+# How many top results may spend real weather requests on snow
+# re-ranking. Each lookup is several sequential live requests (one per
+# sampled historical year), so this is bounded for the same reason the
+# booking-link lookups are gated to the top result -- see
+# engine/reranker.rerank_with_conditions' own docstring. Slightly wider
+# than the booking links' 1 because re-ranking only means anything if
+# it can compare several candidates against each other.
+_SNOW_RERANK_LOOKUPS = 5
+
+
+def _is_within_forecast_horizon(start_date) -> bool:
+    """
+    Whether a real weather forecast can exist for this trip at all.
+    False for None, for past dates, and for anything beyond the
+    provider's real horizon -- see the call site for why gating on this
+    is what makes snow re-ranking affordable.
+    """
+    if start_date is None:
+        return False
+    from ...adapters.weather_adapter import MAX_FORECAST_DAYS
+    delta = (start_date - datetime.date.today()).days
+    return 0 <= delta <= MAX_FORECAST_DAYS
+
+
 # This app's flight search only tracks a DATE, never an arrival TIME
 # (see FlightOption/search results elsewhere) -- there is no real
 # flight time to quote a transfer against. A mid-afternoon pickup is a
@@ -634,6 +659,23 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
     # Same for every result in this route (there's one fixed outbound
     # date, not one per resort) -- computed once rather than per result.
     return_date = payload.outbound_date + datetime.timedelta(days=prefs.nights) if payload.outbound_date else None
+
+    # Blueprint Milestone 5: re-rank on REAL snow conditions.
+    #
+    # HARD-GATED ON THE FORECAST HORIZON, and that gate is the whole
+    # reason this is affordable. Beyond ~15 days out (weather_adapter.
+    # MAX_FORECAST_DAYS) no real forecast exists, every day comes back
+    # as a historical average, reranker confidence is 0, and the result
+    # is provably identical to not re-ranking at all -- so running it
+    # would spend up to _SNOW_RERANK_LOOKUPS x several sequential live
+    # requests each to change nothing. Most searches are months out and
+    # therefore cost exactly zero extra requests here.
+    if _is_within_forecast_horizon(payload.outbound_date) and return_date is not None:
+        trip_options = rerank_with_conditions(
+            trip_options, full_weights,
+            weather_fn=lambda resort: get_trip_weather(resort, payload.outbound_date, return_date),
+            max_lookups=_SNOW_RERANK_LOOKUPS,
+        )
 
     results = []
     for i, t in enumerate(trip_options):

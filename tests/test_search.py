@@ -679,3 +679,56 @@ def test_no_returned_trip_has_a_nonpositive_cost(authed_client):
     assert resp.status_code == 200
     for result in resp.json()["results"]:
         assert result["cost"]["total_eur"] > 0
+
+
+# --- Snow re-ranking (blueprint Milestone 5) ---
+
+def _fake_summary(depth_cm, live):
+    from ski_optimizer.models import DailyWeather, TripWeatherSummary
+    import datetime as _dt
+    days = [DailyWeather(date=_dt.date.today(), temp_max_c=-2.0, temp_min_c=-8.0,
+                         snowfall_cm=1.0, snow_depth_cm=depth_cm,
+                         is_live_forecast=live, years_sampled=None if live else 5)]
+    return TripWeatherSummary(days=days, avg_temp_max_c=-2.0, avg_temp_min_c=-8.0,
+                              avg_snowfall_cm=1.0, avg_snow_depth_cm=depth_cm)
+
+
+def test_far_future_search_spends_no_requests_on_snow_reranking(authed_client, monkeypatch):
+    # Beyond the forecast horizon every day is a historical average, so
+    # re-ranking provably cannot change the order -- it must not spend
+    # the several sequential live requests per resort that it would cost.
+    from ski_optimizer.api.routes import search as search_route
+
+    calls = []
+    monkeypatch.setattr(search_route, "get_trip_weather",
+                        lambda *a, **k: calls.append(1) or _fake_summary(30.0, live=False))
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    # At most the single top-result weather card -- never the re-ranking
+    # lookups on top of it.
+    assert len(calls) <= 1
+
+
+def test_near_term_search_does_run_snow_reranking(authed_client, monkeypatch):
+    # The other half of the gate: inside the horizon it MUST actually
+    # run, otherwise the feature is silently dead and the test above
+    # would pass for the wrong reason.
+    import datetime as _dt
+    from ski_optimizer.api.routes import search as search_route
+
+    calls = []
+
+    def weather_fn(resort, *a, **k):
+        calls.append(resort.name)
+        return _fake_summary(240.0, live=True)
+
+    monkeypatch.setattr(search_route, "get_trip_weather", weather_fn)
+    soon = (_dt.date.today() + _dt.timedelta(days=5)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 3, "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    assert len(calls) > 1, "re-ranking should have looked up several resorts inside the horizon"
+    assert len(calls) <= search_route._SNOW_RERANK_LOOKUPS + 1, "lookups must stay bounded"
