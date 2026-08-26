@@ -310,18 +310,51 @@ def live_accommodation_cost_eur_per_person(
     comparable/swappable.
     """
     try:
-        from ..adapters import google_hotels_adapter
-        result = google_hotels_adapter.search_accommodation(
-            resort, checkin_date, nights, rooms_needed,
-        )
-        nightly = google_hotels_adapter.cheapest_price_eur_per_night(result)
-        if nightly is None:
+        cheapest = _cheapest_live_accommodation_option(resort, checkin_date, nights, rooms_needed)
+        if cheapest is None:
             return None
-        return round((nightly * nights * rooms_needed) / group_size, 2)
+        return round((cheapest.price_eur_per_night * nights * rooms_needed) / group_size, 2)
     except Exception:
         # Deliberately broad, matching live_flight_cost_eur: a hotel-
         # provider outage should degrade the trip estimate, not take
         # down a whole search.
+        return None
+
+
+def _cheapest_live_accommodation_option(resort: Resort, checkin_date, nights: int, rooms_needed: int):
+    """
+    Shared lookup for the three live_accommodation_* functions below --
+    ONE search_accommodation() call (response-cached, see
+    adapters/response_cache.py -- calling this again with identical
+    params right after another of these three already did is a cache
+    hit, not a second live scrape), several uses. Returns the cheapest
+    AccommodationOption, or None if the search found nothing.
+    """
+    from ..adapters import google_hotels_adapter
+    result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
+    if not result.options:
+        return None
+    return min(result.options, key=lambda o: o.price_eur_per_night)
+
+
+def live_accommodation_property_name(resort: Resort, checkin_date, nights: int, rooms_needed: int) -> Optional[str]:
+    """
+    The real name of the cheapest live-priced accommodation option for
+    this trip -- e.g. "Hôtel Marielle" -- or None if live pricing itself
+    is unavailable.
+
+    UNLIKE live_accommodation_booking_url() below, this needs NO
+    GOOGLE_KG_API_KEY: the property name is already scraped as part of
+    live pricing itself (adapters/google_hotels_adapter.py), not
+    resolved through the separate Knowledge Graph lookup that specific
+    link needs. So even with no key configured -- the accommodation
+    link staying a generic resort-level search -- callers can still
+    show a user which real property that price is actually for.
+    """
+    try:
+        cheapest = _cheapest_live_accommodation_option(resort, checkin_date, nights, rooms_needed)
+        return cheapest.property_name if cheapest else None
+    except Exception:
         return None
 
 
@@ -335,23 +368,17 @@ def live_accommodation_booking_url(
     adapters/google_hotels_adapter.specific_property_url()'s own
     docstring for what "unavailable" covers (no GOOGLE_KG_API_KEY
     configured, no Knowledge Graph match, a request failure) and why
-    every one of those degrades to None, never a broken link.
+    every one of those degrades to None, never a broken link. See
+    live_accommodation_property_name() above for the (key-free) real
+    property name alone, when this comes back None.
 
     UNVERIFIED end to end -- see specific_property_url()'s docstring.
-
-    Re-runs search_accommodation() rather than taking an
-    AccommodationOption in, mirroring live_flight_booking_url()'s same
-    choice and for the same reason: response-cached (see
-    adapters/response_cache.py), so calling it again right after
-    live_accommodation_cost_eur_per_person() already did is a cache
-    hit, not a second live scrape.
     """
     try:
-        from ..adapters import google_hotels_adapter
-        result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
-        if not result.options:
+        cheapest = _cheapest_live_accommodation_option(resort, checkin_date, nights, rooms_needed)
+        if cheapest is None:
             return None
-        cheapest = min(result.options, key=lambda o: o.price_eur_per_night)
+        from ..adapters import google_hotels_adapter
         checkout_date = checkin_date + timedelta(days=nights)
         return google_hotels_adapter.specific_property_url(
             cheapest.property_name, area_place_name, checkin_date, checkout_date)

@@ -33,6 +33,7 @@ from ...models import (
 from ...engine.cost_calculator import (
     live_flight_cost_eur, live_flight_booking_url,
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
+    live_accommodation_property_name,
     live_transfer_booking_url,
 )
 from ...engine.links import google_flights_url, google_hotels_url
@@ -293,6 +294,13 @@ class TripResultOut(BaseModel):
     # airport field has no parseable IATA code.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    # The real name of the cheapest live-priced property this result's
+    # accommodation_eur is FOR (e.g. "Hotel Marielle") -- populated for
+    # every live-priced result, not just the top one (see
+    # _accommodation_property_name's own docstring on why this is cheap
+    # to compute broadly, unlike accommodation_search_url's specific
+    # link). None when accommodation pricing isn't live for this result.
+    accommodation_property_name: Optional[str] = None
     # A live booking link for the cheapest real transfer quote found
     # (adapters/transfer_adapter.py, Alps2Alps) -- display only, does
     # NOT feed into cost.transfer_eur or the score, which both still
@@ -433,6 +441,24 @@ def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, night
         if booking:
             return booking
     return google_hotels_url(resort, checkin_date, checkout_date)
+
+
+def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
+                                 rooms_needed: int, accommodation_price_is_live: bool) -> Optional[str]:
+    """
+    The real name of the cheapest live-priced property for this
+    result, or None -- see engine.cost_calculator.
+    live_accommodation_property_name()'s own docstring for why this
+    needs NO GOOGLE_KG_API_KEY (unlike the specific booking link
+    above), and is safe to compute for EVERY live-priced result, not
+    just the top one: it re-runs the exact same search_accommodation()
+    call the live cost estimate itself already made moments earlier
+    (same resort/checkin_date/nights/rooms_needed), which is a
+    response-cache hit here, not a second live request.
+    """
+    if not accommodation_price_is_live or checkin_date is None:
+        return None
+    return live_accommodation_property_name(resort, checkin_date, nights, rooms_needed)
 
 
 # This app's flight search only tracks a DATE, never an arrival TIME
@@ -576,6 +602,9 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             accommodation_search_url=_accommodation_search_url(
                 t.resort, payload.outbound_date, return_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            accommodation_property_name=_accommodation_property_name(
+                t.resort, payload.outbound_date, prefs.nights, prefs.rooms_needed,
+                t.cost.accommodation_price_is_live),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
             weather=_weather_out(t.resort, payload.outbound_date, return_date, attempt_weather=(i == 0)),
@@ -714,6 +743,7 @@ class DatedTripResultOut(BaseModel):
     # See TripResultOut's matching fields -- same contract.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    accommodation_property_name: Optional[str] = None
     transfer_search_url: Optional[str] = None
     weather: Optional[WeatherOut] = None
 
@@ -847,6 +877,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             accommodation_search_url=_accommodation_search_url(
                 t.resort, t.start_date, t.end_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            accommodation_property_name=_accommodation_property_name(
+                t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
+                t.cost.accommodation_price_is_live),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),
             weather=_weather_out(t.resort, t.start_date, t.end_date, attempt_weather=(i == 0)),
