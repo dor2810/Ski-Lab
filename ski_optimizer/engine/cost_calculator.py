@@ -472,6 +472,60 @@ def _formula_transfer_cost(resort: Resort, group_size: int) -> float:
     return round(round_trip_total / max(1, group_size ** 0.3), 2)
 
 
+def _live_transfer_quote(resort: Resort, pickup_date, pickup_time: str, group_size: int):
+    """Shared lookup for the two live_transfer_* functions below -- one request, two uses."""
+    from ..adapters import transfer_adapter
+    result = transfer_adapter.search_transfer_options(
+        resort, pickup_date, pickup_time, adults=group_size)
+    return transfer_adapter.cheapest_option(result, group_size)
+
+
+def live_transfer_cost_eur_per_person(
+    resort: Resort, pickup_date, pickup_time: str, group_size: int,
+) -> Optional[float]:
+    """
+    Real per-person transfer cost for a dated trip, or None if live
+    data is unavailable for any reason -- same "never substitutes the
+    static estimate itself" contract as live_flight_cost_eur.
+
+    PROVIDER: adapters/transfer_adapter.py (Alps2Alps' public API, no
+    key needed -- see that module's docstring). NOT wired into
+    transfer_cost_eur_per_person() or rank_trips' scoring the way
+    flight/accommodation live pricing is: that function runs for EVERY
+    candidate resort during static scoring, not a capped top-N, so a
+    live per-request call there would multiply live requests across an
+    entire search -- the same class of problem code review caught for
+    booking links (see api/routes/search.py's own
+    attempt_booking_link gating). This function exists for DISPLAY
+    only, called for a single already-chosen top result -- see
+    api/routes/search.py's _transfer_search_url.
+
+    pickup_time is a real gap: this app's flight search only tracks a
+    DATE, not an arrival time, so callers pass an assumed time (see
+    api/routes/search.py's own default) rather than the real flight's
+    actual landing time. The transfer quote is real; the time it's
+    quoted for is a guess.
+    """
+    try:
+        quote = _live_transfer_quote(resort, pickup_date, pickup_time, group_size)
+        if quote is None:
+            return None
+        return round(quote.price_eur / group_size, 2)
+    except Exception:
+        return None
+
+
+def live_transfer_booking_url(
+    resort: Resort, pickup_date, pickup_time: str, group_size: int,
+) -> Optional[str]:
+    """A booking link for the SAME transfer live_transfer_cost_eur_per_person() just priced, or None. See that function's docstring."""
+    try:
+        quote = _live_transfer_quote(resort, pickup_date, pickup_time, group_size)
+        return quote.booking_url if quote else None
+    except Exception:
+        return None
+
+
 def accommodation_cost_eur_per_person(resort: Resort, nights: int, group_size: int,
                                       rooms_needed: int, start_date=None) -> float:
     """

@@ -33,6 +33,7 @@ from ...models import (
 from ...engine.cost_calculator import (
     live_flight_cost_eur, live_flight_booking_url,
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
+    live_transfer_booking_url,
 )
 from ...engine.links import google_flights_url, google_hotels_url
 from ...engine.scoring import rank_trips
@@ -281,6 +282,16 @@ class TripResultOut(BaseModel):
     # airport field has no parseable IATA code.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    # A live booking link for the cheapest real transfer quote found
+    # (adapters/transfer_adapter.py, Alps2Alps) -- display only, does
+    # NOT feed into cost.transfer_eur or the score, which both still
+    # use the static/curated estimate (see _transfer_search_url's own
+    # docstring on why this pass deliberately stops short of that).
+    # None when no live quote is available (provider doesn't cover
+    # this resort/airport, or this isn't the top result -- same
+    # top-result-only gating as weather/flight/accommodation booking
+    # links).
+    transfer_search_url: Optional[str] = None
     # See WeatherOut's own docstring. Only ever populated for the single
     # top-ranked result -- see _weather_for()'s docstring on why.
     weather: Optional[WeatherOut] = None
@@ -411,6 +422,39 @@ def _accommodation_search_url(resort: Resort, checkin_date, checkout_date, night
     return google_hotels_url(resort, checkin_date, checkout_date)
 
 
+# This app's flight search only tracks a DATE, never an arrival TIME
+# (see FlightOption/search results elsewhere) -- there is no real
+# flight time to quote a transfer against. A mid-afternoon pickup is a
+# reasonable placeholder for "the transfer exists and is roughly this
+# price", not a claim about when any specific flight actually lands.
+_ASSUMED_PICKUP_TIME = "14:00"
+
+
+def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: bool) -> Optional[str]:
+    """
+    A booking link for the cheapest real transfer quote found
+    (adapters/transfer_adapter.py, Alps2Alps) -- display only. Unlike
+    _flight_search_url/_accommodation_search_url, this does NOT feed a
+    live price back into cost.transfer_eur or the score: transfer_
+    cost_eur_per_person() (engine/cost_calculator.py) runs for EVERY
+    candidate resort during static scoring, not a capped top-N the way
+    flight/accommodation costs are, so making it live there would
+    multiply live requests across an entire search. Wiring that
+    properly needs a transfer_cost_fn callback threaded through
+    rank_trips/search_date_range the same way flight_cost_fn/
+    accommodation_cost_fn already are -- a real engine change, not
+    attempted this pass. This function only ever supplies a link, using
+    _ASSUMED_PICKUP_TIME since no real flight time is tracked.
+
+    attempt gates this to the single top result, same reasoning as
+    every other live lookup here -- one real request (cached across the
+    two calls this makes internally), not one per result.
+    """
+    if not attempt or pickup_date is None:
+        return None
+    return live_transfer_booking_url(resort, pickup_date, _ASSUMED_PICKUP_TIME, group_size)
+
+
 @router.post("/search", response_model=SearchResponse, dependencies=[Depends(enforce_search_rate_limit)])
 def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
     # Auto-normalize weights (divide by sum) rather than require the
@@ -519,6 +563,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             accommodation_search_url=_accommodation_search_url(
                 t.resort, payload.outbound_date, return_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
+                                                     payload.group_size, attempt=(i == 0)),
             weather=_weather_out(t.resort, payload.outbound_date, attempt_weather=(i == 0)),
         )
         for i, t in enumerate(trip_options)
@@ -655,6 +701,7 @@ class DatedTripResultOut(BaseModel):
     # See TripResultOut's matching fields -- same contract.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
+    transfer_search_url: Optional[str] = None
     weather: Optional[WeatherOut] = None
 
 
@@ -787,6 +834,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             accommodation_search_url=_accommodation_search_url(
                 t.resort, t.start_date, t.end_date, prefs.nights, prefs.rooms_needed,
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0)),
+            transfer_search_url=_transfer_search_url(t.resort, t.start_date,
+                                                     payload.group_size, attempt=(i == 0)),
             weather=_weather_out(t.resort, t.start_date, attempt_weather=(i == 0)),
         )
         for i, t in enumerate(dated_options)

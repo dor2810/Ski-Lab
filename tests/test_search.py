@@ -287,6 +287,39 @@ def test_accommodation_search_url_falls_back_when_specific_property_url_is_unava
     assert result["accommodation_search_url"].startswith("https://www.google.com/travel/search?q=")
 
 
+def test_transfer_search_url_is_populated_only_for_the_top_result(authed_client, monkeypatch):
+    # Same amplification concern as flights/hotels: live_transfer_
+    # booking_url() makes real, uncached-across-results live requests
+    # (location resolution + a price quote) -- must never be attempted
+    # for every result in a broad search.
+    from ski_optimizer.api.routes import search as search_route
+
+    calls = []
+    monkeypatch.setattr(search_route, "live_transfer_booking_url",
+                        lambda *a, **k: calls.append(1) or "https://booking.alps2alps.com/fake")
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert len(body["results"]) > 1
+    assert len(calls) <= 1
+    assert body["results"][0]["transfer_search_url"] == "https://booking.alps2alps.com/fake"
+    for result in body["results"][1:]:
+        assert result["transfer_search_url"] is None
+
+
+def test_transfer_search_url_falls_back_to_none_when_the_provider_has_nothing(authed_client, monkeypatch):
+    from ski_optimizer.api.routes import search as search_route
+
+    monkeypatch.setattr(search_route, "live_transfer_booking_url", lambda *a, **k: None)
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 1500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    body = resp.json()
+    assert body["results"][0]["transfer_search_url"] is None
+
+
 def test_only_the_top_result_attempts_a_booking_link(authed_client, monkeypatch):
     # REGRESSION (caught in code review): a round-trip booking_url()
     # costs one extra, uncached live request (the "choose return" fetch

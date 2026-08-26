@@ -359,6 +359,34 @@ class WeatherForecast:
 
 
 @dataclass
+class TransferQuote:
+    """
+    A real, live-priced airport-to-resort transfer vehicle option --
+    BOUNDARY TYPE for adapters/transfer_adapter.py, same role as
+    FlightOption/AccommodationOption. Deliberately NOT the same type as
+    engine/transfers.TransferOption: that one models CURATED, static
+    rate-card entries (round-trip discounts, day-of-week service
+    availability, sourced/estimated provenance tagging) -- concepts a
+    live per-request quote doesn't carry -- rather than forcing two
+    genuinely different shapes into one.
+    """
+    price_eur: float
+    cost_basis: str  # "per_vehicle" for every quote this adapter returns -- see its module docstring
+    vehicle_name: str
+    max_passengers: int
+    duration_minutes: float
+    operator: str = "Alps2Alps"
+    booking_url: Optional[str] = None
+
+
+@dataclass
+class TransferSearchResult:
+    """What a live transfer search returns."""
+    options: list  # List[TransferQuote]
+    from_cache: bool = False
+
+
+@dataclass
 class HistoricalWeatherAverage:
     """
     "What's it usually like around these dates" -- averaged across
