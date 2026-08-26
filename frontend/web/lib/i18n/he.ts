@@ -163,6 +163,22 @@ const he: Record<keyof typeof en, string> = {
   terrainBreakdown: "{beginner}% מתחילים · {intermediate}% בינוני · {advanced}% מתקדמים",
   estimatedSuffix: " (מוערך)",
 
+  // --- What's included / not included ---
+  whatsIncludedTitle: "מה המחיר כולל",
+  includedHeading: "כלול",
+  notIncludedHeading: "לא כלול",
+  inclFlight: "טיסה הלוך-חזור מתל אביב",
+  inclTransfer: "הסעה משדה התעופה לאתר ובחזרה",
+  inclAccommodation: "לינה לכל התקופה",
+  inclLiftPass: "כרטיס סקי לימי הסקי שלכם",
+  inclEquipment: "השכרת ציוד סקי או סנואוברד",
+  inclFood: "אוכל ושתייה יומיומיים",
+  exclLessons: "בית ספר לסקי / שיעורים (בערך €100–414 לשבוע)",
+  exclSkiBaggage: "הטסת ציוד סקי משלכם (חינם ברוב חברות התעופה המלאות, כ-€45 לטיסה בחברות לואו-קוסט)",
+  exclInsurance: "ביטוח נסיעות וסקי",
+  exclResortTax: "מס אתר / תיירות, משולם במקום הלינה",
+  exclOnMountainLunch: "ארוחות במסעדות ההר (הערכת האוכל שלנו מניחה בעיקר מחוץ להר)",
+
   // --- Weather (result card) ---
   weatherTitle: "מזג האוויר השבוע",
   weatherAvgHigh: "מקסימום ממוצע",

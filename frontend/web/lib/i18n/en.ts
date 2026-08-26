@@ -168,6 +168,22 @@ const en = {
   terrainBreakdown: "{beginner}% beginner · {intermediate}% intermediate · {advanced}% advanced",
   estimatedSuffix: " (estimated)",
 
+  // --- What's included / not included ---
+  whatsIncludedTitle: "What this price includes",
+  includedHeading: "Included",
+  notIncludedHeading: "Not included",
+  inclFlight: "Return flight from Tel Aviv",
+  inclTransfer: "Airport ↔ resort transfer, both ways",
+  inclAccommodation: "Accommodation for the whole stay",
+  inclLiftPass: "Lift pass for your ski days",
+  inclEquipment: "Ski or snowboard rental",
+  inclFood: "Everyday food and drink",
+  exclLessons: "Ski school / lessons (roughly €100–414 per week)",
+  exclSkiBaggage: "Flying your own skis (free on most full-fare airlines, ~€45 per flight on low-cost)",
+  exclInsurance: "Travel and ski insurance",
+  exclResortTax: "Resort / tourist tax, paid at the property",
+  exclOnMountainLunch: "Mountain restaurant lunches (our food figure assumes mostly off-mountain)",
+
   // --- Weather (result card) ---
   weatherTitle: "Weather this week",
   weatherAvgHigh: "Avg high",
