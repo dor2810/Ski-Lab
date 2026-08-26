@@ -96,9 +96,25 @@ VALID_SKILL_LEVELS = frozenset({"beginner", "intermediate", "advanced", "expert"
 VALID_ACCOMMODATION_TIERS = frozenset({"budget", "standard", "luxury"})
 VALID_FOOD_PROFILES = frozenset({"budget", "normal", "luxury"})
 VALID_EQUIPMENT_TIERS = frozenset({"standard", "premium"})
-VALID_WEIGHT_KEYS = frozenset({
+# The original six dimensions. Every caller must supply all of these --
+# a partial weights dict is a real bug class (it silently means "score
+# only on the dimensions I remembered"), and this guard has caught it.
+REQUIRED_WEIGHT_KEYS = frozenset({
     "ski_quality", "price", "snow", "nightlife", "convenience", "accommodation",
 })
+
+# Dimensions added after launch are OPTIONAL and default to 0.0, so that
+# adding one can never break an existing caller or silently re-rank
+# results that nobody asked to change.
+#
+# "family" was added 2026-08-27: Resort.family_friendliness had existed
+# since the beginning but was never scored -- real researched data
+# sitting dead, while "is this good for kids?" is one of the most common
+# real questions about a ski trip (Iglu Ski and Crystal both surface
+# families as a top-level filter).
+OPTIONAL_WEIGHT_KEYS = frozenset({"family"})
+
+VALID_WEIGHT_KEYS = REQUIRED_WEIGHT_KEYS | OPTIONAL_WEIGHT_KEYS
 
 # Upper bound on people-per-room. Guards against a group_size/rooms_needed
 # combination that would invent unrealistic per-person savings (12 people
@@ -234,11 +250,15 @@ class UserPreferences:
             raise ValueError(
                 f"unknown weight key(s) {sorted(unknown)}; allowed: {sorted(VALID_WEIGHT_KEYS)}"
             )
-        missing = VALID_WEIGHT_KEYS - set(self.weights)
+        missing = REQUIRED_WEIGHT_KEYS - set(self.weights)
         if missing:
             raise ValueError(
-                f"missing weight key(s) {sorted(missing)}; all six dimensions must be present"
+                f"missing weight key(s) {sorted(missing)}; every required dimension must be present"
             )
+        # Fill optional dimensions the caller didn't mention. Done BEFORE
+        # the sum check so an existing six-key dict still sums to 1.0.
+        for key in OPTIONAL_WEIGHT_KEYS:
+            self.weights.setdefault(key, 0.0)
         if any(w < 0 for w in self.weights.values()):
             raise ValueError(f"weights must be non-negative, got {self.weights}")
         total = sum(self.weights.values())

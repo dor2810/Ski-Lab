@@ -53,9 +53,13 @@ from ..rate_limit import enforce_search_rate_limit, live_pricing_allowed
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
+# family defaults to 0.0 on purpose: adding a dimension must not silently
+# re-rank every existing caller's results. It only bites when a client
+# actually asks for it (the "Families" trip style does).
 _DEFAULT_WEIGHTS = {
     "ski_quality": 0.30, "price": 0.20, "snow": 0.15,
     "nightlife": 0.15, "convenience": 0.10, "accommodation": 0.10,
+    "family": 0.0,
 }
 
 # Real modes present in the researched transfer-options data (see

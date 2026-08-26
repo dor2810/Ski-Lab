@@ -10,6 +10,7 @@ export type RawWeights = {
   nightlife: number;
   convenience: number;
   accommodation: number;
+  family: number;
 };
 
 export const DEFAULT_RAW_WEIGHTS: RawWeights = {
@@ -19,6 +20,9 @@ export const DEFAULT_RAW_WEIGHTS: RawWeights = {
   nightlife: 15,
   convenience: 10,
   accommodation: 10,
+  // 0 by default: adding a dimension must not silently re-rank results
+  // for anyone who didn't ask for it. The "Families" trip style raises it.
+  family: 0,
 };
 
 const LABEL_KEYS: Record<keyof RawWeights, keyof Dictionary> = {
@@ -28,6 +32,7 @@ const LABEL_KEYS: Record<keyof RawWeights, keyof Dictionary> = {
   nightlife: "priorityNightlife",
   convenience: "priorityConvenience",
   accommodation: "priorityAccommodation",
+  family: "priorityFamily",
 };
 
 /** Sliders don't need to individually sum to 100 -- the displayed % for

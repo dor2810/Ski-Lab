@@ -149,6 +149,14 @@ def score_resort(resort: Resort, prefs: UserPreferences, total_cost: float,
     # Accommodation comfort: how well the resort's typical nightly rate
     # matches the user's stated accommodation_tier (budget/standard/luxury)
     # relative to the rest of the dataset, rather than "expensive = good".
+    # Family suitability: the resort's own researched 1-5 rating. Kept a
+    # direct read rather than a blend with beginner terrain -- the two
+    # are related but not the same thing (a resort can be great for
+    # learning and still be a late-night party town), and blending them
+    # would quietly make this dimension mean something other than what
+    # the data says.
+    family_score = resort.family_friendliness / 5.0
+
     accom_percentile = _normalize(resort.accommodation_eur_per_night, accom_min, accom_max)
     target_percentile = {"budget": 0.15, "standard": 0.5, "luxury": 0.85}.get(prefs.accommodation_tier, 0.5)
     accommodation_score = 1.0 - abs(accom_percentile - target_percentile)
@@ -160,6 +168,7 @@ def score_resort(resort: Resort, prefs: UserPreferences, total_cost: float,
         "nightlife": round(nightlife_score, 3),
         "convenience": round(convenience_score, 3),
         "accommodation": round(accommodation_score, 3),
+        "family": round(family_score, 3),
     }
 
 

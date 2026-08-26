@@ -41,7 +41,7 @@ from .cost_calculator import (
     ski_pass_cost, food_cost_eur, season_band, EQUIPMENT_EUR_PER_DAY,
     apply_live_flight_price, apply_live_accommodation_price,
 )
-from .scoring import rank_trips, _normalize, _ski_quality_score, narrow_resort_pool
+from .scoring import rank_trips, _normalize, _ski_quality_score, narrow_resort_pool, score_resort
 
 
 @dataclass
@@ -313,18 +313,21 @@ def search_date_range(
     }
 
     def score_it(resort, start, end, cost):
-        piste_score = _normalize(resort.piste_km, *ranges["piste"])
-        accom_pct = _normalize(resort.accommodation_eur_per_night, *ranges["accom"])
-        target = {"budget": 0.15, "standard": 0.5, "luxury": 0.85}.get(
-            prefs.accommodation_tier, 0.5)
-        components = {
-            "ski_quality": _ski_quality_score(resort, prefs, piste_score),
-            "price": max(0.0, min(1.0, 1.0 - cost.total_eur / prefs.budget_eur_per_person)),
-            "snow": resort.snow_reliability / 5.0,
-            "nightlife": resort.nightlife_rating / 5.0,
-            "convenience": 1.0 - _normalize(resort.transfer_time_minutes, *ranges["transfer"]),
-            "accommodation": 1.0 - abs(accom_pct - target),
-        }
+        # Delegates to scoring.score_resort rather than keeping a second
+        # copy of the dimension formulas.
+        #
+        # It DID keep its own copy until 2026-08-27, and that duplication
+        # immediately bit: adding the "family" dimension to score_resort
+        # left this branch raising KeyError, because the two had silently
+        # drifted apart. CLAUDE.md is explicit that the CLI, the API and
+        # this engine must never compute scores three different ways --
+        # "if the numbers ever look different, that's a bug to find, not
+        # an acceptable inconsistency". Verified equivalent before the
+        # swap: same inputs, same formulas, same normalization ranges.
+        components = score_resort(
+            resort, prefs, cost.total_eur,
+            ranges["piste"], ranges["transfer"], ranges["accom"],
+        )
         score = sum(components[k] * w for k, w in prefs.weights.items())
         return DatedTripOption(
             resort=resort, start_date=start, end_date=end, cost=cost,

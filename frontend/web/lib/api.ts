@@ -215,6 +215,7 @@ export interface Weights {
   nightlife: number;
   convenience: number;
   accommodation: number;
+  family: number;
 }
 
 export type WeekdayName =

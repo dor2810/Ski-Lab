@@ -20,6 +20,7 @@ _DIM_LABELS = {
     "nightlife": "good nightlife",
     "convenience": "short transfer",
     "accommodation": "accommodation matching your comfort level",
+    "family": "family-friendly",
 }
 
 
@@ -58,7 +59,10 @@ def _terrain_note(trip: TripOption, skill_level: str) -> str:
 
 def explain(trip: TripOption, top_n: int = 3, skill_level: str = None) -> str:
     top_dims = sorted(trip.score_components.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
-    bits = [_DIM_LABELS[dim] for dim, _ in top_dims]
+    # .get, not [] -- a dimension added to scoring without a label here
+    # must not take down the entire search with a KeyError. Falls back to
+    # the raw key made readable, which is ugly but honest and visible.
+    bits = [_DIM_LABELS.get(dim, dim.replace("_", " ")) for dim, _ in top_dims]
     out = f"Why: {', '.join(bits)}."
     if skill_level:
         out += _terrain_note(trip, skill_level)

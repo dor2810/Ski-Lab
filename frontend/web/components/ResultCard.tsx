@@ -71,6 +71,7 @@ const DIMENSION_KEYS: Record<string, keyof Dictionary> = {
   nightlife: "priorityNightlife",
   convenience: "priorityConvenience",
   accommodation: "priorityAccommodation",
+  family: "priorityFamily",
 };
 
 // Deep links to Google's own live results. For the single top-ranked

@@ -704,3 +704,54 @@ def test_live_repricing_preserves_the_researched_ski_pass_flag():
     assert both.ski_pass_price_is_researched is True
     assert both.flight_price_is_live is True
     assert both.accommodation_price_is_live is True
+
+
+def test_every_scoring_dimension_is_produced_and_labelled():
+    # REGRESSION (2026-08-27): adding the "family" dimension broke the
+    # app in two places at once, because three modules independently
+    # assumed they knew the full dimension list -- date_search.py kept
+    # its OWN copy of the component formulas (KeyError), and
+    # explainer.py indexed a label dict with [] (KeyError). CLAUDE.md is
+    # explicit that scores must not be computed several different ways.
+    #
+    # This asserts the contract directly: whatever score_resort produces
+    # must cover every valid weight key, and every dimension must have a
+    # human label. A future dimension now fails HERE, loudly, instead of
+    # 500-ing a live search.
+    from ski_optimizer.models import VALID_WEIGHT_KEYS
+    from ski_optimizer.engine.scoring import score_resort
+    from ski_optimizer.nlp.explainer import _DIM_LABELS
+
+    resorts = load_resorts()
+    prefs = _valid()
+    piste = (min(r.piste_km for r in resorts), max(r.piste_km for r in resorts))
+    transfer = (min(r.transfer_time_minutes for r in resorts),
+                max(r.transfer_time_minutes for r in resorts))
+    accom = (min(r.accommodation_eur_per_night for r in resorts),
+             max(r.accommodation_eur_per_night for r in resorts))
+
+    components = score_resort(resorts[0], prefs, 1200.0, piste, transfer, accom)
+    assert set(components) == set(VALID_WEIGHT_KEYS), (
+        "score_resort must produce exactly the valid weight dimensions"
+    )
+    assert set(VALID_WEIGHT_KEYS) <= set(_DIM_LABELS), (
+        f"unlabelled dimension(s): {sorted(set(VALID_WEIGHT_KEYS) - set(_DIM_LABELS))}"
+    )
+
+
+def test_date_search_and_rank_trips_agree_on_score_components():
+    # The other half of the same contract: the fixed-date engine and the
+    # date-range engine must produce the SAME dimension set. They kept
+    # separate formula copies until 2026-08-27 and had silently drifted.
+    import datetime
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = load_resorts()
+    prefs = _valid(ski_days=5)
+    ranked = rank_trips(resorts, prefs, top_n=1)
+    dated = search_date_range(
+        resorts, prefs,
+        earliest_date=datetime.date(2027, 1, 10), latest_date=datetime.date(2027, 1, 20),
+        top_n=1)
+    assert ranked and dated
+    assert set(ranked[0].score_components) == set(dated[0].score_components)

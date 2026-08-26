@@ -31,6 +31,7 @@ export type TripStyleId =
   | "value"
   | "snow"
   | "easy"
+  | "family"
   | "lively"
   | "comfort";
 
@@ -48,7 +49,7 @@ export const TRIP_STYLES: TripStyle[] = [
     id: "balanced",
     labelKey: "styleBalanced",
     blurbKey: "styleBalancedBlurb",
-    weights: { ski_quality: 30, price: 20, snow: 15, nightlife: 15, convenience: 10, accommodation: 10 },
+    weights: { ski_quality: 30, price: 20, snow: 15, nightlife: 15, convenience: 10, accommodation: 10, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
   },
@@ -56,7 +57,7 @@ export const TRIP_STYLES: TripStyle[] = [
     id: "value",
     labelKey: "styleValue",
     blurbKey: "styleValueBlurb",
-    weights: { ski_quality: 20, price: 45, snow: 15, nightlife: 5, convenience: 10, accommodation: 5 },
+    weights: { ski_quality: 20, price: 45, snow: 15, nightlife: 5, convenience: 10, accommodation: 5, family: 0 },
     accommodationTier: "budget",
     foodProfile: "budget",
   },
@@ -64,7 +65,7 @@ export const TRIP_STYLES: TripStyle[] = [
     id: "snow",
     labelKey: "styleSnow",
     blurbKey: "styleSnowBlurb",
-    weights: { ski_quality: 30, price: 12, snow: 40, nightlife: 5, convenience: 8, accommodation: 5 },
+    weights: { ski_quality: 30, price: 12, snow: 40, nightlife: 5, convenience: 8, accommodation: 5, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
   },
@@ -74,7 +75,19 @@ export const TRIP_STYLES: TripStyle[] = [
     blurbKey: "styleEasyBlurb",
     // Convenience is weighted hardest: a short, simple transfer is what
     // actually makes a trip feel easy for a nervous or tired traveller.
-    weights: { ski_quality: 15, price: 15, snow: 10, nightlife: 5, convenience: 35, accommodation: 20 },
+    weights: { ski_quality: 15, price: 15, snow: 10, nightlife: 5, convenience: 35, accommodation: 20, family: 0 },
+    accommodationTier: "standard",
+    foodProfile: "normal",
+  },
+  {
+    id: "family",
+    labelKey: "styleFamily",
+    blurbKey: "styleFamilyBlurb",
+    // Leans on Resort.family_friendliness, which existed in the data
+    // from the start but was never scored until 2026-08-27. Convenience
+    // matters nearly as much here: a 3-hour transfer with small children
+    // is what actually ruins a family trip.
+    weights: { ski_quality: 12, price: 15, snow: 10, nightlife: 0, convenience: 23, accommodation: 15, family: 25 },
     accommodationTier: "standard",
     foodProfile: "normal",
   },
@@ -82,7 +95,7 @@ export const TRIP_STYLES: TripStyle[] = [
     id: "lively",
     labelKey: "styleLively",
     blurbKey: "styleLivelyBlurb",
-    weights: { ski_quality: 25, price: 15, snow: 10, nightlife: 40, convenience: 5, accommodation: 5 },
+    weights: { ski_quality: 25, price: 15, snow: 10, nightlife: 40, convenience: 5, accommodation: 5, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
   },
@@ -90,7 +103,7 @@ export const TRIP_STYLES: TripStyle[] = [
     id: "comfort",
     labelKey: "styleComfort",
     blurbKey: "styleComfortBlurb",
-    weights: { ski_quality: 20, price: 10, snow: 10, nightlife: 5, convenience: 15, accommodation: 40 },
+    weights: { ski_quality: 20, price: 10, snow: 10, nightlife: 5, convenience: 15, accommodation: 40, family: 0 },
     accommodationTier: "luxury",
     foodProfile: "luxury",
   },
@@ -120,6 +133,10 @@ function StyleIcon({ id }: { id: TripStyleId }) {
     case "lively": // music/party
       return (
         <svg {...common}><path d="M9 18V6l10-2v12" {...stroke} /><circle cx="6.5" cy="18" r="2.5" {...stroke} /><circle cx="16.5" cy="16" r="2.5" {...stroke} /></svg>
+      );
+    case "family": // parent + child
+      return (
+        <svg {...common}><circle cx="8" cy="6" r="2.5" {...stroke} /><path d="M4 20v-5a4 4 0 018 0v5" {...stroke} /><circle cx="17" cy="11" r="1.8" {...stroke} /><path d="M14 20v-3.5a3 3 0 016 0V20" {...stroke} /></svg>
       );
     case "comfort": // bed
       return (
