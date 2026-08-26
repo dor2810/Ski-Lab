@@ -36,7 +36,10 @@ verified. That history matters for why this file changed shape:
 
 alps2alps_search_url() below is the transfer fallback and works
 differently from the two above -- it does NOT search Google at all. See
-its own docstring.
+its own docstring. equipment_search_url() and ski_pass_search_url()
+below are the same "always a real, working link" idea applied to the
+two cost lines that have never had ANY link before -- see each one's
+own docstring for what's verified about them.
 """
 from datetime import date
 from typing import Optional
@@ -113,3 +116,70 @@ def alps2alps_search_url() -> str:
     never nothing.
     """
     return ALPS2ALPS_BOOKING_FORM_URL
+
+
+# Skiset (skiset.co.uk, confirmed live, 200): a real, major ski/
+# snowboard equipment rental network -- ~800 shops across ~300 resorts,
+# per Skiset's own published coverage -- in France, Austria,
+# Switzerland, Italy, Andorra, and Spain. Confirmed live that Skiset's
+# OWN resort picker on this homepage resolves a resort to an internal
+# ID via an autocomplete API, not a guessable URL slug (checked: a
+# handful of plain /ski-resort/{slug} guesses mostly 404'd) -- so
+# unlike Google Hotels' bare-name search, there's no way to build a
+# resort-specific Skiset link without individually resolving and
+# verifying each resort's own ID, which is real per-resort research,
+# not attempted this pass. This is therefore the real front door, not a
+# resort-specific page -- the user still picks their resort there
+# themselves, same shape as alps2alps_search_url() above.
+SKISET_URL = "https://www.skiset.co.uk/"
+
+# Skiset's own published coverage (see above) doesn't include Bulgaria,
+# Romania, or Slovenia -- this app has resorts in all three (Bansko,
+# Pamporovo, Poiana Brasov, Kranjska Gora, Krvavec). Pointing those at
+# Skiset's front door would be a real, working link to a network that
+# genuinely has nothing there -- worse than a plain search. A Google
+# search for those five instead, same fallback shape as
+# ski_pass_search_url() below.
+_SKISET_COVERED_COUNTRIES = frozenset({
+    "France", "Austria", "Switzerland", "Italy", "Andorra", "Spain",
+})
+
+
+def equipment_search_url(resort: Resort) -> str:
+    """
+    A real, working link to start renting ski/snowboard equipment for
+    this resort -- Skiset's own front door when Skiset's published
+    network covers the resort's country, a plain Google search
+    otherwise. Deliberately NOT resort-specific for the Skiset case --
+    see SKISET_URL's own comment on why building one would mean
+    guessing.
+    """
+    if resort.country in _SKISET_COVERED_COUNTRIES:
+        return SKISET_URL
+    from urllib.parse import quote
+    query = f"ski equipment rental {resort.name}, {resort.country}"
+    return f"https://www.google.com/search?q={quote(query)}"
+
+
+def ski_pass_search_url(resort: Resort) -> str:
+    """
+    A real, working search for where to buy this resort's lift pass.
+
+    Unlike flights/hotels/transfers/equipment, there is no single
+    marketplace (real or otherwise) that sells lift passes across many
+    resorts -- every resort/ski-area runs its own ticketing (spot-
+    checked live: Chamonix's is
+    domaineschamonix.montblancnaturalresort.com, a domain with no
+    predictable relationship to the resort's own name). Hardcoding 37
+    individual official ticketing URLs is real per-resort research, not
+    attempted this pass (see the broad-vs-per-resort scoping decision
+    for equipment_search_url/this function). A plain, resort-named
+    Google search reliably surfaces the resort's own real ticketing
+    page as a top organic result instead -- spot-checked live for
+    Chamonix, landing the real domaineschamonix... page in the first
+    handful of results -- the same "real, working, not resort-
+    guaranteed" tier as google_flights_url's own dateless fallback.
+    """
+    from urllib.parse import quote
+    query = f"buy {resort.name} ski pass lift ticket"
+    return f"https://www.google.com/search?q={quote(query)}"

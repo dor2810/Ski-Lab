@@ -130,6 +130,8 @@ const en = {
   viewFlights: "View flights",
   viewAccommodation: "View accommodation",
   viewTransfer: "View transfer",
+  viewEquipment: "Rent equipment",
+  viewSkiPass: "Buy lift pass",
   accommodationPropertyNamePrefix: "Priced for:",
   searchLinkDisclaimer: "Opens Google's own live results — the top match links straight to this priced flight/stay when available.",
   needsVerificationNote: "Some data for this resort is flagged as needing verification.",

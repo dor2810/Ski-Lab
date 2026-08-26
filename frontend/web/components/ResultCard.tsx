@@ -178,6 +178,8 @@ export function ResultCard({ result }: { result: TripResult }) {
         )}
         <SearchLinkButton href={r.accommodation_search_url} label={t("viewAccommodation")} />
         <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
+        <SearchLinkButton href={r.equipment_search_url} label={t("viewEquipment")} />
+        <SearchLinkButton href={r.ski_pass_search_url} label={t("viewSkiPass")} />
         <span className="text-[11px] text-ice/40">{t("searchLinkDisclaimer")}</span>
       </div>
 

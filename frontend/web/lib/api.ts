@@ -175,6 +175,13 @@ export interface TripResult {
   // api/routes/search.py's _transfer_search_url docstring on the
   // backend.
   transfer_search_url: string;
+  // Real, working links for equipment rental and lift-pass purchase --
+  // see engine/links.py's equipment_search_url()/ski_pass_search_url()
+  // on the backend for exactly what each is (a verified rental
+  // network's front door vs. a resort-named Google search) and what's
+  // NOT resort-guaranteed about them. Always populated, every result.
+  equipment_search_url: string;
+  ski_pass_search_url: string;
   // Only ever populated for the single top-ranked result (a live
   // lookup, same reasoning as the booking links above).
   weather: TripWeather | null;

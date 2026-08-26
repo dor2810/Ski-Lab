@@ -137,6 +137,10 @@ def test_search_results_carry_flight_and_accommodation_links(authed_client):
         assert result["accommodation_search_url"].startswith(
             "https://www.google.com/travel/hotels?q="
         )
+        # Real, working links for every result, not just the top one --
+        # see engine/links.py's equipment_search_url/ski_pass_search_url.
+        assert result["equipment_search_url"]
+        assert result["ski_pass_search_url"].startswith("https://www.google.com/search?q=")
 
 
 def test_search_flight_link_includes_dates_when_outbound_date_is_given(authed_client):

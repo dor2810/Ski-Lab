@@ -36,7 +36,11 @@ from ...engine.cost_calculator import (
     live_accommodation_property_name,
     live_transfer_booking_url,
 )
-from ...engine.links import google_flights_url, google_hotels_url, alps2alps_search_url
+from ...engine.links import (
+    google_flights_url, google_hotels_url, alps2alps_search_url,
+    equipment_search_url as _equipment_search_url,
+    ski_pass_search_url as _ski_pass_search_url,
+)
 from ...engine.scoring import rank_trips
 from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
@@ -316,6 +320,15 @@ class TripResultOut(BaseModel):
     # feed into cost.transfer_eur or the score, which both still use
     # the static/curated estimate.
     transfer_search_url: str
+    # Real, working links for the two cost lines that never had any
+    # link before -- see engine/links.py's equipment_search_url()/
+    # ski_pass_search_url() docstrings for exactly what each is (a
+    # verified rental network's front door vs. a resort-named Google
+    # search) and what's NOT resort-guaranteed about them. Pure/
+    # offline (no live lookup, no network call, no gating needed) --
+    # populated for every result, not just the top one.
+    equipment_search_url: str
+    ski_pass_search_url: str
     # See WeatherOut's own docstring. Only ever populated for the single
     # top-ranked result -- see _weather_for()'s docstring on why.
     weather: Optional[WeatherOut] = None
@@ -645,6 +658,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             accommodation_property_name=property_name,
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
+            equipment_search_url=_equipment_search_url(t.resort),
+            ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=_weather_out(t.resort, payload.outbound_date, return_date, attempt_weather=(i == 0)),
         ))
 
@@ -781,6 +796,8 @@ class DatedTripResultOut(BaseModel):
     accommodation_search_url: str
     accommodation_property_name: Optional[str] = None
     transfer_search_url: str
+    equipment_search_url: str
+    ski_pass_search_url: str
     weather: Optional[WeatherOut] = None
 
 
@@ -921,6 +938,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             accommodation_property_name=property_name,
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),
+            equipment_search_url=_equipment_search_url(t.resort),
+            ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=_weather_out(t.resort, t.start_date, t.end_date, attempt_weather=(i == 0)),
         ))
 
