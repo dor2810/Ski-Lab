@@ -265,14 +265,26 @@ def test_cost_calculator_uses_the_curated_table():
 
 
 def test_unresearched_resorts_fall_back_to_the_formula():
-    # Partial coverage must degrade, not block: 20 of 46 pairs are still
-    # unresearched.
+    # Partial coverage must degrade, not block. This used to use Bansko,
+    # which was researched on 2026-08-27 along with 13 other resorts that
+    # previously had nothing -- so it now points at whatever is STILL
+    # uncovered rather than hardcoding a name that keeps going stale.
+    # Asserts the gap is non-empty first, so this can never quietly pass
+    # by testing nothing (this project has been bitten by silently
+    # skipped tests before -- see PROJECT_STATE).
     from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.engine.transfers import get_transfer_options, options_for
     from ski_optimizer.engine.cost_calculator import (
         transfer_cost_eur_per_person, _formula_transfer_cost,
     )
-    bansko = next(r for r in load_resorts() if r.name == "Bansko")
-    assert transfer_cost_eur_per_person(bansko, 2) == _formula_transfer_cost(bansko, 2)
+    opts = get_transfer_options()
+    uncovered = [r for r in load_resorts() if not options_for(opts, r.name)]
+    assert uncovered, (
+        "every resort now has researched transfer data -- delete this test, or "
+        "replace it with a synthetic no-data resort, rather than letting it pass vacuously"
+    )
+    for resort in uncovered:
+        assert transfer_cost_eur_per_person(resort, 2) == _formula_transfer_cost(resort, 2)
 
 
 def test_transfer_cost_reflects_availability_for_a_specific_airport():
