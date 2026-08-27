@@ -960,3 +960,74 @@ def test_the_quoted_flight_price_matches_the_cheapest_listed_option(authed_clien
     result = resp.json()["results"][0]
     assert result["flight_options"][0]["price_eur"] == 311.0
     assert result["cost"]["flight_eur"] == 311.0
+
+
+def test_flight_options_carry_real_flight_numbers_and_trip_totals(authed_client, monkeypatch):
+    # Flight numbers make an option checkable against a departure board;
+    # the per-option trip total makes the alternatives comparable AS
+    # TRIPS rather than just as fares.
+    import datetime as _dt
+
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    options = [
+        FlightOption(price_eur=283.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="SWISS", total_duration_minutes=870, stops=1,
+                     flight_numbers=["LX 253", "LX 2802"]),
+        FlightOption(price_eur=968.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="El Al", total_duration_minutes=215, stops=0,
+                     flight_numbers=["LY 345"]),
+    ]
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=options, insight=None))
+
+    soon = (_dt.date.today() + _dt.timedelta(days=40)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 6000, "ski_days": 5,
+        "target_resort": "Chamonix", "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    result = resp.json()["results"][0]
+    listed = result["flight_options"]
+
+    assert listed[0]["flight_numbers"] == ["LX 253", "LX 2802"]
+    assert listed[-1]["flight_numbers"] == ["LY 345"]
+    # A pricier flight must mean a pricier TRIP, and by at least the
+    # fare difference (the misc buffer scales up too).
+    assert listed[-1]["trip_total_eur"] > listed[0]["trip_total_eur"]
+    assert listed[0]["trip_total_eur"] == result["cost"]["total_eur"], (
+        "the headline total must equal the trip total of the flight it was priced on"
+    )
+    assert result["total_eur_with_fastest_flight"] == listed[-1]["trip_total_eur"]
+
+
+def test_the_fastest_flight_is_offered_even_when_it_is_not_among_the_cheapest(authed_client, monkeypatch):
+    # Taking the N cheapest alone described only one end of the choice:
+    # on a live search the four cheapest were all 14-24h journeys while
+    # the 3h35 nonstop sat outside them entirely, so the user saw four
+    # versions of the same bad option.
+    import datetime as _dt
+
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    cheap_and_slow = [
+        FlightOption(price_eur=200.0 + i, origin_airport="TLV", destination_airport="GVA",
+                     airline=f"Slow{i}", total_duration_minutes=900 + i, stops=1)
+        for i in range(6)
+    ]
+    nonstop = FlightOption(price_eur=999.0, origin_airport="TLV", destination_airport="GVA",
+                           airline="El Al", total_duration_minutes=215, stops=0)
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=cheap_and_slow + [nonstop], insight=None))
+
+    soon = (_dt.date.today() + _dt.timedelta(days=40)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 6000, "ski_days": 5,
+        "target_resort": "Chamonix", "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    listed = resp.json()["results"][0]["flight_options"]
+    assert any(o["stops"] == 0 for o in listed), (
+        f"the nonstop must be offered even though it is the priciest: {listed}"
+    )
+    assert listed[0]["is_cheapest"] is True

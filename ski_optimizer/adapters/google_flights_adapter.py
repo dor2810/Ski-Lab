@@ -141,6 +141,35 @@ def _extract_booking_ingredients(raw_card) -> Optional[str]:
         return None
 
 
+def _flight_numbers_from_card(raw_card) -> list:
+    """
+    Real flight designators per leg, e.g. ["LX 253", "LX 1234"].
+
+    Reverse-engineered the same way everything else in this module was:
+    dumped a live card and looked. Each leg carries
+    ["LX", "253", None, "SWISS"] at index 22 -- carrier code, number,
+    and airline name. fast_flights' own dataclass throws this away,
+    which is why it is read from the raw payload here rather than off
+    the parsed object.
+
+    Returns [] on ANY surprise. A wrong flight number is worse than no
+    flight number to someone standing in front of a departure board, so
+    this never guesses and never partially fills.
+    """
+    try:
+        legs = raw_card[0][2]
+        numbers = []
+        for leg in legs:
+            designator = leg[22]
+            carrier, number = designator[0], designator[1]
+            if not carrier or not number:
+                return []
+            numbers.append(f"{carrier} {number}")
+        return numbers
+    except (IndexError, TypeError, KeyError):
+        return []
+
+
 def _parse_flight_result(flight, currency_is_eur: bool, raw_card=None) -> Optional[FlightOption]:
     """
     Converts one `fast_flights.model.Flights` result (one full,
@@ -196,6 +225,7 @@ def _parse_flight_result(flight, currency_is_eur: bool, raw_card=None) -> Option
         stops=max(0, len(legs) - 1),
         is_round_trip=True,  # only ever called from a round-trip or one-way context; set per-query below
         booking_token=_extract_booking_ingredients(raw_card) if raw_card is not None else None,
+        flight_numbers=_flight_numbers_from_card(raw_card) if raw_card is not None else [],
     )
 
 

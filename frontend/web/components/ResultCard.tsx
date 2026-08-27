@@ -126,6 +126,12 @@ export function ResultCard({ result }: { result: TripResult }) {
   const [expanded, setExpanded] = useState(false);
   const r = result;
   const scorePct = Math.round(r.score * 100);
+  // Only a range when the two ends genuinely differ -- a range like
+  // "EUR1322-EUR1322" is noise, and rounding can make a trivial
+  // difference look like one.
+  const showRange =
+    r.total_eur_with_fastest_flight != null &&
+    Math.round(r.total_eur_with_fastest_flight) > Math.round(r.cost.total_eur);
 
   return (
     <article
@@ -161,10 +167,25 @@ export function ResultCard({ result }: { result: TripResult }) {
 
         <div className="flex items-center gap-4">
           <div className="text-end">
-            <div className="text-3xl font-extrabold tabular-nums text-ink">
+            {/* A RANGE, not a single number, whenever the flight choice
+                genuinely moves the total. Showing only the low end
+                quietly assumes the traveller takes the cheapest
+                itinerary, which on real searches has meant a 24-hour
+                journey. The low end stays visually dominant because it
+                IS what the ranking used. */}
+            <div className="text-2xl font-extrabold tabular-nums leading-tight text-ink sm:text-3xl">
               {formatEUR(r.cost.total_eur, locale)}
+              {showRange && (
+                <span className="block text-base font-bold text-muted sm:inline sm:text-lg">
+                  <span className="hidden sm:inline">{"\u2013"}</span>
+                  <span className="sm:hidden">{"\u2013 "}</span>
+                  {formatEUR(r.total_eur_with_fastest_flight as number, locale)}
+                </span>
+              )}
             </div>
-            <div className="text-xs text-subtle">{t("perPersonTotal")}</div>
+            <div className="mt-1 text-xs text-subtle">
+              {showRange ? t("perPersonTotalRange") : t("perPersonTotal")}
+            </div>
           </div>
           <div
             className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 border-sky/60 text-sm font-bold text-sky"

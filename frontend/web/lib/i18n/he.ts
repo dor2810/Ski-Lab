@@ -141,6 +141,7 @@ const he: Record<keyof typeof en, string> = {
 
   // --- Result card ---
   overBudgetBanner: "מעל התקציב שלכם — הטיול הזול ביותר שמצאנו. שום דבר לא התאים לתקציב שציינתם.",
+  perPersonTotalRange: "לאדם — מהטיסה הזולה ועד המהירה",
   perPersonTotal: "לאדם, סה״כ",
   matchScoreTitle: "ציון התאמה",
   lineFlight: "טיסה",
@@ -191,6 +192,7 @@ const he: Record<keyof typeof en, string> = {
   exclOnMountainLunch: "ארוחות במסעדות ההר (הערכת האוכל שלנו מניחה בעיקר מחוץ להר)",
 
   flightOptionsTitle: "אפשרויות טיסה ({count})",
+  flightTripTotal: "€{total} סה״כ",
   flightNonstop: "ישירה",
   flightOneStop: "עצירה אחת",
   flightStops: "{n} עצירות",

@@ -404,7 +404,24 @@ def live_flight_options(
             adults=adults,
             max_connections=max_connections,
         )
-        return sorted(result.options, key=lambda o: o.price_eur)[:limit]
+        by_price = sorted(result.options, key=lambda o: o.price_eur)
+        if not by_price:
+            return []
+
+        # Cheapest few, PLUS the fastest itinerary even when it is
+        # pricier than all of them.
+        #
+        # Taking the N cheapest alone makes the list -- and any range
+        # built from it -- describe only one end of the real choice. On
+        # a live TLV->GVA search the four cheapest were all 14-24 hour
+        # journeys while the 3h35 nonstop sat outside them entirely, so
+        # a "cheapest 4" view showed a user four versions of the same
+        # bad option and hid the one they might actually want.
+        chosen = by_price[: max(1, limit - 1)]
+        fastest = min(result.options, key=lambda o: o.total_duration_minutes)
+        if fastest not in chosen:
+            chosen = chosen + [fastest]
+        return sorted(chosen, key=lambda o: o.price_eur)
     except Exception:
         logger.exception("live_flight_options failed for %s", resort.name)
         return []

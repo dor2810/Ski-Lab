@@ -76,24 +76,38 @@ export function FlightOptions({ options }: { options: FlightOption[] }) {
           {options.map((o, i) => (
             <li
               key={`${o.airline}-${o.price_eur}-${i}`}
-              className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${
-                o.is_cheapest ? "bg-signal-soft" : ""
-              }`}
+              className={`rounded-lg px-2 py-1.5 ${o.is_cheapest ? "bg-signal-soft" : ""}`}
             >
-              <span className="w-14 flex-none font-semibold tabular-nums text-ink">
-                €{Math.round(o.price_eur)}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-muted">{o.airline}</span>
-              <span className="flex-none tabular-nums text-muted">
-                {formatDuration(o.duration_minutes)}
-              </span>
-              <span className="w-16 flex-none text-end text-subtle">
-                {o.stops === 0
-                  ? t("flightNonstop")
-                  : o.stops === 1
-                    ? t("flightOneStop")
-                    : t("flightStops", { n: String(o.stops) })}
-              </span>
+              {/* TWO lines, not one. Six pieces of data (fare, airline,
+                  flight numbers, duration, stops, trip total) in a
+                  single row needed 432px against roughly 300px of usable
+                  width on a phone, and pushed the whole page into
+                  horizontal scroll. The first line is what you choose
+                  between; the second is the detail you check after. */}
+              <div className="flex min-w-0 items-baseline gap-2 text-xs">
+                <span className="w-12 flex-none font-semibold tabular-nums text-ink">
+                  €{Math.round(o.price_eur)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-muted">{o.airline}</span>
+                <span className="flex-none tabular-nums text-muted">
+                  {formatDuration(o.duration_minutes)}
+                </span>
+                <span className="flex-none text-subtle">
+                  {o.stops === 0
+                    ? t("flightNonstop")
+                    : o.stops === 1
+                      ? t("flightOneStop")
+                      : t("flightStops", { n: String(o.stops) })}
+                </span>
+              </div>
+              <div className="mt-0.5 flex min-w-0 items-baseline gap-2 text-[11px] text-subtle">
+                <span className="min-w-0 flex-1 truncate">
+                  {o.flight_numbers.length > 0 ? o.flight_numbers.join(" · ") : "\u00a0"}
+                </span>
+                <span className="flex-none tabular-nums">
+                  {t("flightTripTotal", { total: String(Math.round(o.trip_total_eur)) })}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

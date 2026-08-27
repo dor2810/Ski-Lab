@@ -299,6 +299,13 @@ class FlightOption:
     stops: int                   # 0 = nonstop; enforces the blueprint's max-connections hard constraint
     is_round_trip: bool = True
     booking_token: Optional[str] = None  # opaque, provider-specific; see docstring
+    # Real flight designators for each leg, in order, e.g. ["LX 253",
+    # "LX 1234"]. Provider-NEUTRAL despite being scraped: a flight
+    # number is a fact about the flight, not about who told us. Empty
+    # when the provider didn't supply them -- never faked, since a wrong
+    # flight number is worse than no flight number to someone standing
+    # at a departure board.
+    flight_numbers: list = field(default_factory=list)
 
 
 @dataclass

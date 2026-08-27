@@ -146,6 +146,7 @@ const en = {
 
   // --- Result card ---
   overBudgetBanner: "Over your budget — the cheapest trip we could find. Nothing fit your stated budget.",
+  perPersonTotalRange: "per person — cheapest to fastest flight",
   perPersonTotal: "per person, total",
   matchScoreTitle: "Match score",
   lineFlight: "Flight",
@@ -196,6 +197,7 @@ const en = {
   exclOnMountainLunch: "Mountain restaurant lunches (our food figure assumes mostly off-mountain)",
 
   flightOptionsTitle: "Flight options ({count})",
+  flightTripTotal: "€{total} trip",
   flightNonstop: "nonstop",
   flightOneStop: "1 stop",
   flightStops: "{n} stops",

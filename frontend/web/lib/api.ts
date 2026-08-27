@@ -152,6 +152,10 @@ export interface FlightOption {
   duration_minutes: number;
   stops: number;
   is_cheapest: boolean;
+  /** Real designators per leg, e.g. ["LX 253", "LX 2802"]. Empty when unknown. */
+  flight_numbers: string[];
+  /** What the WHOLE trip costs if this flight is the one taken. */
+  trip_total_eur: number;
 }
 
 export interface TripResult {
@@ -187,6 +191,10 @@ export interface TripResult {
   // the flight price isn't live -- with a static estimate there are no
   // real flights to list.
   flight_options: FlightOption[];
+  // The trip total is a RANGE: total_eur is the low end (cheapest
+  // flight) and this is the high end (typically the fastest/nonstop).
+  // null when there is only one real flight choice.
+  total_eur_with_fastest_flight: number | null;
   // A booking link -- always real and working, same contract as
   // flight/accommodation above: a live quote for the top result when
   // available, Alps2Alps' own booking form otherwise. See

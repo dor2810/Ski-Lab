@@ -36,6 +36,7 @@ from ...engine.cost_calculator import (
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
     live_accommodation_property_name,
     live_flight_options,
+    apply_live_flight_price,
     live_transfer_booking_url,
 )
 from ...engine.links import (
@@ -320,6 +321,14 @@ class FlightOptionOut(BaseModel):
     duration_minutes: int
     stops: int
     is_cheapest: bool
+    # Real designators per leg, e.g. ["LX 253", "LX 2802"]. Empty when
+    # the provider didn't supply them -- never faked, since a wrong
+    # flight number is worse than none to someone at a departure board.
+    flight_numbers: List[str] = []
+    # What the WHOLE trip costs if this flight is the one taken, not
+    # just what the flight costs. The headline total assumes the
+    # cheapest flight; this is what makes the alternatives comparable.
+    trip_total_eur: float
 
 
 class TripResultOut(BaseModel):
@@ -350,6 +359,11 @@ class TripResultOut(BaseModel):
     # otherwise) and only for results that were live-repriced. Costs no
     # extra requests -- see cost_calculator.live_flight_options.
     flight_options: List[FlightOptionOut] = []
+    # The trip total spans a RANGE, because which flight you take
+    # changes it. total_eur is the low end (cheapest flight); this is
+    # the high end (typically the fastest or nonstop option). Equal to
+    # total_eur when there is only one real choice.
+    total_eur_with_fastest_flight: Optional[float] = None
     # A booking link -- always real and working, same "never nothing"
     # contract as flight/accommodation above. A live booking link for
     # the cheapest real transfer quote found (adapters/transfer_
@@ -576,7 +590,8 @@ MAX_SEARCH_WINDOW_DAYS = 400
 
 
 def _flight_options_out(resort: Resort, outbound_date, return_date,
-                        flight_price_is_live: bool, max_connections) -> List["FlightOptionOut"]:
+                        flight_price_is_live: bool, max_connections,
+                        cost) -> List["FlightOptionOut"]:
     """
     The itineraries behind this result's flight price. Empty unless the
     price is actually live -- with a static estimate there are no real
@@ -587,11 +602,17 @@ def _flight_options_out(resort: Resort, outbound_date, return_date,
         return []
     options = live_flight_options(resort, outbound_date, return_date, origin_airport="TLV",
                                   max_connections=max_connections)
+    # What the WHOLE trip costs under each choice. Uses the same
+    # apply_live_flight_price the engine uses, so the misc buffer is
+    # rescaled exactly as it is everywhere else rather than a second,
+    # subtly different sum living here.
     return [
         FlightOptionOut(
             price_eur=o.price_eur, airline=o.airline,
             duration_minutes=o.total_duration_minutes, stops=o.stops,
             is_cheapest=(i == 0),
+            flight_numbers=list(o.flight_numbers or []),
+            trip_total_eur=round(apply_live_flight_price(cost, o.price_eur).total_eur, 2),
         )
         for i, o in enumerate(options)
     ]
@@ -840,8 +861,10 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0),
                 property_name=property_name),
             accommodation_property_name=property_name,
-            flight_options=_flight_options_out(t.resort, payload.outbound_date, return_date,
-                                               t.cost.flight_price_is_live, payload.max_connections),
+            flight_options=(_fo := _flight_options_out(
+                t.resort, payload.outbound_date, return_date,
+                t.cost.flight_price_is_live, payload.max_connections, t.cost)),
+            total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),
@@ -1019,6 +1042,7 @@ class DatedTripResultOut(BaseModel):
     accommodation_search_url: str
     accommodation_property_name: Optional[str] = None
     flight_options: List[FlightOptionOut] = []
+    total_eur_with_fastest_flight: Optional[float] = None
     transfer_search_url: str
     equipment_search_url: str
     ski_pass_search_url: str
@@ -1219,8 +1243,10 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0),
                 property_name=property_name),
             accommodation_property_name=property_name,
-            flight_options=_flight_options_out(t.resort, t.start_date, t.end_date,
-                                               t.cost.flight_price_is_live, payload.max_connections),
+            flight_options=(_fo := _flight_options_out(
+                t.resort, t.start_date, t.end_date,
+                t.cost.flight_price_is_live, payload.max_connections, t.cost)),
+            total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),
