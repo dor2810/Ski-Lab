@@ -228,7 +228,7 @@ const en = {
   previewErrorGeneric: "Couldn't reach the search engine yet. The free-tier backend may still be starting up — try a search below in a moment.",
   bestTripsForSearch: "Best trips for your search",
   exampleTripsRightNow: "Example trips right now",
-  livePricingBlockedNote: "Some prices below are estimates: the flight price service temporarily blocked our automated lookups. The trips are real — those specific numbers are not live right now. Try again in a few minutes.",
+  livePricingBlockedNote: "Some flight prices below are estimates — we couldn't fetch a live quote for every route just now. The trips and all other costs are real; those specific numbers aren't live. Try again in a few minutes.",
   livePricingActive: "Live pricing active",
   estimatedPricing: "Estimated pricing",
   noTripsFound: "No trips found for those settings — try a wider budget or date range.",

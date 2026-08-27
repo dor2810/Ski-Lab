@@ -431,30 +431,29 @@ def booking_url(
         return None
 
 
-# Markers Google puts on an anti-bot challenge page. Checked as whole
-# words against a lowercased copy: "captcha" appears in the page's own
-# reCAPTCHA scaffolding whenever a challenge is served, and never in a
-# normal results page (verified against both a working response and a
-# blocked one captured 2026-08-27).
-_BLOCK_MARKERS = ("recaptcha", "captcha", "unusual traffic", "before you continue")
-
-
-def _raise_if_blocked(html: str) -> None:
-    """
-    Turns Google's anti-bot challenge into a NAMED failure.
-
-    Without this, a block arrives as HTTP 200 with the expected script
-    tag present but no payload behind it, and surfaces several frames
-    later as a TypeError from inside fast_flights -- identical in shape
-    to a parser bug or an empty route. See ProviderBlockedError.
-    """
-    lowered = html.lower()
-    hit = next((m for m in _BLOCK_MARKERS if m in lowered), None)
-    if hit is not None:
-        raise ProviderBlockedError(
-            f"Google Flights served an anti-bot challenge (matched {hit!r}); "
-            "no live price could be read. This is a scraping block, not a missing route."
-        )
+# HOW A BLOCK IS DETECTED -- and how it is NOT.
+#
+# The first version of this matched strings like "recaptcha"/"captcha"
+# in the HTML. That was WRONG, and it caused a real production
+# regression: Google embeds reCAPTCHA scaffolding in NORMAL Google
+# Flights pages too, so the check fired on perfectly good responses and
+# rejected them. Live flight pricing went to 0/12 in production and the
+# UI reported "blocked" -- caused entirely by the detector, not by
+# Google. Verified by disabling it and immediately getting 7 real
+# options back at EUR283.
+#
+# The reliable signature is STRUCTURAL, not textual: on a real results
+# page the embedded payload carries a flight array; on a challenge or
+# no-data page that slot is null. That is exactly the condition that
+# used to blow up several frames down inside fast_flights with
+# "'NoneType' object is not subscriptable". So we check the thing that
+# actually differs instead of guessing from page text.
+#
+# HONEST LIMIT: a null payload means "no flight data came back". It does
+# NOT by itself prove a CAPTCHA -- a genuinely empty route looks the
+# same from here. The user-facing message says prices could not be
+# fetched, which is true either way, rather than asserting a specific
+# cause we cannot actually distinguish.
 
 
 def _fetch_and_parse(query):
@@ -480,7 +479,6 @@ def _fetch_and_parse(query):
     from selectolax.lexbor import LexborHTMLParser
 
     html = fetch_flights_html(query)
-    _raise_if_blocked(html)
     page = LexborHTMLParser(html)
     script = page.css_first(r"script.ds\:1")
     if script is None:
@@ -491,6 +489,15 @@ def _fetch_and_parse(query):
         parsed = ff_parser.parse_js(js)
     except FlightsNotFound:
         return [], []
+    except TypeError as exc:
+        # The structural signature described above: fast_flights indexes
+        # into the payload's flight slot, which is null on a challenge or
+        # no-data response. Named rather than left as an opaque
+        # TypeError, so callers can degrade visibly instead of silently.
+        raise ProviderBlockedError(
+            "Google Flights returned a page with no flight data "
+            f"(likely an anti-bot challenge or an empty route): {exc}"
+        ) from exc
 
     try:
         data_str = js.split("data:", 1)[1].rsplit(",", 1)[0]

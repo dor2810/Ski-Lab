@@ -430,32 +430,70 @@ def test_retries_are_bounded_and_still_fail_honestly(monkeypatch):
     )
 
 
-# --- anti-bot block detection (root cause of "why isn't the flight live?") ---
+# --- no-flight-data detection ---
 
-def test_a_captcha_page_is_reported_as_a_block_not_a_parse_error():
-    # THE BUG THIS FIXES, diagnosed 2026-08-27 against a real blocked
-    # response: Google answers suspected automation with HTTP 200, ~1.8MB
-    # of HTML, and the expected script.ds:1 tag PRESENT -- but no flight
-    # payload behind it. fast_flights then died with "'NoneType' object
-    # is not subscriptable" several frames down, indistinguishable from a
-    # parser bug or an empty route. Every blocked lookup silently became
-    # a static estimate, which is most of why users saw "EST." so often.
+def test_a_payload_with_no_flight_data_is_reported_as_a_provider_failure(monkeypatch):
+    # The structural signature: script.ds:1 present, but the payload's
+    # flight slot is null. This used to surface as an opaque TypeError
+    # from inside fast_flights, indistinguishable from a parser bug, and
+    # every occurrence silently became a static estimate.
+    import fast_flights.fetcher as ff_fetcher
+    import fast_flights.parser as ff_parser
+
     from ski_optimizer.adapters.base import ProviderBlockedError
 
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html",
+                        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],null],</script></html>')
+
+    def explode(_js):
+        raise TypeError("'NoneType' object is not subscriptable")
+
+    monkeypatch.setattr(ff_parser, "parse_js", explode)
+
     with pytest.raises(ProviderBlockedError):
-        gfa._raise_if_blocked("<html><body>Our systems have detected unusual traffic</body></html>")
-    with pytest.raises(ProviderBlockedError):
-        gfa._raise_if_blocked('<html><script src="recaptcha/api.js"></script></html>')
+        gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
 
 
-def test_a_normal_page_is_not_mistaken_for_a_block():
-    # A false positive here would turn working live pricing into
-    # permanent estimates, which is worse than the bug being fixed.
-    gfa._raise_if_blocked("<html><body>Cheapest flights to Geneva</body></html>")
+def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(monkeypatch):
+    """
+    REGRESSION, and a production outage I caused.
+
+    The first detector matched the string "recaptcha"/"captcha" in the
+    HTML. Google embeds reCAPTCHA scaffolding in NORMAL Google Flights
+    pages, so the check fired on good responses: live flight pricing
+    dropped to 0/12 in production and the UI announced "blocked" -- all
+    of it self-inflicted. Proven by disabling the detector and getting 7
+    real options back at EUR283 from the very same request.
+
+    A page that contains the word "captcha" but DOES parse must be
+    treated as a success.
+    """
+    import fast_flights.fetcher as ff_fetcher
+    import fast_flights.parser as ff_parser
+
+    from ski_optimizer.models import FlightOption
+
+    monkeypatch.setattr(
+        ff_fetcher, "fetch_flights_html",
+        # payload[3][0] must be a NON-empty list, or there are no raw
+        # cards to zip against the parsed results and options come back
+        # empty for a reason unrelated to what this test is about.
+        lambda *a, **k: ('<html><script src="https://www.google.com/recaptcha/api.js"></script>'
+                         '<script class="ds:1">data:[[],[],[],[[{}]]],</script></html>'))
+    monkeypatch.setattr(gfa, "_parse_flight_result",
+                        lambda *a, **k: FlightOption(price_eur=283.0, origin_airport="TLV",
+                                                     destination_airport="GVA", airline="Test Air",
+                                                     total_duration_minutes=300, stops=0))
+    monkeypatch.setattr(ff_parser, "parse_js", lambda _js: [object()])
+
+    result = gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17),
+                                use_cache=False)
+    assert result.options, "a normal page mentioning recaptcha must not be treated as a block"
+    assert result.options[0].price_eur == 283.0
 
 
 def test_a_block_is_not_retried(monkeypatch):
-    # A CAPTCHA will not pass on an identical second request; retrying
+    # A challenge will not pass on an identical second request; retrying
     # only adds load to a provider that already flagged us.
     from ski_optimizer.adapters.base import ProviderBlockedError
 
@@ -463,7 +501,7 @@ def test_a_block_is_not_retried(monkeypatch):
 
     def blocked(*_a, **_k):
         calls["n"] += 1
-        raise ProviderBlockedError("challenge served")
+        raise ProviderBlockedError("no flight data")
 
     monkeypatch.setattr(gfa, "_search_one_airport", blocked)
     with pytest.raises(ProviderBlockedError):
@@ -473,32 +511,12 @@ def test_a_block_is_not_retried(monkeypatch):
 
 def test_a_block_stays_typed_through_search_flights(monkeypatch):
     # Flattening it into a generic AdapterError at the "every airport
-    # failed" step is what made a block look identical to "no flights
+    # failed" step is what made it indistinguishable from "no flights
     # exist on this route".
     from ski_optimizer.adapters.base import ProviderBlockedError
 
     monkeypatch.setattr(gfa, "_search_one_airport",
-                        lambda *a, **k: (_ for _ in ()).throw(ProviderBlockedError("challenge")))
+                        lambda *a, **k: (_ for _ in ()).throw(ProviderBlockedError("no data")))
     with pytest.raises(ProviderBlockedError):
         gfa.search_flights("TLV", ["GVA", "INN"], date(2027, 1, 10), date(2027, 1, 17),
                            use_cache=False)
-
-
-def test_the_block_check_is_actually_wired_into_the_fetch_path(monkeypatch):
-    # The three tests above call _raise_if_blocked directly, so they all
-    # still passed when the CALL to it was deleted from _fetch_and_parse
-    # -- they verified the check, never that anything uses it. This
-    # drives a real CAPTCHA page through the actual fetch path.
-    import fast_flights.fetcher as ff_fetcher
-
-    from ski_optimizer.adapters.base import ProviderBlockedError
-
-    captcha_page = (
-        "<html><head><title>Sign in</title></head><body>"
-        "<script src='https://www.google.com/recaptcha/api.js'></script>"
-        "Our systems have detected unusual traffic</body></html>"
-    )
-    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: captcha_page)
-
-    with pytest.raises(ProviderBlockedError):
-        gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
