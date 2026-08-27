@@ -26,6 +26,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ski_optimizer.adapters import google_flights_adapter as gfa
 from ski_optimizer.adapters import response_cache
 from ski_optimizer.adapters.base import AdapterError
+
+
+# A result card shaped the way fast_flights' parser actually reads one.
+# The filter mirrors every index that parser accesses, so test cards must
+# be realistic or they are (correctly) treated as malformed.
+_VALID_LEG = [0, 1, 2, "TLV", "Ben Gurion", "Geneva", "GVA", 7, [8, 30],
+              9, [10, 45], 300, 12, 13, 14, 15, 16, "A320", 18, 19,
+              [2027, 1, 10], [2027, 1, 10]]
+
+
+def _valid_card(price_cents=42000):
+    return [[0, ["LX"], [_VALID_LEG]], [[None, price_cents]]]
+
 from fast_flights.model import Airport, CarbonEmission, Flights, SimpleDatetime, SingleFlight
 
 
@@ -470,7 +483,7 @@ def test_the_upstream_parser_indexerror_does_not_kill_the_route(monkeypatch):
 
     monkeypatch.setattr(
         ff_fetcher, "fetch_flights_html",
-        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],[[[["f"],[[null,42000]]]]]],</script></html>')
+        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],[[[[0,["LX"],[[0,1,2,"TLV","BG","GVA","GVA",7,[8,30],9,[10,45],300,12,13,14,15,16,"A320",18,19,[2027,1,10],[2027,1,10]]]],[[null,42000]]]]],</script></html>')
     monkeypatch.setattr(ff_parser, "parse_js",
                         lambda _js: (_ for _ in ()).throw(IndexError("list index out of range")))
 
@@ -513,7 +526,7 @@ def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(mon
     monkeypatch.setattr(
         ff_fetcher, "fetch_flights_html",
         lambda *a, **k: ('<html><script src="https://www.google.com/recaptcha/api.js"></script>'
-                         '<script class="ds:1">data:[[],[],[],[[[["f"],[[null,42000]]]]]],</script></html>'))
+                         '<script class="ds:1">data:[[],[],[],[[[[0,["LX"],[[0,1,2,"TLV","BG","GVA","GVA",7,[8,30],9,[10,45],300,12,13,14,15,16,"A320",18,19,[2027,1,10],[2027,1,10]]]],[[null,42000]]]]],</script></html>'))
     monkeypatch.setattr(gfa, "_parse_flight_result",
                         lambda *a, **k: FlightOption(price_eur=283.0, origin_airport="TLV",
                                                      destination_airport="GVA", airline="Test Air",
@@ -558,8 +571,8 @@ def test_one_priceless_card_does_not_destroy_a_whole_route():
     """
     import json
 
-    good = [["flight-a"], [[None, 42000]]]      # a normal, priced card
-    priceless = [["flight-b"], []]              # k[1][0][1] raises IndexError
+    good = _valid_card()                        # a normal, priced card
+    priceless = [[0, ["LX"], [_VALID_LEG]], []]  # k[1][0][1] raises IndexError
     payload = [None, None, None, [[good, priceless]], None, None, None, None]
     js = f"AF_init(data:{json.dumps(payload)}, sideChannel: {{}})"
 
@@ -575,7 +588,7 @@ def test_the_card_filter_leaves_a_healthy_payload_byte_identical():
     # that already worked, so the healthy path returns the input as-is.
     import json
 
-    good = [["flight-a"], [[None, 42000]]]
+    good = _valid_card()
     payload = [None, None, None, [[good, good]], None, None, None, None]
     js = f"AF_init(data:{json.dumps(payload)}, sideChannel: {{}})"
     assert gfa._drop_priceless_cards(js) is js
@@ -597,8 +610,8 @@ def test_the_card_filter_is_actually_wired_into_the_fetch_path(monkeypatch):
     import fast_flights.fetcher as ff_fetcher
     import fast_flights.parser as ff_parser
 
-    good = [["flight-a"], [[None, 42000]]]
-    priceless = [["flight-b"], []]
+    good = _valid_card()
+    priceless = [[0, ["LX"], [_VALID_LEG]], []]
     payload = [None, None, None, [[good, priceless]], None, None, None, None]
     monkeypatch.setattr(
         ff_fetcher, "fetch_flights_html",
@@ -616,3 +629,27 @@ def test_the_card_filter_is_actually_wired_into_the_fetch_path(monkeypatch):
     assert seen["cards"] == [good], (
         "the parser should have received only the priced card -- the filter isn't wired in"
     )
+
+
+def test_a_card_with_a_malformed_leg_is_also_dropped():
+    # The first version of the filter only guarded the PRICE access, and
+    # production kept logging "route skipped" afterwards: the same
+    # upstream loop reads leg[3], [4], [5], [6], [8], [10], [11], [17],
+    # [20] and [21] with no guards either, so a short leg list is just as
+    # fatal as a missing price. After mirroring every access, 7 of 7 test
+    # routes returned real prices (INN EUR357, SZG EUR414, SOF EUR208,
+    # GVA EUR249, BGY EUR836, MXP EUR123, BCN EUR249).
+    import json
+
+    short_leg = [0, 1, 2, "TLV"]                      # blows up at leg[4]
+
+    good = _valid_card()
+    malformed = [[0, ["LX"], [short_leg]], [[None, 42000]]]   # price is fine, leg is not
+
+    assert gfa._card_is_parseable(good) is True
+    assert gfa._card_is_parseable(malformed) is False
+
+    payload = [None, None, None, [[good, malformed]], None, None, None, None]
+    js = f"AF_init(data:{json.dumps(payload)}, x)"
+    kept = json.loads(gfa._drop_priceless_cards(js).split("data:", 1)[1].rsplit(",", 1)[0])[3][0]
+    assert kept == [good]

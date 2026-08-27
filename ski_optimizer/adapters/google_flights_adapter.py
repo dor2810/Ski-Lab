@@ -461,6 +461,37 @@ def booking_url(
 _REAL_BLOCK_MARKER = "unusual traffic"
 
 
+def _card_is_parseable(card) -> bool:
+    """
+    Whether fast_flights' parser can read this card without raising.
+
+    Deliberately MIRRORS the exact index accesses parser.py makes,
+    rather than checking the price alone. The first version of this
+    filter only guarded `k[1][0][1]`, and production kept logging
+    "route skipped" afterwards: the same loop goes on to read
+    single_flight[3], [4], [5], [6], [8], [10], [11], [17], [20] and
+    [21] with no guards either, so a short leg list is just as fatal as
+    a missing price.
+
+    Coupled to a specific upstream version by nature. That is acceptable
+    because being WRONG here is cheap and safe -- an unrecognised card is
+    dropped, never a whole route -- whereas being absent costs every
+    flight on the route.
+    """
+    try:
+        flight = card[0]
+        _price = card[1][0][1]
+        _typ, _airlines, legs = flight[0], flight[1], flight[2]
+        for leg in legs:
+            for index in (3, 4, 5, 6, 8, 10, 11, 17):
+                _ = leg[index]
+            tuple(leg[20])
+            tuple(leg[21])
+    except (IndexError, TypeError, KeyError):
+        return False
+    return True
+
+
 def _drop_priceless_cards(js: str) -> str:
     """
     Removes result cards that have no price, so one of them can't take
@@ -492,13 +523,7 @@ def _drop_priceless_cards(js: str) -> str:
         if not cards:
             return js
 
-        kept = []
-        for card in cards:
-            try:
-                _ = card[1][0][1]        # the exact access that raises upstream
-            except (IndexError, TypeError, KeyError):
-                continue                  # priceless card -- drop just this one
-            kept.append(card)
+        kept = [card for card in cards if _card_is_parseable(card)]
 
         if len(kept) == len(cards):
             return js                     # nothing to do, don't re-serialize
