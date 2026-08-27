@@ -58,11 +58,13 @@ call path either), so this gap is real but currently inert.
 """
 import base64
 import datetime
+import random
+import time
 import json
 from typing import List, Optional
 
 from ..models import FlightOption, FlightSearchResult
-from .base import AdapterError
+from .base import AdapterError, ProviderBlockedError
 from .response_cache import get_cache
 from ._wire_format import field_bytes, field_str, field_varint
 
@@ -429,6 +431,32 @@ def booking_url(
         return None
 
 
+# Markers Google puts on an anti-bot challenge page. Checked as whole
+# words against a lowercased copy: "captcha" appears in the page's own
+# reCAPTCHA scaffolding whenever a challenge is served, and never in a
+# normal results page (verified against both a working response and a
+# blocked one captured 2026-08-27).
+_BLOCK_MARKERS = ("recaptcha", "captcha", "unusual traffic", "before you continue")
+
+
+def _raise_if_blocked(html: str) -> None:
+    """
+    Turns Google's anti-bot challenge into a NAMED failure.
+
+    Without this, a block arrives as HTTP 200 with the expected script
+    tag present but no payload behind it, and surfaces several frames
+    later as a TypeError from inside fast_flights -- identical in shape
+    to a parser bug or an empty route. See ProviderBlockedError.
+    """
+    lowered = html.lower()
+    hit = next((m for m in _BLOCK_MARKERS if m in lowered), None)
+    if hit is not None:
+        raise ProviderBlockedError(
+            f"Google Flights served an anti-bot challenge (matched {hit!r}); "
+            "no live price could be read. This is a scraping block, not a missing route."
+        )
+
+
 def _fetch_and_parse(query):
     """
     Same end result as fast_flights' own get_flights(query) (a
@@ -452,6 +480,7 @@ def _fetch_and_parse(query):
     from selectolax.lexbor import LexborHTMLParser
 
     html = fetch_flights_html(query)
+    _raise_if_blocked(html)
     page = LexborHTMLParser(html)
     script = page.css_first(r"script.ds\:1")
     if script is None:
@@ -474,6 +503,40 @@ def _fetch_and_parse(query):
         raw_cards = [None] * len(parsed)
 
     return parsed, raw_cards
+
+
+# This is a SCRAPER, and this module's own docstring warns it can be
+# rate-limited or transiently blocked. Until 2026-08-27 a single failed
+# fetch meant that route simply had no live price -- the caller kept a
+# static estimate and the user saw "EST." That is a large part of why so
+# many rows were estimated even with live pricing switched on: not that
+# no price existed, but that one flaky request was never retried.
+#
+# Deliberately small and jittered. The failure mode being retried is a
+# transient block, and retrying hard is how a transient block becomes a
+# durable one -- so: one extra attempt, a short randomised pause, and
+# then give up honestly rather than hammering.
+_FETCH_ATTEMPTS = 2
+_RETRY_BASE_DELAY_S = 0.6
+
+
+def _search_one_airport_with_retry(*args, **kwargs) -> List[FlightOption]:
+    """_search_one_airport, retried once on a transient failure."""
+    last_exc = None
+    for attempt in range(_FETCH_ATTEMPTS):
+        try:
+            return _search_one_airport(*args, **kwargs)
+        except ProviderBlockedError:
+            # A CAPTCHA will not pass on a second identical request --
+            # retrying only adds load to a provider that has already
+            # decided we look automated. Fail fast and let the caller
+            # report it honestly.
+            raise
+        except Exception as exc:  # noqa: BLE001 -- retried, then re-raised
+            last_exc = exc
+            if attempt < _FETCH_ATTEMPTS - 1:
+                time.sleep(_RETRY_BASE_DELAY_S * (1 + random.random()))
+    raise last_exc
 
 
 def _search_one_airport(
@@ -542,16 +605,29 @@ def search_flights(
 
     all_options: List[FlightOption] = []
     errors: List[str] = []
+    blocked = False
     for dest in destination_airports:
         try:
-            all_options.extend(_search_one_airport(
+            all_options.extend(_search_one_airport_with_retry(
                 origin_airport, dest, outbound_date, return_date, adults, max_connections, currency,
             ))
+        except ProviderBlockedError as exc:
+            blocked = True
+            errors.append(f"{dest}: {exc}")
         except Exception as exc:  # noqa: BLE001 -- see docstring: one airport's failure shouldn't sink the rest
             errors.append(f"{dest}: {exc}")
 
     if not all_options and errors:
-        raise AdapterError(f"Google Flights search failed for every airport: {'; '.join(errors)}")
+        joined = "; ".join(errors)
+        if blocked:
+            # Keep the block distinguishable all the way out. Flattening
+            # it into a generic AdapterError here is what made a scraping
+            # block look identical to "this route has no flights", which
+            # is the whole reason blocked lookups silently became "EST."
+            raise ProviderBlockedError(
+                f"Google Flights is blocking automated requests: {joined}"
+            )
+        raise AdapterError(f"Google Flights search failed for every airport: {joined}")
 
     result = FlightSearchResult(options=all_options, insight=None)
     if use_cache:

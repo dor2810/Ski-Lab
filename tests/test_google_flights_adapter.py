@@ -383,3 +383,122 @@ def test_booking_url_degrades_to_none_on_any_unexpected_failure(monkeypatch):
     monkeypatch.setattr(gfa, "_fetch_return_options", _raises)
     option = _flight_option_with_booking_token()
     assert gfa.booking_url(option, date(2026, 12, 11), date(2026, 12, 18)) is None
+
+
+# --- transient-failure retry (added 2026-08-27) ---
+
+def test_a_transient_fetch_failure_is_retried_and_can_succeed(monkeypatch):
+    # WHY THIS MATTERS: this is a scraper that can be transiently
+    # blocked, and before the retry existed a single flaky request meant
+    # that route had no live price at all -- the caller silently kept a
+    # static estimate and the user saw "EST." That was a large part of
+    # why so many rows were estimated even with live pricing on.
+    from ski_optimizer.models import FlightOption
+
+    calls = {"n": 0}
+
+    def flaky(*_args, **_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transiently blocked")
+        return [FlightOption(price_eur=250.0, origin_airport="TLV",
+                             destination_airport="GVA", airline="Test Air",
+                             total_duration_minutes=200, stops=0)]
+
+    monkeypatch.setattr(gfa, "_search_one_airport", flaky)
+    result = gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17),
+                                use_cache=False)
+    assert calls["n"] == 2, "the first failure should have been retried"
+    assert result.options and result.options[0].price_eur == 250.0
+
+
+def test_retries_are_bounded_and_still_fail_honestly(monkeypatch):
+    # Retrying hard is how a transient block becomes a durable one, so
+    # the retry must give up rather than hammer.
+    calls = {"n": 0}
+
+    def always_fails(*_args, **_kwargs):
+        calls["n"] += 1
+        raise RuntimeError("blocked")
+
+    monkeypatch.setattr(gfa, "_search_one_airport", always_fails)
+    with pytest.raises(AdapterError):
+        gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17),
+                           use_cache=False)
+    assert calls["n"] == gfa._FETCH_ATTEMPTS, (
+        f"expected exactly {gfa._FETCH_ATTEMPTS} attempts, got {calls['n']}"
+    )
+
+
+# --- anti-bot block detection (root cause of "why isn't the flight live?") ---
+
+def test_a_captcha_page_is_reported_as_a_block_not_a_parse_error():
+    # THE BUG THIS FIXES, diagnosed 2026-08-27 against a real blocked
+    # response: Google answers suspected automation with HTTP 200, ~1.8MB
+    # of HTML, and the expected script.ds:1 tag PRESENT -- but no flight
+    # payload behind it. fast_flights then died with "'NoneType' object
+    # is not subscriptable" several frames down, indistinguishable from a
+    # parser bug or an empty route. Every blocked lookup silently became
+    # a static estimate, which is most of why users saw "EST." so often.
+    from ski_optimizer.adapters.base import ProviderBlockedError
+
+    with pytest.raises(ProviderBlockedError):
+        gfa._raise_if_blocked("<html><body>Our systems have detected unusual traffic</body></html>")
+    with pytest.raises(ProviderBlockedError):
+        gfa._raise_if_blocked('<html><script src="recaptcha/api.js"></script></html>')
+
+
+def test_a_normal_page_is_not_mistaken_for_a_block():
+    # A false positive here would turn working live pricing into
+    # permanent estimates, which is worse than the bug being fixed.
+    gfa._raise_if_blocked("<html><body>Cheapest flights to Geneva</body></html>")
+
+
+def test_a_block_is_not_retried(monkeypatch):
+    # A CAPTCHA will not pass on an identical second request; retrying
+    # only adds load to a provider that already flagged us.
+    from ski_optimizer.adapters.base import ProviderBlockedError
+
+    calls = {"n": 0}
+
+    def blocked(*_a, **_k):
+        calls["n"] += 1
+        raise ProviderBlockedError("challenge served")
+
+    monkeypatch.setattr(gfa, "_search_one_airport", blocked)
+    with pytest.raises(ProviderBlockedError):
+        gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
+    assert calls["n"] == 1, "a block must fail fast, not retry"
+
+
+def test_a_block_stays_typed_through_search_flights(monkeypatch):
+    # Flattening it into a generic AdapterError at the "every airport
+    # failed" step is what made a block look identical to "no flights
+    # exist on this route".
+    from ski_optimizer.adapters.base import ProviderBlockedError
+
+    monkeypatch.setattr(gfa, "_search_one_airport",
+                        lambda *a, **k: (_ for _ in ()).throw(ProviderBlockedError("challenge")))
+    with pytest.raises(ProviderBlockedError):
+        gfa.search_flights("TLV", ["GVA", "INN"], date(2027, 1, 10), date(2027, 1, 17),
+                           use_cache=False)
+
+
+def test_the_block_check_is_actually_wired_into_the_fetch_path(monkeypatch):
+    # The three tests above call _raise_if_blocked directly, so they all
+    # still passed when the CALL to it was deleted from _fetch_and_parse
+    # -- they verified the check, never that anything uses it. This
+    # drives a real CAPTCHA page through the actual fetch path.
+    import fast_flights.fetcher as ff_fetcher
+
+    from ski_optimizer.adapters.base import ProviderBlockedError
+
+    captcha_page = (
+        "<html><head><title>Sign in</title></head><body>"
+        "<script src='https://www.google.com/recaptcha/api.js'></script>"
+        "Our systems have detected unusual traffic</body></html>"
+    )
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: captcha_page)
+
+    with pytest.raises(ProviderBlockedError):
+        gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)

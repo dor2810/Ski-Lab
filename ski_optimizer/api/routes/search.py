@@ -19,6 +19,7 @@ server. See reload_resorts() below for how to pick up spreadsheet edits
 without a full restart (useful during a verification pass).
 """
 import datetime
+import os
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -46,6 +47,7 @@ from ...engine.transfers import get_transfer_options
 from ...engine.date_search import search_date_range, candidate_start_dates, WEEKDAY_NAMES
 from ...engine.weather import get_trip_weather
 from ...engine.reranker import rerank_with_conditions
+from ...engine.provider_status import reset_provider_status, was_provider_blocked
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
@@ -363,6 +365,12 @@ class SearchResponse(BaseModel):
     live_pricing_active: bool
     results: List[TripResultOut]
     credits: Optional[CreditsOut] = None
+    # True when a live-pricing provider served an anti-bot challenge
+    # during THIS request. The prices fell back to estimates, which the
+    # per-line flags already say -- this explains WHY, so the UI can
+    # tell the user "live pricing is temporarily blocked" instead of
+    # showing a wall of unexplained EST. badges.
+    live_pricing_blocked: bool = False
 
 
 def _to_resort_out(r: Resort) -> ResortOut:
@@ -532,6 +540,10 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
 # it can compare several candidates against each other.
 _SNOW_RERANK_LOOKUPS = 5
 
+# How many (resort, date) pairs may be live-priced per date-range search.
+# See the call site for the measurement that set this.
+_LIVE_REPRICE_N = int(os.environ.get("LIVE_REPRICE_N", "24"))
+
 # Nobody books a ski trip more than two seasons out, and every extra day
 # of window is real CPU and memory on a scale-to-zero instance: a
 # bug-hunt pass measured a 100-year window at 36,495 candidate dates,
@@ -683,6 +695,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         # clean 400 instead of a 500 if some edge case gets past it.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 
+    reset_provider_status()
     _reject_past_date(payload.outbound_date, "outbound_date")
 
     # One fixed date = one candidate = 1 credit. Charged after validation
@@ -791,7 +804,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
 
     return SearchResponse(query_resort_count=len(_resort_cache),
                           live_pricing_active=live_pricing_active, results=results,
-                          credits=credit_info)
+                          credits=credit_info,
+                          live_pricing_blocked=was_provider_blocked())
 
 
 @router.get("/resorts", response_model=List[str])
@@ -950,6 +964,8 @@ class SearchDateRangeResponse(BaseModel):
     live_pricing_active: bool
     results: List[DatedTripResultOut]
     credits: Optional[CreditsOut] = None
+    # See SearchResponse.live_pricing_blocked.
+    live_pricing_blocked: bool = False
 
 
 @router.post("/search-dates", response_model=SearchDateRangeResponse, dependencies=[Depends(enforce_search_rate_limit)])
@@ -967,6 +983,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     never silently for the WHOLE search, only per missing quote,
     matching search_trips()'s existing degrade-visibly contract.
     """
+    reset_provider_status()
     if payload.latest_date <= payload.earliest_date:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "latest_date must be after earliest_date")
@@ -1059,14 +1076,22 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
         allow_over_budget_fallback=payload.allow_over_budget_fallback,
-        # Caps live pricing to a fast number of (resort, date) pairs --
-        # measured over 20s and dozens of scrape calls per request
-        # without this (see search_date_range's live_reprice_n
-        # docstring). Matters for LATENCY now even though flight calls
-        # are no longer quota-metered -- each scrape still costs real
-        # wall-clock time. Only matters when live pricing is actually
-        # active; harmless/unused otherwise.
-        live_reprice_n=6 if live_reprice_allowed else None,
+        # Caps live pricing to a bounded number of (resort, date) pairs.
+        #
+        # RAISED FROM 6 TO 24 on 2026-08-27, once repricing was made
+        # CONCURRENT (see date_search's _LIVE_PRICING_WORKERS). The old
+        # cap was the single biggest reason users saw "EST." on most
+        # rows: the frontend asks for 12 results, so a cap of 6 meant at
+        # least half of them could never be live, no matter how well the
+        # scrapers were working. Measured back to back on the same
+        # window: cap 6 gave 3 of 12 live in 11.4s; cap 24 gave 12 of 12
+        # live in 13.6s -- four times the real prices for two extra
+        # seconds, because the lookups now overlap instead of queueing.
+        #
+        # Still capped rather than unbounded: the search SPACE is
+        # resorts x candidate dates, easily hundreds of pairs, and each
+        # one is a real scrape.
+        live_reprice_n=_LIVE_REPRICE_N if live_reprice_allowed else None,
     )
 
     if payload.min_budget_eur_per_person is not None:
@@ -1135,6 +1160,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
     return SearchDateRangeResponse(
         credits=credit_info,
+        live_pricing_blocked=was_provider_blocked(),
         query_resort_count=len(_resort_cache),
         candidate_dates_per_resort=candidate_dates,
         live_pricing_active=flight_cost_fn is not None,

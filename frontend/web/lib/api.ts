@@ -204,6 +204,11 @@ export interface SearchResponse {
   live_pricing_active: boolean;
   results: TripResult[];
   credits: Credits | null;
+  // True when a live-pricing provider served an anti-bot challenge
+  // during this search. Prices fell back to estimates -- the per-line
+  // badges already say that; this explains WHY, so we can tell the user
+  // instead of showing a wall of unexplained EST. badges.
+  live_pricing_blocked: boolean;
 }
 
 export interface SearchDateRangeResponse extends SearchResponse {

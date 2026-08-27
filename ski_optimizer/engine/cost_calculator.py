@@ -22,10 +22,13 @@ here should silently become load-bearing for an actual purchase decision
 without first being replaced by a real data source.
 """
 import logging
+import os
 import re
 from datetime import timedelta
 from typing import Optional
 
+from ..adapters.base import ProviderBlockedError
+from .provider_status import note_provider_blocked
 from ..models import Resort, UserPreferences, CostBreakdown
 
 logger = logging.getLogger(__name__)
@@ -300,6 +303,21 @@ def live_flight_cost_eur(
             max_connections=max_connections,
         )
         return flight_adapter.cheapest_price_eur(result)
+    except ProviderBlockedError:
+        # Google served an anti-bot challenge. Retrying the same scraper
+        # is pointless, but SerpApi is a real API hitting the same
+        # underlying data and does not get CAPTCHA'd -- so if a key is
+        # configured, use it rather than silently showing an estimate.
+        # This is the ONLY situation where the paid path is worth
+        # spending quota on: the free path is not merely slow, it is
+        # unavailable.
+        note_provider_blocked()
+        price = _serpapi_flight_fallback(
+            resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+        if price is None:
+            logger.warning("live flight pricing BLOCKED for %s and no SerpApi fallback available",
+                           resort.name)
+        return price
     except Exception:
         # Deliberately broad: a flight-provider outage should degrade
         # the trip estimate, not take down a whole search. The caller
@@ -307,6 +325,39 @@ def live_flight_cost_eur(
         # actual reason is diagnosable server-side without changing
         # that user-facing contract.
         logger.exception("live_flight_cost_eur failed for %s", resort.name)
+        return None
+
+
+def _serpapi_flight_fallback(resort, codes, outbound_date, return_date,
+                             origin_airport, adults, max_connections):
+    """
+    Second-choice flight price via SerpApi, used ONLY when the free
+    scraper is blocked. Returns None when no SERPAPI_API_KEY is
+    configured, which is the normal state -- in that case the caller
+    correctly reports "no live price" rather than inventing one.
+
+    Both adapters share the same FlightSearchResult boundary type on
+    purpose (see this function's caller), so this is a provider swap,
+    not a parallel implementation.
+    """
+    if not os.environ.get("SERPAPI_API_KEY"):
+        return None
+    try:
+        from ..adapters import flight_adapter as serpapi_adapter
+        result = serpapi_adapter.search_flights(
+            origin_airport=origin_airport,
+            destination_airports=codes,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            max_connections=max_connections,
+        )
+        price = serpapi_adapter.cheapest_price_eur(result)
+        if price is not None:
+            logger.info("SerpApi fallback supplied a live flight price for %s", resort.name)
+        return price
+    except Exception:
+        logger.exception("SerpApi flight fallback also failed for %s", resort.name)
         return None
 
 

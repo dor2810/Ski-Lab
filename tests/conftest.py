@@ -85,3 +85,20 @@ def _no_real_weather_requests(monkeypatch):
 
     monkeypatch.setattr(requests, "get", _blocked)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_backoff_in_tests(monkeypatch):
+    """
+    The flight adapter retries a failed scrape once with a short
+    randomised pause -- correct against a real, rate-limitable provider,
+    but pure dead time in a test suite where every failure is a mock.
+    Without this, the tests that deliberately make a fetch fail each
+    slept ~1s and the suite time roughly doubled.
+
+    The retry itself still runs; only the sleep is removed, so the
+    retry BEHAVIOUR stays under test.
+    """
+    from ski_optimizer.adapters import google_flights_adapter
+
+    monkeypatch.setattr(google_flights_adapter, "_RETRY_BASE_DELAY_S", 0.0)

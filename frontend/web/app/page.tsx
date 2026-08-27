@@ -145,6 +145,12 @@ export default function Home() {
               )}
             </div>
 
+            {showingRealSearch && outcome!.livePricingBlocked && (
+              <div className="mb-5 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+                {t("livePricingBlockedNote")}
+              </div>
+            )}
+
             {displayedResults.length === 0 ? (
               <p className="text-sm text-subtle">{t("noTripsFound")}</p>
             ) : (

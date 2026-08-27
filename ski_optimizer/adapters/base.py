@@ -19,3 +19,25 @@ Every adapter module should:
 
 class AdapterError(Exception):
     """Base class for all adapter-level failures (auth, rate limit, no results, etc.)."""
+
+
+class ProviderBlockedError(AdapterError):
+    """
+    The provider served an anti-bot challenge instead of data.
+
+    Distinct from a generic AdapterError on purpose. This module's
+    live pricing is a SCRAPER, and Google answers suspected automation
+    with a CAPTCHA page rather than an error status: HTTP 200, ~1.8MB of
+    HTML, the expected script tag present, but no flight payload behind
+    it. fast_flights then fails deep inside with "'NoneType' object is
+    not subscriptable", which is indistinguishable from a parser bug or
+    a genuinely empty route.
+
+    That ambiguity was the real cost. Every blocked lookup silently
+    became a static estimate, so a user saw "EST." with no way to tell
+    whether we had failed to fetch a price or there was genuinely no
+    flight -- and this project's rule is to degrade VISIBLY. Naming the
+    condition lets callers report it honestly and lets a fallback
+    provider be tried instead of retrying a challenge that will never
+    pass.
+    """

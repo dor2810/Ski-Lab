@@ -31,6 +31,8 @@ import { CreditMeter } from "./CreditMeter";
 export interface SearchOutcome {
   results: TripResult[];
   livePricingActive: boolean;
+  // See lib/api.ts's SearchResponse.live_pricing_blocked.
+  livePricingBlocked: boolean;
   candidateDates: number;
 }
 
@@ -269,6 +271,7 @@ export function SearchCard({
       onOutcome({
         results: data.results,
         livePricingActive: data.live_pricing_active,
+        livePricingBlocked: data.live_pricing_blocked,
         candidateDates: data.candidate_dates_per_resort,
       });
     } catch (err) {

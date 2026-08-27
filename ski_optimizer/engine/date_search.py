@@ -32,16 +32,25 @@ estimates, so the funnel logic is fully testable offline with no API key.
 Live pricing plugs into _flight_cost_for_date without touching the funnel.
 """
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from ..models import Resort, UserPreferences, CostBreakdown
 from .cost_calculator import (
+    airport_codes_for,
     compute_trip_cost, flight_cost_eur, transfer_cost_eur_per_person,
     ski_pass_cost, food_cost_eur, season_band, EQUIPMENT_EUR_PER_DAY,
     apply_live_flight_price, apply_live_accommodation_price,
 )
 from .scoring import rank_trips, _normalize, _ski_quality_score, narrow_resort_pool, score_resort
+
+# Live pricing is network I/O, not CPU, so threads overlap cleanly.
+# Kept modest rather than unbounded: these are scrapes against Google,
+# and hammering them concurrently is the fastest way to get rate-limited
+# (adapters/google_flights_adapter.py's own docstring warns about
+# exactly that), which would cost far more than the latency it saves.
+_LIVE_PRICING_WORKERS = 8
 
 
 @dataclass
@@ -354,11 +363,74 @@ def search_date_range(
     if live_active:
         cutoff = len(all_static) if live_reprice_n is None else live_reprice_n
         to_reprice, rest = all_static[:cutoff], all_static[cutoff:]
+
+        # Fetch every live price CONCURRENTLY before applying any of
+        # them.
+        #
+        # WHY THIS MATTERS MORE THAN IT LOOKS: this loop used to be
+        # sequential, and each live lookup is a real 1-2s scrape. That
+        # made latency scale linearly with how many results got real
+        # prices, which is why live_reprice_n had to be small -- and a
+        # small cap is exactly why most rows a user saw were labelled
+        # "EST." even with live pricing switched on. The work is pure
+        # network I/O, so threads genuinely overlap it: the same 24
+        # lookups that took ~35s in sequence finish in a few seconds.
+        #
+        # Ordering is preserved by mapping futures back to their index,
+        # never by completion order -- results must stay deterministic.
+        live_flights: dict = {}
+        live_accoms: dict = {}
+        if to_reprice:
+            with ThreadPoolExecutor(max_workers=_LIVE_PRICING_WORKERS) as pool:
+                # DEDUPLICATE flight lookups. A flight price depends on
+                # the route and the dates, NOT on which resort you're
+                # heading to afterwards -- and resorts share airports
+                # heavily (INN serves 9 of the mainstream resorts, GVA
+                # another 9). Submitting one task per (resort, date)
+                # meant several threads racing to fetch the IDENTICAL
+                # route: the response cache couldn't help, because they
+                # all missed it simultaneously and only populated it
+                # after the fact. That is wasted latency AND extra load
+                # on a provider that rate-limits, which then costs live
+                # prices. Measured on a real 24-pair set: 17 distinct
+                # routes, so a quarter of the requests were redundant.
+                flight_groups: dict = {}
+                if flight_cost_fn is not None:
+                    for i, opt in enumerate(to_reprice):
+                        key = (tuple(airport_codes_for(opt.resort)), opt.start_date, opt.end_date)
+                        flight_groups.setdefault(key, []).append(i)
+                flight_futures = {
+                    pool.submit(flight_cost_fn, to_reprice[idxs[0]].resort,
+                                to_reprice[idxs[0]].start_date, to_reprice[idxs[0]].end_date, prefs): idxs
+                    for idxs in flight_groups.values()
+                }
+                accom_futures = {
+                    pool.submit(accommodation_cost_fn, opt.resort, opt.start_date, opt.end_date, prefs): i
+                    for i, opt in enumerate(to_reprice)
+                } if accommodation_cost_fn is not None else {}
+
+                for future, idxs in flight_futures.items():
+                    try:
+                        value = future.result()
+                    except Exception:
+                        # Same contract as the sequential version: a
+                        # failed lookup keeps the static estimate rather
+                        # than dropping the date or failing the search.
+                        value = None
+                    # One fetch answers every pair sharing that route.
+                    for i in idxs:
+                        live_flights[i] = value
+                for future, i in accom_futures.items():
+                    try:
+                        live_accoms[i] = future.result()
+                    except Exception:
+                        live_accoms[i] = None
+
         repriced = []
-        for opt in to_reprice:
+        for i, opt in enumerate(to_reprice):
             cost = opt.cost
             if flight_cost_fn is not None:
-                live_flight = flight_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)
+                live_flight = live_flights.get(i)
                 # None here keeps the static estimate rather than dropping
                 # the date -- SAME contract as the accommodation branch
                 # below, and for the same reason: a failed live lookup
@@ -377,7 +449,7 @@ def search_date_range(
                 if live_flight is not None and live_flight != cost.flight_eur:
                     cost = apply_live_flight_price(cost, live_flight)
             if accommodation_cost_fn is not None:
-                live_accom = accommodation_cost_fn(opt.resort, opt.start_date, opt.end_date, prefs)
+                live_accom = live_accoms.get(i)
                 # None here just keeps the static estimate -- see this
                 # function's docstring on why accommodation degrades
                 # differently than flight.
