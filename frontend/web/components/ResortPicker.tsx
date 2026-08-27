@@ -24,6 +24,9 @@ export function ResortPicker({
   mode,
   onModeChange,
   isSignedIn = true,
+  showingAll = false,
+  onToggleShowAll,
+  hiddenCount = 0,
 }: {
   resortNames: string[];
   selected: Set<string>;
@@ -36,6 +39,15 @@ export function ResortPicker({
   // broken page, which is exactly the kind of thing that makes an
   // unsure user give up.
   isSignedIn?: boolean;
+  // The picker defaults to a curated shortlist of resorts real ski
+  // operators actually sell (see data/mainstream_resorts.py). The
+  // toggle must stay VISIBLE rather than being a hidden default:
+  // silently omitting resorts a user knows exist reads as a missing
+  // feature, whereas an explicit "showing 31, show all 37" reads as
+  // curation and stays trustworthy.
+  showingAll?: boolean;
+  onToggleShowAll?: () => void;
+  hiddenCount?: number;
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
@@ -87,7 +99,21 @@ export function ResortPicker({
       </div>
 
       {selected.size === 0 && (
-        <p className="mb-2 text-[11px] text-subtle">{t("resortsNoneSelectedHint")}</p>
+        <p className="mb-2 text-[11px] text-subtle">
+          {showingAll ? t("resortsNoneSelectedHintAll") : t("resortsNoneSelectedHintPopular")}
+        </p>
+      )}
+
+      {onToggleShowAll && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={onToggleShowAll}
+          className="mb-2 text-[11px] font-semibold text-sky hover:text-sky/80"
+        >
+          {showingAll
+            ? t("resortsShowPopular")
+            : t("resortsShowAll", { count: String(hiddenCount) })}
+        </button>
       )}
 
       <input

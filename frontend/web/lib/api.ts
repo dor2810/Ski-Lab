@@ -290,8 +290,21 @@ export async function searchFlexibleWindow(
   });
 }
 
-export async function listResortNames(accessToken: string): Promise<string[]> {
-  return apiFetch<string[]>("/trips/resorts", { accessToken });
+/**
+ * Resort names for the picker.
+ *
+ * mainstreamOnly returns the curated shortlist -- resorts real
+ * ski-package operators actually sell, plus a few marquee names (see
+ * data/mainstream_resorts.py on the backend). Nothing is removed from
+ * the database; this is the default the UI shows, and "show all"
+ * fetches the full set.
+ */
+export async function listResortNames(
+  accessToken: string,
+  mainstreamOnly = false
+): Promise<string[]> {
+  const query = mainstreamOnly ? "?mainstream_only=true" : "";
+  return apiFetch<string[]>(`/trips/resorts${query}`, { accessToken });
 }
 
 // --- Auth (see api/routes/auth.py + lib/auth/context.tsx) ---

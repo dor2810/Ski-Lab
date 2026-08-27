@@ -98,7 +98,14 @@ export function SearchCard({
   const [skiDays, setSkiDays] = useState(6);
   const [startWeekday, setStartWeekday] = useState<WeekdayName | "">("");
 
-  const [resortNames, setResortNames] = useState<string[]>([]);
+  // The picker shows the curated shortlist by default and the full set
+  // on request. Both are held so toggling doesn't refetch, and so the
+  // shortlist is available to scope a search that has no explicit
+  // selection (see handleSubmit).
+  const [mainstreamNames, setMainstreamNames] = useState<string[]>([]);
+  const [allNames, setAllNames] = useState<string[]>([]);
+  const [showAllResorts, setShowAllResorts] = useState(false);
+  const resortNames = showAllResorts ? allNames : mainstreamNames;
   const [selectedResorts, setSelectedResorts] = useState<Set<string>>(new Set());
   const [resortMode, setResortMode] = useState<ResortFilterMode>("include");
 
@@ -127,8 +134,11 @@ export function SearchCard({
     runAuthed((token) => getSearchCredits(token)).then(setCredits).catch(() => {
       /* the meter just stays hidden -- never block the form over it */
     });
-    runAuthed((token) => listResortNames(token)).then(setResortNames).catch(() => {
+    runAuthed((token) => listResortNames(token, true)).then(setMainstreamNames).catch(() => {
       /* resort picker just stays empty/loading -- not fatal to the rest of the form */
+    });
+    runAuthed((token) => listResortNames(token)).then(setAllNames).catch(() => {
+      /* only needed if the user asks to see everything */
     });
   }, [accessToken]);
 
@@ -221,7 +231,15 @@ export function SearchCard({
       return;
     }
 
-    const resortList = selectedResorts.size > 0 ? [...selectedResorts] : null;
+    // The original complaint was about RESULTS, not just the picker: with
+    // nothing selected this sent include_resorts=null, so the engine
+    // ranked all 37 and obscure resorts surfaced. Default the search to
+    // the same shortlist the picker shows. Explicitly choosing "show
+    // all" opts back into the full set, so nothing is unreachable.
+    const selectedList = selectedResorts.size > 0 ? [...selectedResorts] : null;
+    const defaultScope = showAllResorts || mainstreamNames.length === 0 ? null : mainstreamNames;
+    const resortList = selectedList ?? defaultScope;
+    const effectiveMode: ResortFilterMode = selectedList ? resortMode : "include";
 
     setLoading(true);
     onSearchStart();
@@ -236,8 +254,8 @@ export function SearchCard({
           equipment_tier: "standard",
           max_connections: maxConnections === "" ? null : Number(maxConnections),
           preferred_transfer_modes: transferModes.size > 0 ? [...transferModes] : null,
-          include_resorts: resortMode === "include" ? resortList : null,
-          exclude_resorts: resortMode === "exclude" ? resortList : null,
+          include_resorts: effectiveMode === "include" ? resortList : null,
+          exclude_resorts: effectiveMode === "exclude" ? resortList : null,
           start_weekday: startWeekday === "" ? null : startWeekday,
           weights: normalizeWeights(weights),
           ski_days: skiDays,
@@ -327,6 +345,9 @@ export function SearchCard({
             selected={selectedResorts}
             onToggle={toggleResort}
             isSignedIn={Boolean(accessToken)}
+            showingAll={showAllResorts}
+            onToggleShowAll={() => setShowAllResorts((v) => !v)}
+            hiddenCount={Math.max(0, allNames.length - mainstreamNames.length)}
             mode={resortMode}
             onModeChange={setResortMode}
           />

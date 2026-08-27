@@ -795,9 +795,25 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
 
 
 @router.get("/resorts", response_model=List[str])
-def list_resort_names(current_user: Optional[User] = Depends(get_current_user_for_search)):
-    """Lets an authenticated client populate a 'fixed resort' dropdown without guessing names."""
-    return sorted(r.name for r in _resort_cache)
+def list_resort_names(current_user: Optional[User] = Depends(get_current_user_for_search),
+                      mainstream_only: bool = False):
+    """
+    Lets an authenticated client populate a resort picker without
+    guessing names.
+
+    mainstream_only=true returns just the curated shortlist (see
+    data/mainstream_resorts.py) -- resorts real ski-package operators
+    actually sell, plus a small marquee set. Default stays False so the
+    existing contract is untouched: nothing is removed from the
+    database, and any client that wants all 37 still gets all 37. The
+    frontend uses the shortlist as its DEFAULT and offers "show all",
+    which is a presentation choice, not a restriction.
+    """
+    names = sorted(r.name for r in _resort_cache)
+    if mainstream_only:
+        from ...data.mainstream_resorts import is_mainstream
+        return [n for n in names if is_mainstream(n)]
+    return names
 
 
 # ---------------------------------------------------------------------------

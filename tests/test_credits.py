@@ -188,44 +188,97 @@ def test_credits_are_tracked_per_user_not_globally(client):
     assert st["remaining"] == st["daily_allowance"], "one user's spend must not bill another"
 
 
-def test_concurrent_first_searches_do_not_collide(client):
-    # REGRESSION (found in a browser test, 2026-08-27): the landing page
-    # fires a preview and a form search that can overlap. Both saw "no
-    # ledger row for today", both INSERTed, and the unique constraint
-    # turned the loser into a 500. The constraint was right; the code
-    # around it wasn't.
+def test_concurrent_spends_never_lose_a_charge(tmp_path):
+    """
+    Real concurrency, against a realistic database configuration.
+
+    TWO earlier versions of this test were flaky, and both were flaky
+    for the same reason -- they shared ONE SQLite connection across
+    threads (StaticPool + :memory:, which the rest of this file uses
+    deliberately so the API tests see a single database). Driving
+    concurrent transactions down one sqlite3 connection is API misuse,
+    and it surfaced as `InterfaceError: bad parameter or other API
+    misuse` and `DatabaseError: another row available` -- driver errors,
+    not defects in try_spend. A test that reports the harness's
+    limitations as product bugs is worse than no test.
+
+    So this one builds its own FILE-backed engine with SQLAlchemy's
+    normal pooling, where each thread gets its own connection. That is
+    how the code actually runs in production (and how Postgres behaves
+    when this moves off SQLite), so a failure here would be real.
+
+    What it guards: every successful spend lands in the ledger, and no
+    spend is wrongly REFUSED while the user still has credits -- being
+    denied a credit you have is a bug, not a limit.
+    """
     import threading
 
-    soon = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-    body = {"budget_eur_per_person": 3000, "ski_days": 5, "outbound_date": soon}
-    statuses = []
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
 
-    def fire():
-        statuses.append(client.post("/trips/search", json=body, headers=CSRF).status_code)
+    from ski_optimizer.db.models import User
 
-    threads = [threading.Thread(target=fire) for _ in range(2)]
+    db_path = tmp_path / "credits_concurrency.db"
+    concurrent_engine = create_engine(
+        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+    )
+    ConcurrentSession = sessionmaker(bind=concurrent_engine)
+    Base.metadata.create_all(bind=concurrent_engine)
+
+    setup = ConcurrentSession()
+    user = User(email="concurrent@example.com", password_hash="x")
+    setup.add(user)
+    setup.commit()
+    user_id = user.id
+    setup.close()
+
+    outcomes: list = []
+
+    def spend():
+        db = ConcurrentSession()
+        try:
+            outcomes.append(credits_module.try_spend(db, user_id, 1))
+        except Exception as exc:  # recorded, not swallowed -- see assert below
+            outcomes.append(exc)
+        finally:
+            db.close()
+
+    threads = [threading.Thread(target=spend) for _ in range(8)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
 
-    assert all(s == 200 for s in statuses), f"expected two clean 200s, got {statuses}"
-    # And both were actually charged -- the fix must not silently drop one.
-    st = client.get("/trips/credits").json()
-    assert st["daily_allowance"] - st["remaining"] == 2
+    errors = [o for o in outcomes if isinstance(o, Exception)]
+    assert not errors, f"concurrent spends raised: {errors!r}"
+    assert all(o is not None for o in outcomes), (
+        "no spend should have been refused -- the daily allowance is far higher than 8"
+    )
+
+    db = ConcurrentSession()
+    try:
+        assert credits_module.get_status(db, user_id).used_today == len(threads), (
+            "every successful spend must be recorded; a lost write is a free search"
+        )
+    finally:
+        db.close()
+        concurrent_engine.dispose()
 
 
-def test_a_stale_read_conflict_is_retried_not_raised():
+def test_a_row_appearing_mid_spend_is_retried_not_refused():
     """
-    Forces the ACTUAL conflict, deterministically.
+    Forces the exact interleaving that a concurrent first-spend produces,
+    deterministically.
 
-    An earlier version of this test just pre-inserted a row and called
-    try_spend -- but try_spend reads first, found the row, and took the
-    UPDATE branch, so it never touched the retry path at all. Breaking
-    the `except IntegrityError` on purpose left it green, which is the
-    definition of a decorative test. This version makes the first read
-    return None WHILE the row really exists, which is exactly the stale
-    read a concurrent request produces, so the INSERT genuinely raises.
+    The window: our atomic UPDATE runs while today's ledger row does not
+    yet exist, so it matches nothing; a competing request INSERTs the row
+    a moment later; we then look and DO find a row. An earlier version
+    treated "UPDATE matched nothing AND a row exists" as "out of
+    credits" and refused a user who had 500 -- which a concurrency test
+    caught as spends being refused rather than lost.
+
+    Simulated by making the FIRST atomic update a no-op while the row
+    really is present, which is indistinguishable from losing that race.
     """
     from ski_optimizer.db.models import SearchCreditLedger, User
 
@@ -235,36 +288,57 @@ def test_a_stale_read_conflict_is_retried_not_raised():
         db.add(user)
         db.commit()
 
-        # The "winner" has already inserted today's row.
         db.add(SearchCreditLedger(user_id=user.id, day=datetime.date.today(), credits_used=3))
         db.commit()
 
         real_query = db.query
-        calls = {"n": 0}
+        calls = {"update": 0}
 
-        class _StaleFirstRead:
+        class _FirstUpdateMisses:
             def __init__(self, inner):
                 self._inner = inner
 
             def filter(self, *a, **k):
-                return _StaleFirstRead(self._inner.filter(*a, **k))
+                return _FirstUpdateMisses(self._inner.filter(*a, **k))
 
             def one_or_none(self):
-                calls["n"] += 1
-                # Only the FIRST read is stale; the retry sees reality.
-                return None if calls["n"] == 1 else self._inner.one_or_none()
+                return self._inner.one_or_none()
 
-        def patched_query(model):
-            if model is SearchCreditLedger:
-                return _StaleFirstRead(real_query(model))
-            return real_query(model)
+            def update(self, *a, **k):
+                calls["update"] += 1
+                if calls["update"] == 1:
+                    return 0  # lost the race: nothing to update yet
+                return self._inner.update(*a, **k)
 
-        db.query = patched_query
+        db.query = lambda model: (
+            _FirstUpdateMisses(real_query(model))
+            if model is SearchCreditLedger else real_query(model)
+        )
         after = credits_module.try_spend(db, user.id, 2)
         db.query = real_query
 
-        assert calls["n"] >= 2, "the retry path must actually have run"
-        assert after is not None, "a conflict must be retried, not surfaced as an error"
-        assert after.used_today == 5, "the retry must add to the winner's row, not overwrite it"
+        assert calls["update"] >= 2, "the retry path must actually have run"
+        assert after is not None, "losing the insert race must not look like being out of credits"
+        assert after.used_today == 5, "the retry must add to the existing row, not overwrite it"
+    finally:
+        db.close()
+
+
+def test_a_genuinely_exhausted_allowance_is_still_refused(monkeypatch):
+    # The other side of that distinction: when the row really is maxed
+    # out, refuse -- don't spin through the retries and then charge.
+    from ski_optimizer.db.models import SearchCreditLedger, User
+
+    monkeypatch.setattr(credits_module, "DEFAULT_DAILY_CREDITS", 5)
+    db = TestingSessionLocal()
+    try:
+        user = User(email="broke@example.com", password_hash="x")
+        db.add(user)
+        db.commit()
+        db.add(SearchCreditLedger(user_id=user.id, day=datetime.date.today(), credits_used=5))
+        db.commit()
+
+        assert credits_module.try_spend(db, user.id, 1) is None
+        assert credits_module.get_status(db, user.id).used_today == 5, "a refusal must charge nothing"
     finally:
         db.close()

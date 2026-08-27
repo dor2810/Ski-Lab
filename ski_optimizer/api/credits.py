@@ -48,6 +48,13 @@ DEFAULT_DAILY_CREDITS = int(os.environ.get("DAILY_SEARCH_CREDITS", "500"))
 # accident, and pairs with the API's own MAX_SEARCH_WINDOW_DAYS bound.
 MAX_CREDITS_PER_SEARCH = int(os.environ.get("MAX_CREDITS_PER_SEARCH", "60"))
 
+# How many times a spend may retry after losing an insert race. Only the
+# FIRST spend of a user's day can conflict (after that the row exists and
+# everyone takes the UPDATE path), so contention is brief -- but a burst
+# of simultaneous searches can make a single thread lose more than once,
+# and being refused a credit you actually have is a bug, not a limit.
+_MAX_SPEND_ATTEMPTS = 5
+
 
 @dataclass(frozen=True)
 class CreditStatus:
@@ -106,28 +113,69 @@ def try_spend(db: Session, user_id: str, cost: int) -> Optional[CreditStatus]:
     SQLite, which is what production currently runs.
     """
     today = _today()
-    for attempt in range(2):
+    for attempt in range(_MAX_SPEND_ATTEMPTS):
+        # ATOMIC conditional increment. The check ("can they afford it?")
+        # and the write ("charge them") happen in ONE SQL statement, so
+        # two concurrent spends cannot both read the same starting value
+        # and each write back their own +1.
+        #
+        # This replaced a read-then-write version, which had exactly that
+        # lost-update race: a concurrency test recorded only 2 of 8
+        # spends: every thread read used=0, and each overwrote the last.
+        # The unique constraint could not help -- it guards the INSERT,
+        # and this is the UPDATE path. Under-charging is not a cosmetic
+        # bug: it hands out free searches.
+        updated = (
+            db.query(SearchCreditLedger)
+            .filter(
+                SearchCreditLedger.user_id == user_id,
+                SearchCreditLedger.day == today,
+                SearchCreditLedger.credits_used <= DEFAULT_DAILY_CREDITS - cost,
+            )
+            .update(
+                {SearchCreditLedger.credits_used: SearchCreditLedger.credits_used + cost},
+                synchronize_session=False,
+            )
+        )
+        db.commit()
+        if updated:
+            db.expire_all()
+            return get_status(db, user_id)
+
+        # Nothing updated: either today's row doesn't exist yet, or it
+        # exists and they genuinely can't afford this search.
+        db.expire_all()
         row = (
             db.query(SearchCreditLedger)
             .filter(SearchCreditLedger.user_id == user_id, SearchCreditLedger.day == today)
             .one_or_none()
         )
-        used = row.credits_used if row else 0
-        if used + cost > DEFAULT_DAILY_CREDITS:
-            return None
+        if row is not None:
+            # The row exists. Two very different reasons the UPDATE
+            # matched nothing, and conflating them wrongly refuses a
+            # user who has plenty of credits:
+            #   a) they genuinely cannot afford this search -> refuse;
+            #   b) another thread INSERTed the row in the instant AFTER
+            #      our UPDATE ran, so there was nothing to update at the
+            #      time -> retry, and the next pass updates it.
+            if row.credits_used + cost > DEFAULT_DAILY_CREDITS:
+                return None
+            continue
+
+        if cost > DEFAULT_DAILY_CREDITS:
+            return None  # can never be afforded, even on a fresh day
 
         try:
-            if row is None:
-                db.add(SearchCreditLedger(user_id=user_id, day=today, credits_used=cost))
-            else:
-                row.credits_used = used + cost
+            db.add(SearchCreditLedger(user_id=user_id, day=today, credits_used=cost))
             db.commit()
-            return CreditStatus(daily_allowance=DEFAULT_DAILY_CREDITS, used_today=used + cost)
+            return CreditStatus(daily_allowance=DEFAULT_DAILY_CREDITS, used_today=cost)
         except IntegrityError:
-            # Someone else created today's row between our read and our
-            # write. Roll back and go round again -- the second pass
-            # takes the UPDATE branch.
+            # Someone else created today's row first. Drop this session's
+            # cached view and loop -- the next pass takes the atomic
+            # UPDATE branch above.
             db.rollback()
-            if attempt == 1:
+            db.expire_all()
+            if attempt == _MAX_SPEND_ATTEMPTS - 1:
                 raise
     return None
+

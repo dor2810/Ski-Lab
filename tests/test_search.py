@@ -788,3 +788,46 @@ def test_a_window_starting_in_the_past_is_clamped_not_rejected(authed_client):
     assert resp.status_code == 200
     for result in resp.json()["results"]:
         assert result["start_date"] >= today.isoformat(), "no result may start in the past"
+
+
+# --- mainstream shortlist (frontend default scope) ---
+
+def test_mainstream_and_hidden_sets_partition_the_database_exactly():
+    # Neither set may drift from the real resort list: a typo'd key would
+    # silently drop a resort out of BOTH, making it unreachable in the UI
+    # while still being in the database.
+    from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.data.mainstream_resorts import (
+        MAINSTREAM_RESORTS, NON_MAINSTREAM_RESORTS,
+    )
+    real = {r.name for r in load_resorts()}
+    mainstream, hidden = set(MAINSTREAM_RESORTS), set(NON_MAINSTREAM_RESORTS)
+    assert not (mainstream & hidden), "a resort cannot be both shown and hidden"
+    assert mainstream | hidden == real, (
+        f"unclassified: {real - mainstream - hidden}; not real: {(mainstream | hidden) - real}"
+    )
+
+
+def test_resorts_endpoint_defaults_to_every_resort(authed_client):
+    # Nothing is deleted: the default contract is unchanged, so any
+    # client that wants all 37 still gets all 37.
+    resp = authed_client.get("/trips/resorts")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 37
+
+
+def test_resorts_endpoint_can_return_just_the_shortlist(authed_client):
+    from ski_optimizer.data.mainstream_resorts import MAINSTREAM_RESORTS
+
+    resp = authed_client.get("/trips/resorts?mainstream_only=true")
+    assert resp.status_code == 200
+    names = resp.json()
+    assert set(names) == set(MAINSTREAM_RESORTS)
+    assert len(names) < 37, "the shortlist must actually be shorter"
+    # The resorts that prompted the complaint must be the ones excluded.
+    for obscure in ("Krvavec", "Astún-Candanchú", "Poiana Brasov"):
+        assert obscure not in names
+    # ...and the famous ones must survive, even though no studied
+    # operator packages them.
+    for marquee in ("Zermatt", "Chamonix", "Courchevel"):
+        assert marquee in names
