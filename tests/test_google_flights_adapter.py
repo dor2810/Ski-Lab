@@ -468,8 +468,9 @@ def test_the_upstream_parser_indexerror_does_not_kill_the_route(monkeypatch):
     import fast_flights.fetcher as ff_fetcher
     import fast_flights.parser as ff_parser
 
-    monkeypatch.setattr(ff_fetcher, "fetch_flights_html",
-                        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],[[{}]]],</script></html>')
+    monkeypatch.setattr(
+        ff_fetcher, "fetch_flights_html",
+        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],[[[["f"],[[null,42000]]]]]],</script></html>')
     monkeypatch.setattr(ff_parser, "parse_js",
                         lambda _js: (_ for _ in ()).throw(IndexError("list index out of range")))
 
@@ -512,7 +513,7 @@ def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(mon
     monkeypatch.setattr(
         ff_fetcher, "fetch_flights_html",
         lambda *a, **k: ('<html><script src="https://www.google.com/recaptcha/api.js"></script>'
-                         '<script class="ds:1">data:[[],[],[],[[{}]]],</script></html>'))
+                         '<script class="ds:1">data:[[],[],[],[[[["f"],[[null,42000]]]]]],</script></html>'))
     monkeypatch.setattr(gfa, "_parse_flight_result",
                         lambda *a, **k: FlightOption(price_eur=283.0, origin_airport="TLV",
                                                      destination_airport="GVA", airline="Test Air",
@@ -538,3 +539,80 @@ def test_a_block_is_not_retried(monkeypatch):
     with pytest.raises(ProviderBlockedError):
         gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
     assert calls["n"] == 1, "a block must fail fast, not retry"
+
+
+def test_one_priceless_card_does_not_destroy_a_whole_route():
+    """
+    UPSTREAM DEFECT (fast_flights 3.1.0, parser.py):
+
+        for k in payload[3][0]:
+            price = k[1][0][1]        # unguarded
+
+    A card whose price slot is empty raises IndexError, and since the
+    loop has no per-card protection, EVERY flight on that route is lost
+    -- including the priced ones. This was the single biggest remaining
+    cause of estimated flight prices in production, logged repeatedly as
+    "route skipped" while other routes in the same request succeeded.
+    After filtering, TLV->INN, ->SOF and ->SZG all returned real prices
+    again (EUR391 / EUR200 / EUR413).
+    """
+    import json
+
+    good = [["flight-a"], [[None, 42000]]]      # a normal, priced card
+    priceless = [["flight-b"], []]              # k[1][0][1] raises IndexError
+    payload = [None, None, None, [[good, priceless]], None, None, None, None]
+    js = f"AF_init(data:{json.dumps(payload)}, sideChannel: {{}})"
+
+    cleaned = gfa._drop_priceless_cards(js)
+    kept = json.loads(cleaned.split("data:", 1)[1].rsplit(",", 1)[0])[3][0]
+
+    assert len(kept) == 1, "the priceless card should have been dropped"
+    assert kept[0] == good, "the priced card must survive untouched"
+
+
+def test_the_card_filter_leaves_a_healthy_payload_byte_identical():
+    # Re-serializing when there's nothing to fix risks changing a payload
+    # that already worked, so the healthy path returns the input as-is.
+    import json
+
+    good = [["flight-a"], [[None, 42000]]]
+    payload = [None, None, None, [[good, good]], None, None, None, None]
+    js = f"AF_init(data:{json.dumps(payload)}, sideChannel: {{}})"
+    assert gfa._drop_priceless_cards(js) is js
+
+
+def test_the_card_filter_never_breaks_a_payload_it_cannot_understand():
+    # A parser worry must never be the reason a working route disappears.
+    for weird in ("not json at all", "data:{{{,", "", "AF_init(data:null,x)"):
+        assert gfa._drop_priceless_cards(weird) == weird
+
+
+def test_the_card_filter_is_actually_wired_into_the_fetch_path(monkeypatch):
+    # Testing _drop_priceless_cards directly proves the function works,
+    # not that anything calls it -- removing the call left those tests
+    # green. This drives a payload whose ONLY bad card would crash the
+    # real upstream parser, through the real fetch path.
+    import json
+
+    import fast_flights.fetcher as ff_fetcher
+    import fast_flights.parser as ff_parser
+
+    good = [["flight-a"], [[None, 42000]]]
+    priceless = [["flight-b"], []]
+    payload = [None, None, None, [[good, priceless]], None, None, None, None]
+    monkeypatch.setattr(
+        ff_fetcher, "fetch_flights_html",
+        lambda *a, **k: f'<html><script class="ds:1">AF_init(data:{json.dumps(payload)}, x)</script></html>')
+
+    seen = {}
+
+    def capture(js):
+        seen["cards"] = json.loads(js.split("data:", 1)[1].rsplit(",", 1)[0])[3][0]
+        return []
+
+    monkeypatch.setattr(ff_parser, "parse_js", capture)
+    gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
+
+    assert seen["cards"] == [good], (
+        "the parser should have received only the priced card -- the filter isn't wired in"
+    )

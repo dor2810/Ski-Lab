@@ -461,6 +461,53 @@ def booking_url(
 _REAL_BLOCK_MARKER = "unusual traffic"
 
 
+def _drop_priceless_cards(js: str) -> str:
+    """
+    Removes result cards that have no price, so one of them can't take
+    a whole route's results down with it.
+
+    UPSTREAM DEFECT (fast_flights 3.1.0, parser.py):
+
+        for k in payload[3][0]:
+            price = k[1][0][1]        # <- unguarded
+
+    A card whose price slot is empty raises IndexError, and because the
+    loop is not per-card protected, EVERY flight on that route is lost --
+    including the ones that did have prices. Measured in production: it
+    was the single biggest remaining cause of estimated flight prices,
+    logged repeatedly as "route skipped" while other routes on the same
+    request returned real numbers.
+
+    We already json-parse this payload ourselves for the booking-link
+    ingredients, so filtering it first is cheap and needs no fork of the
+    library. If anything about the shape surprises us, the original
+    string is returned unchanged -- a parser worry must never be the
+    reason a working route disappears.
+    """
+    try:
+        prefix, rest = js.split("data:", 1)
+        body, suffix = rest.rsplit(",", 1)
+        payload = json.loads(body)
+        cards = payload[3][0]
+        if not cards:
+            return js
+
+        kept = []
+        for card in cards:
+            try:
+                _ = card[1][0][1]        # the exact access that raises upstream
+            except (IndexError, TypeError, KeyError):
+                continue                  # priceless card -- drop just this one
+            kept.append(card)
+
+        if len(kept) == len(cards):
+            return js                     # nothing to do, don't re-serialize
+        payload[3][0] = kept
+        return f"{prefix}data:{json.dumps(payload)},{suffix}"
+    except Exception:  # noqa: BLE001 -- see docstring: never break a working route
+        return js
+
+
 def _fetch_and_parse(query):
     """
     Same end result as fast_flights' own get_flights(query) (a
@@ -494,6 +541,9 @@ def _fetch_and_parse(query):
     if script is None:
         return [], []
     js = script.text()
+
+
+    js = _drop_priceless_cards(js)
 
     try:
         parsed = ff_parser.parse_js(js)
