@@ -877,3 +877,86 @@ def test_a_search_scoped_to_the_popular_set_returns_only_those(authed_client):
     assert resp.status_code == 200
     returned = {r["resort"]["name"] for r in resp.json()["results"]}
     assert returned <= set(popular), f"leaked non-popular resorts: {returned - set(popular)}"
+
+
+# --- flight options on the result card ---
+
+def test_flight_options_are_empty_when_the_price_is_only_an_estimate(authed_client):
+    # With a static estimate there are no real flights to list, and
+    # inventing some would be exactly the fabrication this project
+    # forbids. No outbound_date => no live pricing.
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 2500, "ski_days": 5,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    for result in resp.json()["results"]:
+        assert result["cost"]["flight_price_is_live"] is False
+        assert result["flight_options"] == []
+
+
+def test_flight_options_are_listed_cheapest_first_when_live(authed_client, monkeypatch):
+    # The whole point: the adapter always returned a LIST and we kept a
+    # single number off it. On a real TLV->GVA search the cheapest was
+    # EUR283 for a 14h30 journey while EUR392 got there in 6h.
+    import datetime as _dt
+
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    options = [
+        FlightOption(price_eur=392.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="Lufthansa", total_duration_minutes=360, stops=1),
+        FlightOption(price_eur=283.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="SWISS", total_duration_minutes=870, stops=1),
+        FlightOption(price_eur=968.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="El Al", total_duration_minutes=215, stops=0),
+    ]
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=options, insight=None))
+
+    soon = (_dt.date.today() + _dt.timedelta(days=40)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 4000, "ski_days": 5,
+        "target_resort": "Chamonix", "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    result = resp.json()["results"][0]
+    assert result["cost"]["flight_price_is_live"] is True
+
+    listed = result["flight_options"]
+    assert len(listed) == 3
+    prices = [o["price_eur"] for o in listed]
+    assert prices == sorted(prices), f"must be cheapest-first, got {prices}"
+    assert listed[0]["is_cheapest"] is True
+    assert all(o["is_cheapest"] is False for o in listed[1:])
+    # The data a user needs to judge the trade-off must survive.
+    assert listed[0]["duration_minutes"] == 870
+    assert listed[0]["airline"] == "SWISS"
+    assert any(o["stops"] == 0 for o in listed), "the nonstop option should be visible"
+
+
+def test_the_quoted_flight_price_matches_the_cheapest_listed_option(authed_client, monkeypatch):
+    # If the headline number and the list disagreed, one of them would be
+    # lying to the user.
+    import datetime as _dt
+
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    options = [
+        FlightOption(price_eur=500.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="B", total_duration_minutes=300, stops=1),
+        FlightOption(price_eur=311.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="A", total_duration_minutes=800, stops=1),
+    ]
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=options, insight=None))
+
+    soon = (_dt.date.today() + _dt.timedelta(days=40)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 4000, "ski_days": 5,
+        "target_resort": "Chamonix", "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    result = resp.json()["results"][0]
+    assert result["flight_options"][0]["price_eur"] == 311.0
+    assert result["cost"]["flight_eur"] == 311.0

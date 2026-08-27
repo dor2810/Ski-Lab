@@ -35,6 +35,7 @@ from ...engine.cost_calculator import (
     live_flight_cost_eur, live_flight_booking_url,
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
     live_accommodation_property_name,
+    live_flight_options,
     live_transfer_booking_url,
 )
 from ...engine.links import (
@@ -304,6 +305,23 @@ class WeatherOut(BaseModel):
     avg_snow_depth_cm: float
 
 
+class FlightOptionOut(BaseModel):
+    """
+    One real itinerary behind a result's flight price.
+
+    Exists because the adapter was always returning a LIST of priced
+    flights and we kept a single number off it. On a real TLV->GVA
+    search the cheapest was EUR283 for a 14h30 journey while EUR392 got
+    there in 6h -- quoting only the cheapest silently assumes the user
+    will spend two days travelling to save EUR109.
+    """
+    price_eur: float
+    airline: str
+    duration_minutes: int
+    stops: int
+    is_cheapest: bool
+
+
 class TripResultOut(BaseModel):
     resort: ResortOut
     cost: CostBreakdownOut
@@ -327,6 +345,11 @@ class TripResultOut(BaseModel):
     # to compute broadly, unlike accommodation_search_url's specific
     # link). None when accommodation pricing isn't live for this result.
     accommodation_property_name: Optional[str] = None
+    # The real itineraries behind flight_eur, cheapest first. Only
+    # populated when the flight price is live (there is nothing to list
+    # otherwise) and only for results that were live-repriced. Costs no
+    # extra requests -- see cost_calculator.live_flight_options.
+    flight_options: List[FlightOptionOut] = []
     # A booking link -- always real and working, same "never nothing"
     # contract as flight/accommodation above. A live booking link for
     # the cheapest real transfer quote found (adapters/transfer_
@@ -550,6 +573,28 @@ _LIVE_REPRICE_N = int(os.environ.get("LIVE_REPRICE_N", "24"))
 # 5.4s CPU and 343MB RSS in ONE request. Per-IP rate limiting bounds
 # request COUNT but not the cost of a single request.
 MAX_SEARCH_WINDOW_DAYS = 400
+
+
+def _flight_options_out(resort: Resort, outbound_date, return_date,
+                        flight_price_is_live: bool, max_connections) -> List["FlightOptionOut"]:
+    """
+    The itineraries behind this result's flight price. Empty unless the
+    price is actually live -- with a static estimate there are no real
+    flights to list, and inventing some would be exactly the fabrication
+    this project forbids.
+    """
+    if not flight_price_is_live or outbound_date is None or return_date is None:
+        return []
+    options = live_flight_options(resort, outbound_date, return_date, origin_airport="TLV",
+                                  max_connections=max_connections)
+    return [
+        FlightOptionOut(
+            price_eur=o.price_eur, airline=o.airline,
+            duration_minutes=o.total_duration_minutes, stops=o.stops,
+            is_cheapest=(i == 0),
+        )
+        for i, o in enumerate(options)
+    ]
 
 
 def _charge_credits(db, current_user, candidate_dates: int) -> Optional[dict]:
@@ -795,6 +840,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0),
                 property_name=property_name),
             accommodation_property_name=property_name,
+            flight_options=_flight_options_out(t.resort, payload.outbound_date, return_date,
+                                               t.cost.flight_price_is_live, payload.max_connections),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),
@@ -971,6 +1018,7 @@ class DatedTripResultOut(BaseModel):
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
     accommodation_property_name: Optional[str] = None
+    flight_options: List[FlightOptionOut] = []
     transfer_search_url: str
     equipment_search_url: str
     ski_pass_search_url: str
@@ -1171,6 +1219,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 t.cost.accommodation_price_is_live, attempt_booking_link=(i == 0),
                 property_name=property_name),
             accommodation_property_name=property_name,
+            flight_options=_flight_options_out(t.resort, t.start_date, t.end_date,
+                                               t.cost.flight_price_is_live, payload.max_connections),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),

@@ -190,6 +190,12 @@ const he: Record<keyof typeof en, string> = {
   exclResortTax: "מס אתר / תיירות, משולם במקום הלינה",
   exclOnMountainLunch: "ארוחות במסעדות ההר (הערכת האוכל שלנו מניחה בעיקר מחוץ להר)",
 
+  flightOptionsTitle: "אפשרויות טיסה ({count})",
+  flightNonstop: "ישירה",
+  flightOneStop: "עצירה אחת",
+  flightStops: "{n} עצירות",
+  flightCheapestIsSlow: "הטיסה הזולה ביותר נמשכת {cheapDuration}. תוספת של כ-€{extra} תביא אתכם תוך {fastDuration}.",
+
   // --- Weather (result card) ---
   weatherTitle: "מזג האוויר השבוע",
   weatherAvgHigh: "מקסימום ממוצע",

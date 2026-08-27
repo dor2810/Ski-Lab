@@ -361,6 +361,55 @@ def _serpapi_flight_fallback(resort, codes, outbound_date, return_date,
         return None
 
 
+def live_flight_options(
+    resort: Resort,
+    outbound_date,
+    return_date,
+    origin_airport: str = "TLV",
+    adults: int = 1,
+    max_connections: int = 1,
+    limit: int = 4,
+):
+    """
+    The real flight itineraries behind this result's flight price --
+    cheapest first, at most `limit` of them.
+
+    COSTS NOTHING EXTRA. live_flight_cost_eur() already ran exactly this
+    search moments ago for the same (resort, dates, connections), so
+    this is a response-cache hit, not a second scrape -- the same
+    reasoning as live_accommodation_property_name() above. The adapter
+    was always returning a full list of priced itineraries and we were
+    keeping one number off it and discarding the rest.
+
+    WHY SHOWING THEM MATTERS, not just "more data is nice": on a real
+    TLV->GVA search the cheapest fare was EUR283 for a FOURTEEN AND A
+    HALF HOUR journey, while EUR392 got there in six hours and a nonstop
+    was 3h35. Quoting only the EUR283 makes the trip total look great
+    and quietly assumes the user will spend two full days travelling.
+    That is precisely the kind of technically-true-but-misleading number
+    this project exists not to produce.
+
+    Returns [] rather than raising, matching every other live_* helper.
+    """
+    codes = airport_codes_for(resort)
+    if not codes:
+        return []
+    try:
+        from ..adapters import google_flights_adapter as flight_adapter
+        result = flight_adapter.search_flights(
+            origin_airport=origin_airport,
+            destination_airports=codes,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            max_connections=max_connections,
+        )
+        return sorted(result.options, key=lambda o: o.price_eur)[:limit]
+    except Exception:
+        logger.exception("live_flight_options failed for %s", resort.name)
+        return []
+
+
 def live_flight_booking_url(
     resort: Resort,
     outbound_date,

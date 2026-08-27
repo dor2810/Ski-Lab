@@ -195,6 +195,12 @@ const en = {
   exclResortTax: "Resort / tourist tax, paid at the property",
   exclOnMountainLunch: "Mountain restaurant lunches (our food figure assumes mostly off-mountain)",
 
+  flightOptionsTitle: "Flight options ({count})",
+  flightNonstop: "nonstop",
+  flightOneStop: "1 stop",
+  flightStops: "{n} stops",
+  flightCheapestIsSlow: "The cheapest flight takes {cheapDuration}. Paying about €{extra} more gets you there in {fastDuration}.",
+
   // --- Weather (result card) ---
   weatherTitle: "Weather this week",
   weatherAvgHigh: "Avg high",

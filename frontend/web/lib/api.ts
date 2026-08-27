@@ -145,6 +145,15 @@ export interface TripWeather {
   avg_snow_depth_cm: number;
 }
 
+/** One real itinerary behind a result's flight price, cheapest first. */
+export interface FlightOption {
+  price_eur: number;
+  airline: string;
+  duration_minutes: number;
+  stops: number;
+  is_cheapest: boolean;
+}
+
 export interface TripResult {
   resort: Resort;
   cost: CostBreakdown;
@@ -174,6 +183,10 @@ export interface TripResult {
   // date, or the live lookup failed -- same cases where cost.
   // accommodation_price_is_live is false).
   accommodation_property_name: string | null;
+  // The real itineraries behind flight_eur, cheapest first. Empty when
+  // the flight price isn't live -- with a static estimate there are no
+  // real flights to list.
+  flight_options: FlightOption[];
   // A booking link -- always real and working, same contract as
   // flight/accommodation above: a live quote for the top result when
   // available, Alps2Alps' own booking form otherwise. See
