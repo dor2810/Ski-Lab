@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   searchFlexibleWindow,
   listResortNames,
+  getSearchCredits,
   ApiError,
   type SkillLevel,
   type AccommodationTier,
@@ -11,9 +12,10 @@ import {
   type TransferMode,
   type WeekdayName,
   type TripResult,
+  type Credits,
 } from "@/lib/api";
 import { todayPlusDays, addDays } from "@/lib/format";
-import { useAuth } from "@/lib/auth/context";
+import { useAuth, SessionExpiredError } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
 import {
@@ -24,6 +26,7 @@ import {
 } from "./PrioritySliders";
 import { ResortPicker, type ResortFilterMode } from "./ResortPicker";
 import { TripStylePresets, TRIP_STYLES, type TripStyle, type TripStyleId } from "./TripStylePresets";
+import { CreditMeter } from "./CreditMeter";
 
 export interface SearchOutcome {
   results: TripResult[];
@@ -78,7 +81,7 @@ export function SearchCard({
   onSearchStart: () => void;
 }) {
   const { t } = useTranslation();
-  const { accessToken } = useAuth();
+  const { accessToken, runAuthed } = useAuth();
 
   // One unified date range: if latest - earliest == nights away, this is
   // effectively "exact dates" (a single candidate start date); wider than
@@ -115,12 +118,16 @@ export function SearchCard({
   const [transferModes, setTransferModes] = useState<Set<TransferMode>>(new Set());
   const [maxConnections, setMaxConnections] = useState<string>(""); // "" = no preference
 
+  const [credits, setCredits] = useState<Credits | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken) return;
-    listResortNames(accessToken).then(setResortNames).catch(() => {
+    runAuthed((token) => getSearchCredits(token)).then(setCredits).catch(() => {
+      /* the meter just stays hidden -- never block the form over it */
+    });
+    runAuthed((token) => listResortNames(token)).then(setResortNames).catch(() => {
       /* resort picker just stays empty/loading -- not fatal to the rest of the form */
     });
   }, [accessToken]);
@@ -146,7 +153,26 @@ export function SearchCard({
     setWeights(style.weights);
     setAccomTier(style.accommodationTier);
     setFoodProfile(style.foodProfile);
+    // A style changes what gets SEARCHED, not just how it's ranked.
+    // The connections dropdown updates visibly rather than silently, so
+    // the user can see what the style did and override it.
+    setMaxConnections(style.maxConnections === null ? "" : String(style.maxConnections));
   }
+
+  // Mirrors engine/date_search.candidate_start_dates + api/credits.py's
+  // cost rule, so the quoted price matches what the server charges. If
+  // those ever disagree the user sees one number and pays another, so
+  // this deliberately reproduces the rule rather than approximating it.
+  const pendingCost = (() => {
+    const nights = skiDays + 1;
+    const windowDays = Math.round(
+      (new Date(latest).getTime() - new Date(earliest).getTime()) / 86_400_000
+    );
+    if (!Number.isFinite(windowDays) || windowDays < nights) return null;
+    let candidates = windowDays - nights + 1;
+    if (startWeekday !== "") candidates = Math.ceil(candidates / 7);
+    return Math.max(1, Math.min(60, candidates));
+  })();
 
   function handleWeightsChange(next: RawWeights) {
     setWeights(next);
@@ -200,7 +226,7 @@ export function SearchCard({
     setLoading(true);
     onSearchStart();
     try {
-      const data = await searchFlexibleWindow(
+      const data = await runAuthed((token) => searchFlexibleWindow(
         {
           budget_eur_per_person: budget,
           group_size: travellers,
@@ -219,15 +245,22 @@ export function SearchCard({
           latest_date: latest,
           top_n: 12,
         },
-        accessToken
-      );
+        token
+      ));
+      if (data.credits) setCredits(data.credits);
       onOutcome({
         results: data.results,
         livePricingActive: data.live_pricing_active,
         candidateDates: data.candidate_dates_per_resort,
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("errorGeneric"));
+      // A dead session is not a search failure -- say so plainly and
+      // point at the fix, instead of surfacing a raw "Not authenticated".
+      if (err instanceof SessionExpiredError) {
+        setError(t("sessionExpired"));
+      } else {
+        setError(err instanceof ApiError ? err.message : t("errorGeneric"));
+      }
     } finally {
       setLoading(false);
     }
@@ -433,6 +466,8 @@ export function SearchCard({
               {error}
             </div>
           )}
+
+          <CreditMeter credits={credits} pendingCost={pendingCost} />
 
           <button
             type="submit"

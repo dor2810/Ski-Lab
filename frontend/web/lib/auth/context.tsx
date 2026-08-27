@@ -9,6 +9,7 @@ import {
   logoutAccount,
   googleLoginUrl,
   getCurrentUser,
+  ApiError,
 } from "@/lib/api";
 
 const REFRESH_TOKEN_KEY = "ski-lab-refresh-token";
@@ -34,6 +35,34 @@ interface AuthContextValue {
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
   loginWithGoogle: () => void;
+  /**
+   * Runs an authenticated API call, recovering from an expired access
+   * token instead of surfacing "Not authenticated" to someone the UI
+   * still shows as signed in.
+   *
+   * THE BUG THIS FIXES: access tokens last 15 minutes and a silent
+   * refresh was scheduled at 13. A setTimeout is not a reliable clock --
+   * a backgrounded tab or a slept laptop skips it -- and any single
+   * refresh failure cleared the timer without rescheduling. After that,
+   * every call 401'd forever while the header still said "Sign out".
+   * The code even carried a comment claiming "the worst case is one
+   * extra 401-triggered refresh", describing a mechanism that had never
+   * actually been built. This is it.
+   *
+   * On 401: refresh once, retry once. If the refresh also fails the
+   * session is genuinely gone (expired, revoked, or the account no
+   * longer exists), so clear it and throw SessionExpiredError, which
+   * callers render as "please sign in again" rather than a raw error.
+   */
+  runAuthed: <T,>(call: (token: string) => Promise<T>) => Promise<T>;
+}
+
+/** Thrown when a session could not be recovered and the user must sign in again. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("session expired");
+    this.name = "SessionExpiredError";
+  }
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [googleAuthError, setGoogleAuthError] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // runAuthed is a stable useCallback, so reading accessToken from state
+  // there would capture whatever it was on first render. A ref always
+  // reads the live value.
+  const accessTokenRef = useRef<string | null>(null);
 
   const scheduleSilentRefresh = useCallback((refreshToken: string) => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
@@ -51,8 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const result = await refreshAccessToken(refreshToken);
         applySession(result.user, result.access_token, result.refresh_token);
-      } catch {
-        clearSession();
+      } catch (err) {
+        // Same rule again. A transient failure here is recoverable:
+        // runAuthed will refresh on the next 401, so there is no reason
+        // to destroy a session the server never rejected.
+        const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+        if (rejected) clearSession();
       }
     }, SILENT_REFRESH_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,13 +98,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   function applySession(nextUser: AuthUser, nextAccessToken: string, nextRefreshToken: string) {
     setUser(nextUser);
     setAccessToken(nextAccessToken);
+    accessTokenRef.current = nextAccessToken;
     localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
     scheduleSilentRefresh(nextRefreshToken);
   }
 
+  const runAuthed = useCallback(async function runAuthed<T>(
+    call: (token: string) => Promise<T>,
+  ): Promise<T> {
+    const current = accessTokenRef.current;
+    if (current) {
+      try {
+        return await call(current);
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 401) throw err;
+        // fall through to the refresh-and-retry path
+      }
+    }
+
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!storedRefreshToken) {
+      clearSession();
+      throw new SessionExpiredError();
+    }
+    try {
+      const result = await refreshAccessToken(storedRefreshToken);
+      applySession(result.user, result.access_token, result.refresh_token);
+      return await call(result.access_token);
+    } catch (err) {
+      // ONLY a real rejection means the session is gone. A network
+      // failure means the backend was unreachable for a moment -- a
+      // Cloud Run cold start, a flaky connection, a restart -- and
+      // signing the user out for that is both wrong and infuriating,
+      // because their credentials were never actually refused. An
+      // earlier version of this cleared on every error and logged
+      // people out whenever the API hiccupped.
+      const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+      if (rejected) {
+        clearSession();
+        throw new SessionExpiredError();
+      }
+      throw err;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function clearSession() {
     setUser(null);
     setAccessToken(null);
+    accessTokenRef.current = null;
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
   }
@@ -105,8 +184,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const result = await refreshAccessToken(storedRefreshToken);
           applySession(result.user, result.access_token, result.refresh_token);
-        } catch {
-          localStorage.removeItem(REFRESH_TOKEN_KEY);
+        } catch (err) {
+          // Same rule as runAuthed: only DISCARD the stored token when
+          // the server actually rejected it. Cloud Run scales to zero,
+          // so a first page load routinely races a cold start -- and
+          // throwing the refresh token away on that timeout signed
+          // people out purely for arriving first.
+          const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+          if (rejected) localStorage.removeItem(REFRESH_TOKEN_KEY);
         }
       }
       setIsLoading(false);
@@ -150,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user, accessToken, isLoading, googleAuthError, dismissGoogleError,
+        user, accessToken, isLoading, googleAuthError, dismissGoogleError, runAuthed,
         login, register, logout, loginWithGoogle,
       }}
     >

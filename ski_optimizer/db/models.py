@@ -26,7 +26,7 @@ Design choices worth knowing about:
 import datetime
 import uuid
 
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Date, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -82,3 +82,37 @@ class EmailVerificationToken(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
+
+
+class SearchCreditLedger(Base):
+    """
+    Per-user, per-DAY record of search credits spent.
+
+    WHY CREDITS EXIST: a search is not free. Each one can fire real live
+    flight and hotel scrapes, and a wide date range multiplies the work
+    (a 400-day window evaluates hundreds of candidate start dates). An
+    unlimited free search box is a standing invitation to burn the whole
+    project's capacity on one automated client.
+
+    WHY A LEDGER ROW PER DAY, not a running counter on User: the daily
+    reset then needs no scheduled job and no clock arithmetic at write
+    time. "How much has this user spent today?" is just the row for
+    (user_id, today), and yesterday's row simply stops being consulted.
+    Rows are also a genuine usage record, which a counter that gets
+    reset in place would destroy.
+
+    NOTE ON DURABILITY: the production database is currently SQLite on
+    Cloud Run's ephemeral disk, so these rows are lost on every deploy.
+    For a resource that resets daily anyway that is a tolerable failure
+    mode (a deploy grants everyone a fresh allowance early), unlike user
+    ACCOUNTS, which must not vanish -- see PROJECT_STATE.md.
+    """
+    __tablename__ = "search_credit_ledger"
+    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_credit_user_day"),)
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    day = Column(Date, nullable=False, index=True)
+    credits_used = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow,
+                        onupdate=datetime.datetime.utcnow, nullable=False)

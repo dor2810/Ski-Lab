@@ -192,10 +192,18 @@ export interface TripResult {
   weather: TripWeather | null;
 }
 
+/** What a search cost and what's left today. null for anonymous search. */
+export interface Credits {
+  cost: number;
+  remaining: number;
+  daily_allowance: number;
+}
+
 export interface SearchResponse {
   query_resort_count: number;
   live_pricing_active: boolean;
   results: TripResult[];
+  credits: Credits | null;
 }
 
 export interface SearchDateRangeResponse extends SearchResponse {
@@ -330,4 +338,10 @@ export async function logoutAccount(refresh_token: string): Promise<void> {
 // the URL fragment it appends on return -- see google_oauth.py.
 export function googleLoginUrl(): string {
   return apiBase() + "/auth/google/login";
+}
+
+
+/** Today's remaining search credits. Read-only -- never spends one. */
+export async function getSearchCredits(accessToken: string): Promise<Credits> {
+  return apiFetch<Credits>("/trips/credits", { accessToken });
 }

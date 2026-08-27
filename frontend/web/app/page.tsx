@@ -16,7 +16,7 @@ import { useTranslation } from "@/lib/i18n/context";
 
 export default function Home() {
   const { t } = useTranslation();
-  const { accessToken, isLoading: authLoading } = useAuth();
+  const { accessToken, isLoading: authLoading, runAuthed } = useAuth();
   // Real search results from the form below (SearchCard always calls
   // /trips/search-dates -- see its own comment on why there's no
   // separate "fixed date" mode any more: a date range no wider than the
@@ -64,7 +64,7 @@ export default function Home() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await searchFixedDates(
+        const data = await runAuthed((token) => searchFixedDates(
           {
             budget_eur_per_person: 1500,
             group_size: 2,
@@ -76,8 +76,8 @@ export default function Home() {
             top_n: 4,
             weights: normalizeWeights(DEFAULT_RAW_WEIGHTS),
           },
-          accessToken
-        );
+          token
+        ));
         if (!cancelled) setPreview(data.results);
       } catch (err) {
         if (!cancelled) {

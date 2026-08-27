@@ -42,6 +42,18 @@ export interface TripStyle {
   weights: RawWeights;
   accommodationTier: AccommodationTier;
   foodProfile: FoodProfile;
+  /**
+   * Flight connections this style implies. null = no preference (accept
+   * anything, which is what finds the cheapest fare); 0 = nonstop only;
+   * 1 = at most one stop.
+   *
+   * This is the difference between a style that merely re-weights the
+   * ranking and one that actually changes what gets searched. Someone
+   * paying for a luxury trip does not want two connections to save
+   * EUR40, and someone travelling with small children or already tired
+   * feels a stopover far more than a slider percentage.
+   */
+  maxConnections: number | null;
 }
 
 export const TRIP_STYLES: TripStyle[] = [
@@ -52,14 +64,20 @@ export const TRIP_STYLES: TripStyle[] = [
     weights: { ski_quality: 30, price: 20, snow: 15, nightlife: 15, convenience: 10, accommodation: 10, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
+    maxConnections: null,
   },
   {
     id: "value",
     labelKey: "styleValue",
     blurbKey: "styleValueBlurb",
-    weights: { ski_quality: 20, price: 45, snow: 15, nightlife: 5, convenience: 10, accommodation: 5, family: 0 },
+    // Price dominates, and connections are deliberately unconstrained:
+    // accepting any number of stops is exactly what surfaces the
+    // cheapest fare. Convenience is the thing being traded away, so it
+    // is weighted low rather than pretending otherwise.
+    weights: { ski_quality: 15, price: 55, snow: 12, nightlife: 3, convenience: 10, accommodation: 5, family: 0 },
     accommodationTier: "budget",
     foodProfile: "budget",
+    maxConnections: null,
   },
   {
     id: "snow",
@@ -68,6 +86,7 @@ export const TRIP_STYLES: TripStyle[] = [
     weights: { ski_quality: 30, price: 12, snow: 40, nightlife: 5, convenience: 8, accommodation: 5, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
+    maxConnections: null,
   },
   {
     id: "easy",
@@ -78,6 +97,7 @@ export const TRIP_STYLES: TripStyle[] = [
     weights: { ski_quality: 15, price: 15, snow: 10, nightlife: 5, convenience: 35, accommodation: 20, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
+    maxConnections: 1,
   },
   {
     id: "family",
@@ -90,6 +110,7 @@ export const TRIP_STYLES: TripStyle[] = [
     weights: { ski_quality: 12, price: 15, snow: 10, nightlife: 0, convenience: 23, accommodation: 15, family: 25 },
     accommodationTier: "standard",
     foodProfile: "normal",
+    maxConnections: 1,
   },
   {
     id: "lively",
@@ -98,14 +119,21 @@ export const TRIP_STYLES: TripStyle[] = [
     weights: { ski_quality: 25, price: 15, snow: 10, nightlife: 40, convenience: 5, accommodation: 5, family: 0 },
     accommodationTier: "standard",
     foodProfile: "normal",
+    maxConnections: null,
   },
   {
     id: "comfort",
     labelKey: "styleComfort",
     blurbKey: "styleComfortBlurb",
-    weights: { ski_quality: 20, price: 10, snow: 10, nightlife: 5, convenience: 15, accommodation: 40, family: 0 },
+    // Price is weighted lowest of any style on purpose: someone picking
+    // this is telling us not to trade comfort for money. Paired with
+    // nonstop-only flights, which is the single biggest comfort factor
+    // in the whole trip and the one a price-led ranking would happily
+    // sacrifice to save EUR40.
+    weights: { ski_quality: 20, price: 5, snow: 12, nightlife: 5, convenience: 18, accommodation: 40, family: 0 },
     accommodationTier: "luxury",
     foodProfile: "luxury",
+    maxConnections: 0,
   },
 ];
 

@@ -50,6 +50,9 @@ from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
 from ..rate_limit import enforce_search_rate_limit, live_pricing_allowed
+from .. import credits as credits_module
+from ...db.database import get_db
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -345,10 +348,21 @@ class TripResultOut(BaseModel):
     weather: Optional[WeatherOut] = None
 
 
+class CreditsOut(BaseModel):
+    """
+    What this search cost and what's left today. None for an anonymous
+    search (ALLOW_ANONYMOUS_SEARCH), which isn't metered.
+    """
+    cost: int
+    remaining: int
+    daily_allowance: int
+
+
 class SearchResponse(BaseModel):
     query_resort_count: int
     live_pricing_active: bool
     results: List[TripResultOut]
+    credits: Optional[CreditsOut] = None
 
 
 def _to_resort_out(r: Resort) -> ResortOut:
@@ -526,6 +540,35 @@ _SNOW_RERANK_LOOKUPS = 5
 MAX_SEARCH_WINDOW_DAYS = 400
 
 
+def _charge_credits(db, current_user, candidate_dates: int) -> Optional[dict]:
+    """
+    Spends this search's credits up front, or 402s if the user is out.
+
+    Returns the balance to report back, or None when there is no user to
+    charge (anonymous search, only possible with ALLOW_ANONYMOUS_SEARCH
+    -- a dev/testing escape hatch that deliberately isn't metered).
+    Charging BEFORE the work happens means a refusal costs nothing and
+    the price can be quoted honestly rather than billed after the fact.
+    """
+    if current_user is None:
+        return None
+    cost = credits_module.cost_for_candidate_dates(candidate_dates)
+    status_after = credits_module.try_spend(db, current_user.id, cost)
+    if status_after is None:
+        current = credits_module.get_status(db, current_user.id)
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"This search costs {cost} credit(s) and you have {current.remaining} left today "
+            f"(daily allowance {current.daily_allowance}). Credits reset at midnight; "
+            "a narrower date range costs fewer.",
+        )
+    return {
+        "cost": cost,
+        "remaining": status_after.remaining,
+        "daily_allowance": status_after.daily_allowance,
+    }
+
+
 def _reject_past_date(value, field_name: str) -> None:
     """
     A trip in the past is never what anyone meant, and accepting one is
@@ -601,7 +644,8 @@ def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: 
 
 
 @router.post("/search", response_model=SearchResponse, dependencies=[Depends(enforce_search_rate_limit)])
-def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
+def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(get_current_user_for_search),
+                 db: Session = Depends(get_db)):
     # Auto-normalize weights (divide by sum) rather than require the
     # client send an exact 1.0 -- matches the frontend prototype's
     # slider behavior, and floating-point client input summing to
@@ -640,6 +684,10 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 
     _reject_past_date(payload.outbound_date, "outbound_date")
+
+    # One fixed date = one candidate = 1 credit. Charged after validation
+    # so a rejected request is never billed.
+    credit_info = _charge_credits(db, current_user, candidate_dates=1)
 
     # Match the ENGINE's normalization exactly (see
     # engine/scoring.narrow_resort_pool) -- case/whitespace-insensitive,
@@ -742,7 +790,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         ))
 
     return SearchResponse(query_resort_count=len(_resort_cache),
-                          live_pricing_active=live_pricing_active, results=results)
+                          live_pricing_active=live_pricing_active, results=results,
+                          credits=credit_info)
 
 
 @router.get("/resorts", response_model=List[str])
@@ -884,10 +933,12 @@ class SearchDateRangeResponse(BaseModel):
     candidate_dates_per_resort: int
     live_pricing_active: bool
     results: List[DatedTripResultOut]
+    credits: Optional[CreditsOut] = None
 
 
 @router.post("/search-dates", response_model=SearchDateRangeResponse, dependencies=[Depends(enforce_search_rate_limit)])
-def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[User] = Depends(get_current_user_for_search)):
+def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[User] = Depends(get_current_user_for_search),
+                      db: Session = Depends(get_db)):
     """
     "I want to go to resort X (or: anywhere), sometime in this window,
     for N nights -- find me the best deal(s)." Evaluates every valid
@@ -976,6 +1027,16 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
             )
 
+    # Charge for the REAL number of candidate start dates this search
+    # will evaluate -- the same figure returned as
+    # candidate_dates_per_resort, so a user can see what they paid for.
+    # Computed before the engine runs, so an out-of-credits user is
+    # refused without doing any of the work.
+    planned_candidates = len(candidate_start_dates(
+        effective_earliest, payload.latest_date, prefs.nights,
+        payload.step_days, start_weekday))
+    credit_info = _charge_credits(db, current_user, candidate_dates=planned_candidates)
+
     dated_options = search_date_range(
         _resort_cache, prefs, effective_earliest, payload.latest_date,
         shortlist_size=8, step_days=payload.step_days, start_weekday=start_weekday,
@@ -1057,8 +1118,22 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         ))
 
     return SearchDateRangeResponse(
+        credits=credit_info,
         query_resort_count=len(_resort_cache),
         candidate_dates_per_resort=candidate_dates,
         live_pricing_active=flight_cost_fn is not None,
         results=results,
     )
+
+
+@router.get("/credits", response_model=CreditsOut)
+def get_search_credits(current_user: Optional[User] = Depends(get_current_user_for_search),
+                       db: Session = Depends(get_db)):
+    """
+    Today's remaining search credits. Read-only -- checking a balance
+    must never spend one. `cost` is 0 here because nothing was charged.
+    """
+    if current_user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    st = credits_module.get_status(db, current_user.id)
+    return CreditsOut(cost=0, remaining=st.remaining, daily_allowance=st.daily_allowance)
