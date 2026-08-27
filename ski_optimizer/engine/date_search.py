@@ -32,6 +32,8 @@ estimates, so the funnel logic is fully testable offline with no API key.
 Live pricing plugs into _flight_cost_for_date without touching the funnel.
 """
 import datetime
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Callable, List, Optional
@@ -51,6 +53,24 @@ from .scoring import rank_trips, _normalize, _ski_quality_score, narrow_resort_p
 # (adapters/google_flights_adapter.py's own docstring warns about
 # exactly that), which would cost far more than the latency it saves.
 _LIVE_PRICING_WORKERS = 8
+
+# Seconds of jittered delay before each live lookup starts.
+#
+# Eight threads firing the instant the pool opens is a burst that looks
+# exactly like automation, and the provider throttles accordingly --
+# measured, with most routes returning nothing while a single route
+# succeeded. A small random stagger costs almost nothing in wall-clock
+# time (the work still overlaps; only the start times spread) and makes
+# the traffic pattern far less machine-like.
+_REQUEST_STAGGER_S = 0.25
+
+
+def _staggered(fn):
+    """Wraps a live-pricing call with a short random delay before it runs."""
+    def _call(*args, **kwargs):
+        time.sleep(random.random() * _REQUEST_STAGGER_S * _LIVE_PRICING_WORKERS)
+        return fn(*args, **kwargs)
+    return _call
 
 
 @dataclass
@@ -363,7 +383,20 @@ def search_date_range(
     live_active = flight_cost_fn is not None or accommodation_cost_fn is not None
     if live_active:
         cutoff = len(all_static) if live_reprice_n is None else live_reprice_n
-        to_reprice, rest = all_static[:cutoff], all_static[cutoff:]
+
+        # Choose WHICH pairs to live-price using the SAME per-resort cap
+        # the final results use.
+        #
+        # These two features fight each other otherwise, and did: taking
+        # the top `cutoff` purely by static score concentrates repricing
+        # on a handful of resorts, but the displayed list is then
+        # diversified across MANY resorts -- so most rows a user saw
+        # came from pairs that were never repriced at all. Measured:
+        # 3 of 12 rows live. Repricing the diversified set instead means
+        # the pairs we pay to price are the pairs we actually show.
+        to_reprice = cap_per_resort(all_static, cutoff, max_results_per_resort)
+        reprice_ids = {id(opt) for opt in to_reprice}
+        rest = [opt for opt in all_static if id(opt) not in reprice_ids]
 
         # Fetch every live price CONCURRENTLY before applying any of
         # them.
@@ -400,13 +433,15 @@ def search_date_range(
                     for i, opt in enumerate(to_reprice):
                         key = (tuple(airport_codes_for(opt.resort)), opt.start_date, opt.end_date)
                         flight_groups.setdefault(key, []).append(i)
+                staggered_flight = _staggered(flight_cost_fn) if flight_cost_fn else None
+                staggered_accom = _staggered(accommodation_cost_fn) if accommodation_cost_fn else None
                 flight_futures = {
-                    pool.submit(flight_cost_fn, to_reprice[idxs[0]].resort,
+                    pool.submit(staggered_flight, to_reprice[idxs[0]].resort,
                                 to_reprice[idxs[0]].start_date, to_reprice[idxs[0]].end_date, prefs): idxs
                     for idxs in flight_groups.values()
                 }
                 accom_futures = {
-                    pool.submit(accommodation_cost_fn, opt.resort, opt.start_date, opt.end_date, prefs): i
+                    pool.submit(staggered_accom, opt.resort, opt.start_date, opt.end_date, prefs): i
                     for i, opt in enumerate(to_reprice)
                 } if accommodation_cost_fn is not None else {}
 

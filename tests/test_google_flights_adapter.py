@@ -430,26 +430,65 @@ def test_retries_are_bounded_and_still_fail_honestly(monkeypatch):
     )
 
 
-# --- no-flight-data detection ---
+# --- no-service vs. genuine block ---
 
-def test_a_payload_with_no_flight_data_is_reported_as_a_provider_failure(monkeypatch):
-    # The structural signature: script.ds:1 present, but the payload's
-    # flight slot is null. This used to surface as an opaque TypeError
-    # from inside fast_flights, indistinguishable from a parser bug, and
-    # every occurrence silently became a static estimate.
+def test_a_null_flight_payload_means_no_service_not_a_block(monkeypatch):
+    """
+    Corrected twice; the measurements are recorded so this isn't
+    re-litigated a third time.
+
+    A null flight payload makes fast_flights raise "'NoneType' object is
+    not subscriptable", and an earlier version reported that as an
+    anti-bot block. It isn't: measured against real requests, GNB and
+    LJU return a null payload in the SAME batch, at the same instant,
+    that GVA and MXP return real prices. An IP-level block cannot be
+    per-route -- those airports simply have no TLV service on that date.
+
+    Reporting it as a block put a "live pricing blocked" banner in front
+    of users whenever one small seasonal airport had no flights.
+    """
     import fast_flights.fetcher as ff_fetcher
     import fast_flights.parser as ff_parser
 
-    from ski_optimizer.adapters.base import ProviderBlockedError
-
     monkeypatch.setattr(ff_fetcher, "fetch_flights_html",
                         lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],null],</script></html>')
+    monkeypatch.setattr(ff_parser, "parse_js",
+                        lambda _js: (_ for _ in ()).throw(TypeError("'NoneType' object is not subscriptable")))
 
-    def explode(_js):
-        raise TypeError("'NoneType' object is not subscriptable")
+    result = gfa.search_flights("TLV", "GNB", date(2027, 1, 10), date(2027, 1, 17),
+                                use_cache=False)
+    assert result.options == [], "an empty route should be an empty result, not an error"
 
-    monkeypatch.setattr(ff_parser, "parse_js", explode)
 
+def test_the_upstream_parser_indexerror_does_not_kill_the_route(monkeypatch):
+    # Upstream defect in fast_flights 3.1.0 (parser.py: price =
+    # k[1][0][1]) -- a result card with no price raises IndexError and
+    # takes the whole route's results with it. We can't fix their
+    # parser, but it must not surface as a hard error.
+    import fast_flights.fetcher as ff_fetcher
+    import fast_flights.parser as ff_parser
+
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html",
+                        lambda *a, **k: '<html><script class="ds:1">data:[[],[],[],[[{}]]],</script></html>')
+    monkeypatch.setattr(ff_parser, "parse_js",
+                        lambda _js: (_ for _ in ()).throw(IndexError("list index out of range")))
+
+    result = gfa.search_flights("TLV", "CMF", date(2027, 1, 10), date(2027, 1, 17),
+                                use_cache=False)
+    assert result.options == []
+
+
+def test_only_the_unusual_traffic_interstitial_counts_as_a_block(monkeypatch):
+    # The one signal that actually discriminates: it appeared in zero of
+    # several hundred test responses, and never on a page carrying
+    # flight data.
+    import fast_flights.fetcher as ff_fetcher
+
+    from ski_optimizer.adapters.base import ProviderBlockedError
+
+    monkeypatch.setattr(
+        ff_fetcher, "fetch_flights_html",
+        lambda *a, **k: "<html><body>Our systems have detected unusual traffic</body></html>")
     with pytest.raises(ProviderBlockedError):
         gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
 
@@ -458,15 +497,12 @@ def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(mon
     """
     REGRESSION, and a production outage I caused.
 
-    The first detector matched the string "recaptcha"/"captcha" in the
-    HTML. Google embeds reCAPTCHA scaffolding in NORMAL Google Flights
-    pages, so the check fired on good responses: live flight pricing
-    dropped to 0/12 in production and the UI announced "blocked" -- all
-    of it self-inflicted. Proven by disabling the detector and getting 7
-    real options back at EUR283 from the very same request.
-
-    A page that contains the word "captcha" but DOES parse must be
-    treated as a success.
+    The first detector matched "recaptcha"/"captcha" in the HTML. Google
+    embeds reCAPTCHA scaffolding in NORMAL Google Flights pages, so it
+    fired on good responses: live flight pricing dropped to 0/12 in
+    production and the UI announced "blocked" -- all self-inflicted.
+    Proven by disabling it and getting 7 real options back at EUR283
+    from the very same request.
     """
     import fast_flights.fetcher as ff_fetcher
     import fast_flights.parser as ff_parser
@@ -475,9 +511,6 @@ def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(mon
 
     monkeypatch.setattr(
         ff_fetcher, "fetch_flights_html",
-        # payload[3][0] must be a NON-empty list, or there are no raw
-        # cards to zip against the parsed results and options come back
-        # empty for a reason unrelated to what this test is about.
         lambda *a, **k: ('<html><script src="https://www.google.com/recaptcha/api.js"></script>'
                          '<script class="ds:1">data:[[],[],[],[[{}]]],</script></html>'))
     monkeypatch.setattr(gfa, "_parse_flight_result",
@@ -493,30 +526,15 @@ def test_a_normal_page_containing_recaptcha_markup_is_NOT_treated_as_blocked(mon
 
 
 def test_a_block_is_not_retried(monkeypatch):
-    # A challenge will not pass on an identical second request; retrying
-    # only adds load to a provider that already flagged us.
     from ski_optimizer.adapters.base import ProviderBlockedError
 
     calls = {"n": 0}
 
     def blocked(*_a, **_k):
         calls["n"] += 1
-        raise ProviderBlockedError("no flight data")
+        raise ProviderBlockedError("unusual traffic")
 
     monkeypatch.setattr(gfa, "_search_one_airport", blocked)
     with pytest.raises(ProviderBlockedError):
         gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
     assert calls["n"] == 1, "a block must fail fast, not retry"
-
-
-def test_a_block_stays_typed_through_search_flights(monkeypatch):
-    # Flattening it into a generic AdapterError at the "every airport
-    # failed" step is what made it indistinguishable from "no flights
-    # exist on this route".
-    from ski_optimizer.adapters.base import ProviderBlockedError
-
-    monkeypatch.setattr(gfa, "_search_one_airport",
-                        lambda *a, **k: (_ for _ in ()).throw(ProviderBlockedError("no data")))
-    with pytest.raises(ProviderBlockedError):
-        gfa.search_flights("TLV", ["GVA", "INN"], date(2027, 1, 10), date(2027, 1, 17),
-                           use_cache=False)

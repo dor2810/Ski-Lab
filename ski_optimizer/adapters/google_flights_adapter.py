@@ -57,6 +57,7 @@ are persisted, by db/fare_history.py, which isn't wired into the live
 call path either), so this gap is real but currently inert.
 """
 import base64
+import logging
 import datetime
 import random
 import time
@@ -65,6 +66,8 @@ from typing import List, Optional
 
 from ..models import FlightOption, FlightSearchResult
 from .base import AdapterError, ProviderBlockedError
+
+logger = logging.getLogger(__name__)
 from .response_cache import get_cache
 from ._wire_format import field_bytes, field_str, field_varint
 
@@ -431,29 +434,31 @@ def booking_url(
         return None
 
 
-# HOW A BLOCK IS DETECTED -- and how it is NOT.
+# WHAT A NULL PAYLOAD ACTUALLY MEANS -- corrected twice, so the
+# evidence is recorded here rather than re-derived a third time.
 #
-# The first version of this matched strings like "recaptcha"/"captcha"
-# in the HTML. That was WRONG, and it caused a real production
-# regression: Google embeds reCAPTCHA scaffolding in NORMAL Google
-# Flights pages too, so the check fired on perfectly good responses and
-# rejected them. Live flight pricing went to 0/12 in production and the
-# UI reported "blocked" -- caused entirely by the detector, not by
-# Google. Verified by disabling it and immediately getting 7 real
-# options back at EUR283.
+# Attempt 1 matched "recaptcha"/"captcha" in the HTML. WRONG: Google
+# embeds reCAPTCHA scaffolding in normal Google Flights pages, so it
+# rejected every good response and took live pricing to 0/12 in
+# production.
 #
-# The reliable signature is STRUCTURAL, not textual: on a real results
-# page the embedded payload carries a flight array; on a challenge or
-# no-data page that slot is null. That is exactly the condition that
-# used to blow up several frames down inside fast_flights with
-# "'NoneType' object is not subscriptable". So we check the thing that
-# actually differs instead of guessing from page text.
+# Attempt 2 treated a null flight payload (the thing that makes
+# fast_flights raise "'NoneType' object is not subscriptable") as an
+# anti-bot block. ALSO WRONG, just less loudly: measured against real
+# requests, GNB and LJU return a null payload in the SAME batch, at the
+# same instant, that GVA and MXP return real prices. An IP-level block
+# cannot be per-route. Those airports simply have no TLV service on
+# that date -- they are small and seasonal.
 #
-# HONEST LIMIT: a null payload means "no flight data came back". It does
-# NOT by itself prove a CAPTCHA -- a genuinely empty route looks the
-# same from here. The user-facing message says prices could not be
-# fetched, which is true either way, rather than asserting a specific
-# cause we cannot actually distinguish.
+# So a null payload means NO FLIGHTS ON THIS ROUTE, and is reported as
+# an empty result, exactly like fast_flights' own FlightsNotFound. It is
+# not an error and must not raise a banner at the user.
+#
+# A GENUINE block is a different, observable thing: Google's "unusual
+# traffic" interstitial, which appeared in zero of several hundred test
+# responses and never on a page that also carried flight data. That one
+# string is the only block signal kept.
+_REAL_BLOCK_MARKER = "unusual traffic"
 
 
 def _fetch_and_parse(query):
@@ -479,6 +484,11 @@ def _fetch_and_parse(query):
     from selectolax.lexbor import LexborHTMLParser
 
     html = fetch_flights_html(query)
+    if _REAL_BLOCK_MARKER in html.lower():
+        raise ProviderBlockedError(
+            "Google served its 'unusual traffic' interstitial -- automated requests are "
+            "being refused. This is a real block, not an empty route."
+        )
     page = LexborHTMLParser(html)
     script = page.css_first(r"script.ds\:1")
     if script is None:
@@ -489,15 +499,22 @@ def _fetch_and_parse(query):
         parsed = ff_parser.parse_js(js)
     except FlightsNotFound:
         return [], []
-    except TypeError as exc:
-        # The structural signature described above: fast_flights indexes
-        # into the payload's flight slot, which is null on a challenge or
-        # no-data response. Named rather than left as an opaque
-        # TypeError, so callers can degrade visibly instead of silently.
-        raise ProviderBlockedError(
-            "Google Flights returned a page with no flight data "
-            f"(likely an anti-bot challenge or an empty route): {exc}"
-        ) from exc
+    except TypeError:
+        # Null flight payload -> no service on this route. See the note
+        # above for the measurements that settled this. Same empty
+        # result as FlightsNotFound, NOT an error.
+        logger.debug("no flight payload for this route (treated as no service)")
+        return [], []
+    except IndexError:
+        # Upstream defect in fast_flights 3.1.0 (parser.py: price =
+        # k[1][0][1]) -- a result card with no price raises IndexError
+        # and takes the WHOLE route's results with it, including the
+        # cards that did have prices. Nothing we can fix from here
+        # without reimplementing their parser, but it must not surface
+        # as a hard error: degrade to "no results for this route" and
+        # let the retry have another go.
+        logger.warning("fast_flights parser IndexError (priceless result card) -- route skipped")
+        return [], []
 
     try:
         data_str = js.split("data:", 1)[1].rsplit(",", 1)[0]

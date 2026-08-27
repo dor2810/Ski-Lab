@@ -102,3 +102,10 @@ def _no_retry_backoff_in_tests(monkeypatch):
     from ski_optimizer.adapters import google_flights_adapter
 
     monkeypatch.setattr(google_flights_adapter, "_RETRY_BASE_DELAY_S", 0.0)
+
+    # Same reasoning for the live-pricing request stagger: it exists to
+    # make real traffic look less like a burst of automation, and is
+    # pure dead time against mocks.
+    from ski_optimizer.engine import date_search
+
+    monkeypatch.setattr(date_search, "_REQUEST_STAGGER_S", 0.0)
