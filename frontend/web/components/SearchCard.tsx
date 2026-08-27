@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   searchFlexibleWindow,
   listResortNames,
+  listPopularResortNames,
   getSearchCredits,
   ApiError,
   type SkillLevel,
@@ -107,6 +108,7 @@ export function SearchCard({
   const [mainstreamNames, setMainstreamNames] = useState<string[]>([]);
   const [allNames, setAllNames] = useState<string[]>([]);
   const [showAllResorts, setShowAllResorts] = useState(false);
+  const [popularNames, setPopularNames] = useState<string[]>([]);
   const resortNames = showAllResorts ? allNames : mainstreamNames;
   const [selectedResorts, setSelectedResorts] = useState<Set<string>>(new Set());
   const [resortMode, setResortMode] = useState<ResortFilterMode>("include");
@@ -141,6 +143,9 @@ export function SearchCard({
     });
     runAuthed((token) => listResortNames(token)).then(setAllNames).catch(() => {
       /* only needed if the user asks to see everything */
+    });
+    runAuthed((token) => listPopularResortNames(token)).then(setPopularNames).catch(() => {
+      /* the one-tap button just doesn't render -- never blocks the form */
     });
   }, [accessToken]);
 
@@ -193,6 +198,24 @@ export function SearchCard({
       (st) => (Object.keys(next) as (keyof RawWeights)[]).every((k) => st.weights[k] === next[k])
     );
     setStyleId(match ? match.id : null);
+  }
+
+  // One tap selects the whole curated set; tapping again clears it, so
+  // the action is undoable without hunting down ten individual chips.
+  function togglePopularSelection() {
+    const allSelected = popularNames.length > 0 && popularNames.every((n) => selectedResorts.has(n));
+    setSelectedResorts((prev) => {
+      const next = new Set(prev);
+      for (const name of popularNames) {
+        if (allSelected) next.delete(name);
+        else next.add(name);
+      }
+      return next;
+    });
+    // Picking a set of resorts to INCLUDE is what this button means; if
+    // the picker was flipped to "except these" the same tap would
+    // silently exclude them, which is the opposite of what it says.
+    if (!allSelected) setResortMode("include");
   }
 
   function toggleResort(name: string) {
@@ -351,6 +374,8 @@ export function SearchCard({
             showingAll={showAllResorts}
             onToggleShowAll={() => setShowAllResorts((v) => !v)}
             hiddenCount={Math.max(0, allNames.length - mainstreamNames.length)}
+            popularNames={popularNames}
+            onSelectPopular={togglePopularSelection}
             mode={resortMode}
             onModeChange={setResortMode}
           />

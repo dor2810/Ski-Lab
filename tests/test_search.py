@@ -831,3 +831,49 @@ def test_resorts_endpoint_can_return_just_the_shortlist(authed_client):
     # operator packages them.
     for marquee in ("Zermatt", "Chamonix", "Courchevel"):
         assert marquee in names
+
+
+# --- the "most popular" one-tap set ---
+
+def test_popular_resorts_are_all_real_and_all_mainstream():
+    # A name that fell out of the mainstream shortlist would be silently
+    # UNSELECTABLE, because the picker only shows mainstream resorts by
+    # default -- the button would appear to do nothing for that entry.
+    from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.data.mainstream_resorts import (
+        MOST_POPULAR_RESORTS, MAINSTREAM_RESORTS,
+    )
+    real = {r.name for r in load_resorts()}
+    popular = set(MOST_POPULAR_RESORTS)
+    assert popular <= real, f"not real resorts: {popular - real}"
+    assert popular <= set(MAINSTREAM_RESORTS), (
+        f"popular but not mainstream, so unselectable in the UI: {popular - set(MAINSTREAM_RESORTS)}"
+    )
+    assert len(MOST_POPULAR_RESORTS) == len(popular), "the list has duplicates"
+
+
+def test_resorts_endpoint_returns_the_popular_set_in_curated_order(authed_client):
+    # Order is part of the curation, so it must not be alphabetised.
+    from ski_optimizer.data.mainstream_resorts import MOST_POPULAR_RESORTS
+
+    resp = authed_client.get("/trips/resorts?popular_only=true")
+    assert resp.status_code == 200
+    assert resp.json() == list(MOST_POPULAR_RESORTS)
+
+
+def test_popular_set_is_smaller_than_the_mainstream_shortlist(authed_client):
+    popular = authed_client.get("/trips/resorts?popular_only=true").json()
+    mainstream = authed_client.get("/trips/resorts?mainstream_only=true").json()
+    assert 0 < len(popular) < len(mainstream)
+    assert set(popular) <= set(mainstream)
+
+
+def test_a_search_scoped_to_the_popular_set_returns_only_those(authed_client):
+    # The button's whole purpose: what it selects is what gets searched.
+    popular = authed_client.get("/trips/resorts?popular_only=true").json()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 4000, "ski_days": 5, "include_resorts": popular,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    returned = {r["resort"]["name"] for r in resp.json()["results"]}
+    assert returned <= set(popular), f"leaked non-popular resorts: {returned - set(popular)}"

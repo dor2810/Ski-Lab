@@ -135,6 +135,8 @@ const en = {
   resortsExceptThese: "Except these",
   resortsNoneSelectedHintPopular: 'None selected = search the popular resorts below. Pick some to search only those, or flip to "Except these" to exclude them.',
   resortsNoneSelectedHintAll: 'None selected = search all resorts. Pick some to search only those, or flip to "Except these" to exclude them.',
+  resortsSelectPopular: "★ Most popular ({count})",
+  resortsClearPopular: "★ Clear most popular",
   resortsShowAll: "Showing popular resorts — show all ({count} more)",
   resortsShowPopular: "Show popular resorts only",
   resortsFilterPlaceholder: "Filter resorts…",

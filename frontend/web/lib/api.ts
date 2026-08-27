@@ -312,6 +312,16 @@ export async function listResortNames(
   return apiFetch<string[]>(`/trips/resorts${query}`, { accessToken });
 }
 
+/**
+ * The hand-picked "most popular" set the picker's one-tap button
+ * selects. Comes from the backend rather than being duplicated here, so
+ * there is one place to change the list and no way for the two to drift.
+ * Returned in curated order -- the order is part of the curation.
+ */
+export async function listPopularResortNames(accessToken: string): Promise<string[]> {
+  return apiFetch<string[]>("/trips/resorts?popular_only=true", { accessToken });
+}
+
 // --- Auth (see api/routes/auth.py + lib/auth/context.tsx) ---
 
 export interface AuthUser {

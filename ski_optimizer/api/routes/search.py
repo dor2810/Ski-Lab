@@ -810,10 +810,14 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
 
 @router.get("/resorts", response_model=List[str])
 def list_resort_names(current_user: Optional[User] = Depends(get_current_user_for_search),
-                      mainstream_only: bool = False):
+                      mainstream_only: bool = False,
+                      popular_only: bool = False):
     """
     Lets an authenticated client populate a resort picker without
     guessing names.
+
+    popular_only=true returns the small hand-picked "most popular" set
+    that the picker's one-tap button selects.
 
     mainstream_only=true returns just the curated shortlist (see
     data/mainstream_resorts.py) -- resorts real ski-package operators
@@ -824,6 +828,15 @@ def list_resort_names(current_user: Optional[User] = Depends(get_current_user_fo
     which is a presentation choice, not a restriction.
     """
     names = sorted(r.name for r in _resort_cache)
+    if popular_only:
+        # The curated one-tap "most popular" set. Returned in the
+        # CURATED order, not alphabetically -- the order is part of the
+        # curation. Filtered against the real resort list so a rename in
+        # the spreadsheet can never make the button select a name that
+        # no longer exists.
+        from ...data.mainstream_resorts import MOST_POPULAR_RESORTS
+        known = set(names)
+        return [n for n in MOST_POPULAR_RESORTS if n in known]
     if mainstream_only:
         from ...data.mainstream_resorts import is_mainstream
         return [n for n in names if is_mainstream(n)]

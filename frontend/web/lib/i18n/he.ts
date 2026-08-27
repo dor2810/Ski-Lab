@@ -130,6 +130,8 @@ const he: Record<keyof typeof en, string> = {
   resortsExceptThese: "חוץ מאלה",
   resortsNoneSelectedHintPopular: 'לא נבחר כלום = חיפוש באתרים הפופולריים שלמטה. בחרו כמה כדי לחפש רק בהם, או עברו ל"חוץ מאלה" כדי להוציא אותם.',
   resortsNoneSelectedHintAll: 'לא נבחר כלום = חיפוש בכל האתרים. בחרו כמה כדי לחפש רק בהם, או עברו ל"חוץ מאלה" כדי להוציא אותם.',
+  resortsSelectPopular: "★ הפופולריים ביותר ({count})",
+  resortsClearPopular: "★ נקו את הפופולריים",
   resortsShowAll: "מוצגים אתרים פופולריים — הצג הכול (עוד {count})",
   resortsShowPopular: "הצג אתרים פופולריים בלבד",
   resortsFilterPlaceholder: "סננו אתרים…",

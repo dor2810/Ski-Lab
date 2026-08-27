@@ -24,6 +24,8 @@ export function ResortPicker({
   mode,
   onModeChange,
   isSignedIn = true,
+  popularNames = [],
+  onSelectPopular,
   showingAll = false,
   onToggleShowAll,
   hiddenCount = 0,
@@ -48,9 +50,21 @@ export function ResortPicker({
   showingAll?: boolean;
   onToggleShowAll?: () => void;
   hiddenCount?: number;
+  // One-tap selection of the hand-picked "most popular" set. Empty
+  // until the list loads, in which case the button simply isn't shown
+  // rather than appearing and doing nothing.
+  popularNames?: string[];
+  onSelectPopular?: () => void;
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
+
+  // Whether the popular set is ALREADY exactly what's selected. Drives
+  // the button's second state, so one tap picks the set and another
+  // clears it -- a button that only ever adds leaves the user hunting
+  // for ten individual chips to undo it.
+  const allPopularSelected =
+    popularNames.length > 0 && popularNames.every((n) => selected.has(n));
 
   // Selected resorts sort to the front (stable sort preserves each
   // group's original alphabetical order) -- picking a resort should
@@ -102,6 +116,23 @@ export function ResortPicker({
         <p className="mb-2 text-[11px] text-subtle">
           {showingAll ? t("resortsNoneSelectedHintAll") : t("resortsNoneSelectedHintPopular")}
         </p>
+      )}
+
+      {onSelectPopular && popularNames.length > 0 && (
+        <button
+          type="button"
+          onClick={onSelectPopular}
+          aria-pressed={allPopularSelected}
+          className={`mb-2 me-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            allPopularSelected
+              ? "border-signal bg-signal-soft text-signal"
+              : "border-line bg-surface text-sky hover:border-line-strong hover:bg-sunken"
+          }`}
+        >
+          {allPopularSelected
+            ? t("resortsClearPopular")
+            : t("resortsSelectPopular", { count: String(popularNames.length) })}
+        </button>
       )}
 
       {onToggleShowAll && hiddenCount > 0 && (

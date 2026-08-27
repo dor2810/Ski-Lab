@@ -109,3 +109,33 @@ NON_MAINSTREAM_RESORTS: dict[str, str] = {
 
 def is_mainstream(resort_name: str) -> bool:
     return resort_name in MAINSTREAM_RESORTS
+
+
+# The "most popular" one-tap selection, chosen BY THE PROJECT OWNER by
+# hand-picking them in the UI on 2026-08-28 and asking for a button that
+# selects the set in one tap. It is a curated shortlist of shortlists:
+# the destinations worth offering first when someone has no particular
+# resort in mind.
+#
+# NOT derived from the operator research above, and deliberately so --
+# that data answers "who sells this?", which is a different question
+# from "where would we send someone who hasn't decided?". Recorded as
+# an explicit list precisely so it can be re-chosen later without
+# anyone having to reverse-engineer the reasoning from the code.
+#
+# Every entry is asserted to be a real resort name AND a member of
+# MAINSTREAM_RESORTS by the test suite -- a name that fell out of the
+# mainstream shortlist would otherwise be silently unselectable, since
+# the picker only shows mainstream resorts by default.
+MOST_POPULAR_RESORTS: tuple[str, ...] = (
+    "St. Anton am Arlberg",
+    "Ischgl",
+    "Sölden",
+    "Mayrhofen",
+    "Zell am See",
+    "Kitzbühel",
+    "Val Thorens",
+    "Les Arcs",
+    "Zermatt",
+    "Bansko",
+)
