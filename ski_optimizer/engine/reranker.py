@@ -40,9 +40,20 @@ fails keeps its original score, exactly like a resort whose live flight
 price fails keeps its static estimate (see cost_calculator.
 live_flight_cost_eur's docstring for the shared contract).
 """
-from typing import Callable, List, Optional
+import dataclasses
+import logging
+from typing import Callable, List, Optional, TypeVar
 
 from ..models import Resort, TripOption, TripWeatherSummary
+
+# The date-range engine passes DatedTripOption, which carries start_date,
+# end_date and season on top of TripOption's fields. Re-ranking must
+# return the SAME concrete type -- an earlier version rebuilt a plain
+# TripOption and silently dropped those three fields, which would have
+# broken /trips/search-dates the moment it was wired up.
+T = TypeVar("T", bound=TripOption)
+
+logger = logging.getLogger(__name__)
 
 # Maximum share of the snow score that live conditions can take, even
 # when every single day of the trip is a real forecast. Held below 1.0
@@ -100,11 +111,11 @@ def blended_snow_score(static_score: float, summary: TripWeatherSummary) -> floa
 
 
 def rerank_with_conditions(
-    trips: List[TripOption],
+    trips: List[T],
     weights: dict,
     weather_fn: Callable[[Resort], Optional[TripWeatherSummary]],
     max_lookups: int = 5,
-) -> List[TripOption]:
+) -> List[T]:
     """
     Returns a NEW list, re-scored and re-sorted. Never mutates the
     input (this package is immutable-by-convention -- see the rest of
@@ -144,12 +155,26 @@ def rerank_with_conditions(
             rescored.append((trip.score, index, trip))
             continue
 
-        summary = weather_fn(trip.resort)
+        # The docstring promises this never raises and never drops a
+        # trip. That was only true because the default weather_fn happens
+        # to swallow its own errors -- one refactor away from a 500 on a
+        # live search. Guaranteed here instead of assumed at the caller.
+        try:
+            summary = weather_fn(trip.resort)
+        except Exception:
+            logger.exception("snow re-rank weather lookup failed for %s", trip.resort.name)
+            summary = None
         if summary is None:
             rescored.append((trip.score, index, trip))
             continue
 
-        static_snow = trip.score_components.get("snow", 0.0)
+        if "snow" not in trip.score_components:
+            # No snow dimension in this trip's score at all -- adding a
+            # delta for a dimension that was never in the weighted sum
+            # would invent score out of nothing.
+            rescored.append((trip.score, index, trip))
+            continue
+        static_snow = trip.score_components["snow"]
         new_snow = blended_snow_score(static_snow, summary)
         if new_snow == static_snow:
             rescored.append((trip.score, index, trip))
@@ -163,16 +188,13 @@ def rerank_with_conditions(
         new_components["snow"] = round(new_snow, 3)
         new_score = round(trip.score + snow_weight * (new_snow - static_snow), 4)
 
+        # dataclasses.replace keeps the concrete subclass and every field
+        # this module doesn't know about (start_date/end_date/season on
+        # DatedTripOption), rather than rebuilding a base TripOption.
         rescored.append((
             new_score,
             index,
-            TripOption(
-                resort=trip.resort,
-                cost=trip.cost,
-                score=new_score,
-                score_components=new_components,
-                within_budget=trip.within_budget,
-            ),
+            dataclasses.replace(trip, score=new_score, score_components=new_components),
         ))
 
     rescored.sort(key=lambda row: (-row[0], row[1]))

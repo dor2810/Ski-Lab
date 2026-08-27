@@ -732,3 +732,59 @@ def test_near_term_search_does_run_snow_reranking(authed_client, monkeypatch):
     assert resp.status_code == 200
     assert len(calls) > 1, "re-ranking should have looked up several resorts inside the horizon"
     assert len(calls) <= search_route._SNOW_RERANK_LOOKUPS + 1, "lookups must stay bounded"
+
+
+# --- date sanity guards (found by an edge-case hunt, 2026-08-27) ---
+
+def test_a_past_outbound_date_is_rejected(authed_client):
+    # Measured before this guard: a date 120 days ago returned HTTP 200
+    # and attempted 10 live flight lookups that could only fail, and the
+    # deep links we handed back embedded the past dates, so the user
+    # landed on a broken Google Flights search.
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 3000, "ski_days": 5, "outbound_date": "2020-01-01",
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 400
+    assert "past" in resp.json()["detail"].lower()
+
+
+def test_a_fully_past_date_window_is_rejected(authed_client):
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 3000, "ski_days": 5,
+        "earliest_date": "2020-01-01", "latest_date": "2020-02-01",
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 400
+
+
+def test_an_absurd_date_window_is_rejected(authed_client):
+    # A 100-year window was measured at 36,495 candidate dates, 5.4s CPU
+    # and 343MB RSS in ONE request. Per-IP rate limiting bounds request
+    # COUNT but not the cost of a single request.
+    import datetime as _dt
+    from ski_optimizer.api.routes.search import MAX_SEARCH_WINDOW_DAYS
+
+    today = _dt.date.today()
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 3000, "ski_days": 5,
+        "earliest_date": today.isoformat(),
+        "latest_date": (today + _dt.timedelta(days=MAX_SEARCH_WINDOW_DAYS + 10)).isoformat(),
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 400
+    assert str(MAX_SEARCH_WINDOW_DAYS) in resp.json()["detail"]
+
+
+def test_a_window_starting_in_the_past_is_clamped_not_rejected(authed_client):
+    # "Anytime from now on" is a real request. Clamping to today is the
+    # right answer; rejecting would be pedantic and pricing the past
+    # would be wrong.
+    import datetime as _dt
+
+    today = _dt.date.today()
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 3000, "ski_days": 5,
+        "earliest_date": "2020-01-01",
+        "latest_date": (today + _dt.timedelta(days=60)).isoformat(),
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    for result in resp.json()["results"]:
+        assert result["start_date"] >= today.isoformat(), "no result may start in the past"

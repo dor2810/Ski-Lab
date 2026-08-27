@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslation } from "@/lib/i18n/context";
+import type { Dictionary } from "@/lib/i18n/languages";
 
 /**
  * No real mountain photograph asset was supplied (frontend/images only
@@ -19,6 +20,8 @@ import { useTranslation } from "@/lib/i18n/context";
  * bounces is not knowing whether the numbers are real, so it answers
  * that before they scroll.
  */
+const TRUST_KEYS = ["heroTrustLive", "heroTrustTotal", "heroTrustFree"] as const satisfies readonly (keyof Dictionary)[];
+
 export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const { t } = useTranslation();
   return (
@@ -54,11 +57,15 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
 
         {/* Answers "are these numbers real?" before the visitor has to
             ask. Each item is a claim this project can actually back up. */}
+        {/* `as const` keeps these literal, so a typo is a BUILD error --
+            the earlier version cast to one key type, which silently
+            defeated exactly the compile-time guarantee lib/i18n/
+            languages.ts exists to provide. */}
         <ul className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-          {["heroTrustLive", "heroTrustTotal", "heroTrustFree"].map((k) => (
+          {TRUST_KEYS.map((k) => (
             <li key={k} className="flex items-center gap-2">
               <CheckIcon />
-              {t(k as "heroTrustLive")}
+              {t(k)}
             </li>
           ))}
         </ul>

@@ -518,6 +518,29 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
 # it can compare several candidates against each other.
 _SNOW_RERANK_LOOKUPS = 5
 
+# Nobody books a ski trip more than two seasons out, and every extra day
+# of window is real CPU and memory on a scale-to-zero instance: a
+# bug-hunt pass measured a 100-year window at 36,495 candidate dates,
+# 5.4s CPU and 343MB RSS in ONE request. Per-IP rate limiting bounds
+# request COUNT but not the cost of a single request.
+MAX_SEARCH_WINDOW_DAYS = 400
+
+
+def _reject_past_date(value, field_name: str) -> None:
+    """
+    A trip in the past is never what anyone meant, and accepting one is
+    not harmless: it spends real live flight/hotel scrapes that can only
+    fail, and the deep links we hand back embed the past dates, so the
+    user lands on a broken Google Flights search. Measured before this
+    guard existed: a date 120 days ago returned HTTP 200 and attempted
+    10 live flight lookups.
+    """
+    if value is not None and value < datetime.date.today():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{field_name} is in the past ({value.isoformat()}); ski trips must start today or later.",
+        )
+
 
 def _is_within_forecast_horizon(start_date) -> bool:
     """
@@ -615,6 +638,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         # unreachable given the normalization above, but surfaced as a
         # clean 400 instead of a 500 if some edge case gets past it.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+
+    _reject_past_date(payload.outbound_date, "outbound_date")
 
     # Match the ENGINE's normalization exactly (see
     # engine/scoring.narrow_resort_pool) -- case/whitespace-insensitive,
@@ -878,6 +903,21 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     if payload.latest_date <= payload.earliest_date:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "latest_date must be after earliest_date")
+    _reject_past_date(payload.latest_date, "latest_date")
+
+    # A window that STARTS in the past but ends in the future is a real,
+    # sensible request ("anytime from now on") -- clamp it to today
+    # rather than rejecting, so we don't price start dates that have
+    # already been and gone. Rejecting would be pedantic; silently
+    # pricing the past would be wrong.
+    effective_earliest = max(payload.earliest_date, datetime.date.today())
+    window_days = (payload.latest_date - effective_earliest).days
+    if window_days > MAX_SEARCH_WINDOW_DAYS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"date window is {window_days} days; the maximum is {MAX_SEARCH_WINDOW_DAYS}. "
+            "Narrow the range -- searching further ahead than two seasons isn't meaningful.",
+        )
 
     weight_sum = sum(payload.weights.values())
     normalized_weights = {k: v / weight_sum for k, v in payload.weights.items()}
@@ -937,7 +977,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             )
 
     dated_options = search_date_range(
-        _resort_cache, prefs, payload.earliest_date, payload.latest_date,
+        _resort_cache, prefs, effective_earliest, payload.latest_date,
         shortlist_size=8, step_days=payload.step_days, start_weekday=start_weekday,
         top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
@@ -955,8 +995,27 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     if payload.min_budget_eur_per_person is not None:
         dated_options = [t for t in dated_options if t.cost.total_eur >= payload.min_budget_eur_per_person]
 
+    # Snow re-ranking for the date-range engine too. This is the route
+    # the FRONTEND ACTUALLY CALLS (components/SearchCard.tsx) -- wiring
+    # it only into /trips/search meant the feature was dead code for
+    # every real user, which a bug-hunt pass caught by measuring the
+    # lookup count for each real frontend payload.
+    #
+    # Gated per result on ITS OWN start date, not one shared date: a
+    # date-range search spans weeks, so some candidates fall inside the
+    # forecast horizon and most do not. rerank_with_conditions returns
+    # the same concrete type it was given (DatedTripOption here), so
+    # start_date/end_date/season survive.
+    if dated_options and _is_within_forecast_horizon(dated_options[0].start_date):
+        dated_options = rerank_with_conditions(
+            dated_options, full_weights,
+            weather_fn=lambda resort: get_trip_weather(
+                resort, dated_options[0].start_date, dated_options[0].end_date),
+            max_lookups=_SNOW_RERANK_LOOKUPS,
+        )
+
     candidate_dates = len(candidate_start_dates(
-        payload.earliest_date, payload.latest_date, prefs.nights,
+        effective_earliest, payload.latest_date, prefs.nights,
         payload.step_days, start_weekday))
 
     results = []

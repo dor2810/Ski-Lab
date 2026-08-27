@@ -140,3 +140,51 @@ def test_input_list_is_never_mutated():
     rerank_with_conditions(trips, WEIGHTS, weather_fn=lambda r: _summary(240, live_days=6))
     assert [t.score for t in trips] == before_scores
     assert [t.resort.name for t in trips] == before_order
+
+
+# --- type preservation (the bug that would have broken /trips/search-dates) ---
+
+def test_reranking_preserves_the_concrete_dated_type():
+    # REGRESSION: the reranker used to rebuild a plain TripOption, which
+    # silently dropped start_date/end_date/season. That made it
+    # impossible to wire into the date-range route -- the exact route the
+    # frontend actually calls -- without 500-ing on a missing field.
+    import datetime
+    from ski_optimizer.engine.date_search import DatedTripOption
+
+    trip = DatedTripOption(
+        resort=_resort("Livigno"), cost=_cost(), score=0.5,
+        score_components={"snow": 0.2, "price": 0.5},
+        start_date=datetime.date(2027, 1, 10),
+        end_date=datetime.date(2027, 1, 16),
+        season="high",
+    )
+    out = rerank_with_conditions([trip], WEIGHTS,
+                                 weather_fn=lambda r: _summary(240, live_days=6))
+    assert isinstance(out[0], DatedTripOption)
+    assert out[0].start_date == datetime.date(2027, 1, 10)
+    assert out[0].end_date == datetime.date(2027, 1, 16)
+    assert out[0].season == "high"
+    assert out[0].score > 0.5, "the deep base should still have improved the score"
+
+
+def test_a_raising_weather_fn_never_escapes():
+    # The docstring promises this never raises. It was only true because
+    # the default weather_fn happened to swallow its own errors.
+    def boom(_resort):
+        raise RuntimeError("provider exploded")
+
+    trips = [_trip("Zermatt", 0.70, 0.9), _trip("Livigno", 0.66, 0.3)]
+    out = rerank_with_conditions(trips, WEIGHTS, weather_fn=boom)
+    assert [t.score for t in out] == [0.70, 0.66]
+
+
+def test_a_trip_with_no_snow_component_is_left_alone():
+    # Adding a delta for a dimension that was never in the weighted sum
+    # would invent score out of nothing.
+    trip = TripOption(resort=_resort("Livigno"), cost=_cost(), score=0.5,
+                      score_components={"price": 0.5})
+    out = rerank_with_conditions([trip], WEIGHTS,
+                                 weather_fn=lambda r: _summary(240, live_days=6))
+    assert out[0].score == 0.5
+    assert "snow" not in out[0].score_components
