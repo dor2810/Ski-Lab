@@ -7,7 +7,7 @@ export function Footer() {
   const { t } = useTranslation();
   return (
     <footer className="border-t border-line py-10">
-      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-6 sm:flex-row">
+      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 sm:px-6 sm:flex-row">
         <div className="flex items-center gap-2.5">
           <Logo size={28} />
           <div>

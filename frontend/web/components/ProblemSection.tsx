@@ -13,7 +13,7 @@ const PROBLEMS: { icon: typeof CalendarIcon; titleKey: keyof Dictionary; bodyKey
 export function ProblemSection() {
   const { t } = useTranslation();
   return (
-    <section className="mx-auto max-w-5xl px-6 py-20">
+    <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
       <div className="grid gap-10 sm:grid-cols-3">
         {PROBLEMS.map(({ icon: Icon, titleKey, bodyKey }) => (
           <div key={titleKey} className="text-center sm:text-start">

@@ -14,7 +14,7 @@ const STEPS: { labelKey: keyof Dictionary; icon: typeof PinIcon; bodyKey: keyof 
 export function HowItWorks() {
   const { t } = useTranslation();
   return (
-    <section className="mx-auto max-w-5xl px-6 py-20">
+    <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
       <h2 className="text-center font-semibold text-2xl sm:text-3xl mb-14">{t("howItWorksTitle")}</h2>
       <div className="grid gap-10 sm:grid-cols-4">
         {STEPS.map(({ labelKey, icon: Icon, bodyKey }, i) => (

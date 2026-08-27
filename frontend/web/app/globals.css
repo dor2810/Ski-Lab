@@ -58,6 +58,12 @@
 }
 
 @theme inline {
+  /* Tailwind's smallest default breakpoint is sm:640px, which lumps a
+     390px iPhone in with a 600px tablet-ish window. The gap between
+     those is exactly where a hero headline stops fitting, so this adds
+     one step below it. */
+  --breakpoint-xs: 475px;
+
   --color-canvas: var(--color-canvas);
   --color-surface: var(--color-surface);
   --color-sunken: var(--color-sunken);

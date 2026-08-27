@@ -288,8 +288,8 @@ export function SearchCard({
   }
 
   return (
-    <section id="search" className="mx-auto max-w-3xl px-6 py-16">
-      <div className="rounded-2xl border border-line bg-surface p-6 sm:p-8">
+    <section id="search" className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-16">
+      <div className="rounded-2xl border border-line bg-surface p-4 sm:p-8">
         <form id="ski-search-form" onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className={labelClass()}>{t("departureCity")}</label>

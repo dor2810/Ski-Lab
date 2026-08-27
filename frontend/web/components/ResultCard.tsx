@@ -128,7 +128,7 @@ export function ResultCard({ result }: { result: TripResult }) {
 
   return (
     <article
-      className={`animate-rise-in rounded-2xl border p-6 sm:p-7 ${
+      className={`animate-rise-in rounded-2xl border p-4 sm:p-7 ${
         r.within_budget
           ? "border-line bg-surface"
           : "border-warn/40 bg-surface ring-1 ring-warn/20"
@@ -174,11 +174,11 @@ export function ResultCard({ result }: { result: TripResult }) {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 sm:gap-y-2.5 lg:grid-cols-3">
         {lineItems(r).map(({ icon: Icon, labelKey, value, source }) => (
-          <div key={labelKey} className="flex items-center gap-2 text-sm">
+          <div key={labelKey} className="flex min-w-0 items-center gap-2 text-sm">
             <Icon size={16} className="flex-none text-sky" />
-            <span className="whitespace-nowrap text-muted">{t(labelKey)}</span>
+            <span className="truncate text-muted">{t(labelKey)}</span>
             <span className="ms-auto whitespace-nowrap font-semibold tabular-nums text-ink">
               {formatEUR(value, locale)}
             </span>
@@ -209,11 +209,11 @@ export function ResultCard({ result }: { result: TripResult }) {
 
       <WeatherWeek weather={r.weather} />
 
-      <div className="mt-6">
+      <div className="mt-5">
         <TerrainBar terrain={r.resort.terrain} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-subtle">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-subtle">
         <span>{t("kmPiste", { km: r.resort.piste_km })}</span>
         <span className="flex items-center gap-1">
           <PinIcon size={12} /> {t("minFromAirport", { min: Math.round(r.resort.transfer_time_minutes), airport: r.resort.nearest_airport })}
@@ -228,11 +228,11 @@ export function ResultCard({ result }: { result: TripResult }) {
       {/* r.explanation comes pre-translated from the backend (see
           nlp/explainer.py's lang param) and already starts with the
           localized "Why:" equivalent -- no separate label needed here. */}
-      <p className="mt-4 text-sm leading-relaxed text-muted">{r.explanation}</p>
+      <p className="mt-3 text-sm leading-relaxed text-muted">{r.explanation}</p>
 
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="mt-5 text-sm font-semibold text-sky hover:text-sky/80"
+        className="mt-4 text-sm font-semibold text-sky hover:text-sky/80"
       >
         {expanded ? t("hideTripDetails") : t("viewTripDetails")}
       </button>

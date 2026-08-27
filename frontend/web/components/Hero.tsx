@@ -35,18 +35,18 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
       />
       <MountainRange />
 
-      <div className="relative mx-auto max-w-5xl px-6 pt-16 pb-24 sm:pt-24 sm:pb-32 text-center">
-        <h1 className="font-extrabold leading-[1.05] text-5xl sm:text-6xl lg:text-7xl tracking-tight text-ink">
+      <div className="relative mx-auto max-w-5xl px-4 pt-12 pb-16 sm:px-6 sm:pt-24 sm:pb-32 text-center">
+        <h1 className="font-extrabold leading-[1.05] text-[2.1rem] xs:text-4xl sm:text-6xl lg:text-7xl tracking-tight text-ink">
           {t("heroHeadline1")}
           <br />
           <span className="font-semibold text-signal">{t("heroHeadline2")}</span>
         </h1>
 
-        <p className="mt-6 text-lg sm:text-xl text-muted max-w-2xl mx-auto">
+        <p className="mt-5 text-base sm:text-xl text-muted max-w-2xl mx-auto">
           {t("heroSubhead")}
         </p>
 
-        <div className="mt-10 flex items-center justify-center">
+        <div className="mt-8 flex items-center justify-center">
           <button
             onClick={onPlanTrip}
             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-signal hover:bg-signal/90 transition-colors font-semibold text-white shadow-lg shadow-signal/25"
@@ -61,7 +61,7 @@ export function Hero({ onPlanTrip }: { onPlanTrip: () => void }) {
             the earlier version cast to one key type, which silently
             defeated exactly the compile-time guarantee lib/i18n/
             languages.ts exists to provide. */}
-        <ul className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+        <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[13px] sm:text-sm text-muted">
           {TRUST_KEYS.map((k) => (
             <li key={k} className="flex items-center gap-2">
               <CheckIcon />

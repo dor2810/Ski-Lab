@@ -113,7 +113,7 @@ export default function Home() {
         }}
       />
 
-      <section className="mx-auto max-w-3xl px-6 pb-20">
+      <section className="mx-auto max-w-3xl px-4 pb-14 sm:px-6 sm:pb-20">
         {(previewLoading || searching) && (
           <p className="animate-rise-in text-center text-sm text-subtle">
             {searching ? t("searching") : t("findingRealTrips")}
