@@ -871,6 +871,12 @@ class SearchDateRangeRequest(BaseModel):
     # the two don't combine.
     start_weekday: Optional[str] = None
     top_n: int = Field(default=10, gt=0, le=100)
+    # At most this many dates from any ONE resort, so a single cheap
+    # destination can't take every slot -- see
+    # engine/date_search.cap_per_resort. Remaining slots are backfilled
+    # by score, so pinning the search to one resort still returns a full
+    # list of that resort's best dates. 0 disables the cap.
+    max_results_per_resort: int = Field(default=3, ge=0, le=100)
     # See SearchRequest.preferred_transfer_modes -- same contract.
     preferred_transfer_modes: Optional[List[str]] = None
     weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
@@ -1092,6 +1098,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         # resorts x candidate dates, easily hundreds of pairs, and each
         # one is a real scrape.
         live_reprice_n=_LIVE_REPRICE_N if live_reprice_allowed else None,
+        max_results_per_resort=payload.max_results_per_resort,
     )
 
     if payload.min_budget_eur_per_person is not None:

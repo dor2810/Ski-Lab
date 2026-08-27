@@ -454,3 +454,75 @@ def test_price_sensitivity_needs_two_dates():
     results = search_date_range(load_resorts(), _prefs(), datetime.date(2027, 1, 10),
                                 datetime.date(2027, 2, 28), top_n=500)
     assert price_sensitivity(results, "Nonexistent Resort") is None
+
+
+# --- result variety (cap_per_resort) ---
+
+def _window(days=20):
+    start = datetime.date(2027, 1, 10)
+    return start, start + datetime.timedelta(days=days)
+
+
+def test_one_cheap_resort_cannot_monopolise_the_results():
+    # THE COMPLAINT THIS FIXES: a raw score sort is dominated by whichever
+    # resort is cheapest, so a 20-day window returned twelve variations of
+    # the same week in the same place. Measured before the fix: 12 of 12
+    # results were a single resort.
+    from collections import Counter
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = load_resorts()
+    prefs = _prefs()
+    earliest, latest = _window()
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=12, max_results_per_resort=3)
+    counts = Counter(t.resort.name for t in out)
+    assert max(counts.values()) <= 3, f"a resort exceeded its cap: {dict(counts)}"
+    assert len(counts) >= 3, f"expected a varied list, got {dict(counts)}"
+
+
+def test_pinning_one_resort_still_returns_a_full_list_of_its_dates():
+    # The opposite failure a naive cap would cause: "when should I go to
+    # Chamonix?" must not come back with 3 results when 12 were asked for.
+    from collections import Counter
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = load_resorts()
+    prefs = _prefs(target_resort="Chamonix", budget_eur_per_person=3000)
+    earliest, latest = _window()
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=12, max_results_per_resort=3)
+    counts = Counter(t.resort.name for t in out)
+    assert set(counts) == {"Chamonix"}
+    assert len(out) == 12, f"backfill should have filled every slot, got {len(out)}"
+
+
+def test_the_single_best_option_is_still_ranked_first():
+    # Variety must not cost correctness: capping reorders nothing within
+    # the kept set, so the top result is the same one a raw sort gives.
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = load_resorts()
+    prefs = _prefs()
+    earliest, latest = _window()
+    uncapped = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                                 top_n=12, max_results_per_resort=0)
+    capped = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                               top_n=12, max_results_per_resort=3)
+    assert uncapped and capped
+    assert capped[0].resort.name == uncapped[0].resort.name
+    assert capped[0].start_date == uncapped[0].start_date
+
+
+def test_cap_of_zero_disables_diversification():
+    # Escape hatch for a caller that genuinely wants the raw ranking.
+    from collections import Counter
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = load_resorts()
+    prefs = _prefs()
+    earliest, latest = _window()
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=12, max_results_per_resort=0)
+    counts = Counter(t.resort.name for t in out)
+    assert max(counts.values()) > 3, "cap=0 should allow a resort to dominate again"

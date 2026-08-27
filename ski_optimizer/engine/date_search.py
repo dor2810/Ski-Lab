@@ -217,6 +217,7 @@ def search_date_range(
     accommodation_cost_fn: Optional[Callable] = None,
     allow_over_budget_fallback: bool = True,
     live_reprice_n: Optional[int] = None,
+    max_results_per_resort: int = 3,
 ) -> List[DatedTripOption]:
     """
     Full funnel: shortlist resorts, then evaluate each across every
@@ -464,20 +465,69 @@ def search_date_range(
 
     if results or not allow_over_budget_fallback:
         results.sort(key=lambda t: t.score, reverse=True)
-        return results[:top_n]
+        return cap_per_resort(results, top_n, max_results_per_resort)
 
     if not all_evaluated:
         return []  # genuinely nothing could be priced at all -- not a budget question
 
     # FALLBACK: real dates were priced, but none fit -- report the
     # cheapest (resort, date) combination(s) found, flagged honestly.
-    fallback = sorted(all_evaluated, key=lambda t: t.cost.total_eur)[:max(top_n, 3)]
+    # Diversify the fallback too -- "nothing fit your budget" is even
+    # more useless as twenty rows of the same resort.
+    cheapest_first = sorted(all_evaluated, key=lambda t: t.cost.total_eur)
+    fallback = cap_per_resort(cheapest_first, max(top_n, 3), max_results_per_resort)
     fallback = [DatedTripOption(
         resort=t.resort, start_date=t.start_date, end_date=t.end_date, cost=t.cost,
         score=t.score, score_components=t.score_components, season=t.season,
         within_budget=False,
     ) for t in fallback]
     return fallback[:top_n]
+
+
+def cap_per_resort(options: List[DatedTripOption], top_n: int,
+                   max_per_resort: int) -> List[DatedTripOption]:
+    """
+    Keeps the result list VARIED: at most `max_per_resort` dates from
+    any one resort, then fills any remaining slots with the next best
+    options regardless of resort.
+
+    THE PROBLEM THIS SOLVES: a raw score sort is monopolised by whichever
+    resort happens to be cheapest. Search a 20-day window and Bansko --
+    genuinely the cheapest destination in the database -- takes every
+    slot, so the answer to "where should I ski?" is twenty flavours of
+    the same week in the same place. That is technically the correct
+    ranking and a useless one: nobody is choosing between Bansko on the
+    11th and Bansko on the 12th, they are choosing between Bansko and
+    Val Thorens.
+
+    The two-pass fill matters. A strict cap alone would hurt the
+    opposite case: someone who pinned the search to ONE resort
+    ("when should I go to Chamonix?") would get 3 results instead of the
+    12 they asked for. So pass one enforces variety, pass two backfills
+    from what's left in score order -- a single-resort search returns a
+    full list of that resort's best dates, exactly as before.
+
+    Input is assumed already sorted best-first; ordering within each
+    pass is preserved, so the very best option is always still first.
+    """
+    if max_per_resort <= 0:
+        return options[:top_n]
+
+    per_resort: dict = {}
+    picked: List[DatedTripOption] = []
+    leftovers: List[DatedTripOption] = []
+
+    for opt in options:
+        name = opt.resort.name
+        if per_resort.get(name, 0) < max_per_resort:
+            per_resort[name] = per_resort.get(name, 0) + 1
+            picked.append(opt)
+        else:
+            leftovers.append(opt)
+
+    if len(picked) < top_n:
+        picked.extend(leftovers[: top_n - len(picked)])
+    return picked[:top_n]
 
 
 def best_date_per_resort(options: List[DatedTripOption]) -> List[DatedTripOption]:
