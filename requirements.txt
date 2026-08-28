@@ -43,3 +43,4 @@ requests>=2.31           # (also covers adapters/serpapi_hotel_adapter.py,
 # alembic                 (once the DB schema needs a migration, not just create_all)
 # anthropic               (Phase 6 -- nlp/preference_parser.py, nlp/explainer.py's LLM version)
 stays>=0.1
+psycopg2-binary>=2.9   # Postgres driver -- Neon cutover 2026-08-29

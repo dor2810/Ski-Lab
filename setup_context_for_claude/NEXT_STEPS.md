@@ -4,7 +4,21 @@ The agreed backlog, in the order recommended. Kept out of
 PROJECT_STATE.md deliberately: that file records what IS, this one
 records what's NEXT and why it hasn't happened yet.
 
-## 1. Postgres cutover — BLOCKED ON OWNER (5 minutes)
+## 1. Postgres cutover — DONE 2026-08-29 ✅
+Completed: Neon project "Ski Lab" (raspy-cell-08753318, org Dor,
+aws-us-east-2, Postgres 18). DATABASE_URL (pooled) set on Cloud Run;
+schema created (6 tables incl. fare history); PROVEN by registering an
+account, forcing a fresh container, and logging in. Litestream layer
+deleted (run.sh, litestream.yml, Dockerfile stanza);
+--max-instances raised to 4 (single-writer limit gone). Neon CLI
+authenticated, MCP server connected (org-scoped key in .env), agent
+skills installed at .agents/skills/. Only Lakebase Postgres is wired
+-- Neon Auth/Functions/Storage deliberately unused (we have our own
+auth; YAGNI for the rest). The GCS Litestream bucket
+(ski-lab-db-replica-449641203618) is kept until a Neon backup/PITR
+check has been done, then delete it.
+
+## (was 1) Postgres cutover — original notes
 The last big structural item. Litestream (`run.sh`, `litestream.yml`,
 Dockerfile stanza) has held up fine — accounts survive deploys — but it
 forces `--max-instances=1` because SQLite has one writer, and it is a
