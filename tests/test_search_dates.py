@@ -211,7 +211,7 @@ def test_search_dates_with_valid_target_resort_returns_only_that_one(authed_clie
     # query_resort_count reports the full dataset size, matching
     # /trips/search's convention -- the narrowing itself is proven by
     # the results, not this count (see engine.scoring.narrow_resort_pool).
-    assert body["query_resort_count"] == 37
+    assert body["query_resort_count"] == 39
     for result in body["results"]:
         assert result["resort"]["name"] == "Livigno"
 
@@ -434,3 +434,21 @@ def test_every_result_carries_weather_not_just_the_top_one(authed_client, monkey
     missing = [r["resort"]["name"] for r in results if r["weather"] is None]
     assert missing == [], f"every result must carry weather, missing on: {missing}"
     assert results[-1]["weather"]["avg_snow_depth_cm"] == 80.0
+
+
+def test_weekend_start_option_is_accepted_and_respected(authed_client):
+    # The API accepts "weekend" wherever a single weekday name was
+    # accepted, expanding it to Saturday+Sunday starts.
+    import datetime as _dt
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "earliest_date": "2027-01-04", "latest_date": "2027-02-01",
+        "top_n": 8, "start_weekday": "weekend",
+        "include_resorts": ["Bansko", "Val Thorens"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert results
+    for r in results:
+        wd = _dt.date.fromisoformat(r["start_date"]).weekday()
+        assert wd in (5, 6), f"non-weekend start leaked through: {r['start_date']}"

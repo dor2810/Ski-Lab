@@ -16,7 +16,7 @@ from ski_optimizer.engine.terrain import parse_terrain_mix
 
 def test_load_resorts_returns_all_resorts():
     resorts = load_resorts()
-    assert len(resorts) == 37
+    assert len(resorts) == 39
 
 
 def test_all_resorts_have_positive_core_fields():

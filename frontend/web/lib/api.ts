@@ -303,7 +303,10 @@ export interface Weights {
   family: number;
 }
 
+// "weekend" = Saturday-or-Sunday starts (classic Sat changeover +
+// the cheaper Sunday one) -- expanded to both days by the backend.
 export type WeekdayName =
+  | "weekend"
   | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 
 export interface CommonSearchFields {

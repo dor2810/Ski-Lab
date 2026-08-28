@@ -1181,8 +1181,11 @@ class SearchDateRangeRequest(BaseModel):
         if v is None:
             return v
         v = v.strip().lower()
-        if v not in WEEKDAY_NAMES:
-            raise ValueError(f"start_weekday must be one of {sorted(WEEKDAY_NAMES)}")
+        # "weekend" = Saturday-or-Sunday starts: Sat-to-Sat is the
+        # classic package changeover, Sunday the established cheaper
+        # one -- a weekend search needs both days as candidates.
+        if v != "weekend" and v not in WEEKDAY_NAMES:
+            raise ValueError(f"start_weekday must be one of {sorted(WEEKDAY_NAMES) + ['weekend']}")
         return v
 
     @field_validator("weights")
@@ -1320,7 +1323,11 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     _validate_resort_names(payload.include_resorts)
     _validate_resort_names(payload.exclude_resorts)
 
-    start_weekday = WEEKDAY_NAMES[payload.start_weekday] if payload.start_weekday else None
+    if payload.start_weekday == "weekend":
+        start_weekday, start_weekdays = None, {5, 6}  # Saturday + Sunday
+    else:
+        start_weekday = WEEKDAY_NAMES[payload.start_weekday] if payload.start_weekday else None
+        start_weekdays = None
 
     # See search_trips' matching comment: neither live flight repricing
     # (adapters/google_flights_adapter.py) nor live accommodation
@@ -1350,12 +1357,13 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     # refused without doing any of the work.
     planned_candidates = len(candidate_start_dates(
         effective_earliest, payload.latest_date, prefs.nights,
-        payload.step_days, start_weekday))
+        payload.step_days, start_weekday, start_weekdays=start_weekdays))
     credit_info = _charge_credits(db, current_user, candidate_dates=planned_candidates)
 
     dated_options = search_date_range(
         _resort_cache, prefs, effective_earliest, payload.latest_date,
         shortlist_size=8, step_days=payload.step_days, start_weekday=start_weekday,
+        start_weekdays=start_weekdays,
         top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
         allow_over_budget_fallback=payload.allow_over_budget_fallback,
@@ -1406,7 +1414,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
     candidate_dates = len(candidate_start_dates(
         effective_earliest, payload.latest_date, prefs.nights,
-        payload.step_days, start_weekday))
+        payload.step_days, start_weekday, start_weekdays=start_weekdays))
 
     weather_by_index = _prefetch_weather({
         i: (t.resort, t.start_date, t.end_date) for i, t in enumerate(dated_options)

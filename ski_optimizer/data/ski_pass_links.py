@@ -30,6 +30,9 @@ table is extended to cover it).
 """
 
 SKI_PASS_URLS: dict[str, str] = {
+    # Added 2026-08-28 with the Gudauri / Sella Ronda research pass.
+    "Gudauri": "https://gudauri.com/about-gudauri/ski-passes.html",
+    "Sella Ronda (Dolomiti)": "https://www.dolomitisuperski.com/en/plan-and-book/lift-pass",
     "Grandvalira (Andorra)": "https://www.grandvalira.com/en/ski-pass/day",
     "Vallnord (Pal-Arinsal)": "https://www.palarinsal.com/en/ski-pass/day-pass",
     "St. Anton am Arlberg": "https://www.skiarlberg.at/en/tickets-season-times/webshop",

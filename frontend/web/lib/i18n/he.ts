@@ -45,6 +45,8 @@ const he: Record<keyof typeof en, string> = {
   skiDaysHint: "= {nights} לילות בחוץ (הגעה בערב שלפני, טיסה חזרה יום אחרי)",
   startDayOfWeek: "יום התחלה בשבוע",
   anyDay: "כל יום",
+  weekdayWeekend: "סוף שבוע (שבת או ראשון)",
+  weekdayHint: "שבת היא יום התחלופה הקלאסי של שבוע סקי (הכי הרבה חבילות, הטיסות היקרות ביותר); ראשון הוא יום התחלופה הזול יותר. התחלה באמצע השבוע — הזולה מכולן.",
   weekdayMonday: "יום שני",
   weekdayTuesday: "יום שלישי",
   weekdayWednesday: "יום רביעי",

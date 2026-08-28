@@ -65,6 +65,10 @@ const TRANSFER_MODES: { value: TransferMode; key: keyof Dictionary }[] = [
   { value: "bus", key: "transferBus" },
 ];
 const WEEKDAYS: { value: WeekdayName; key: keyof Dictionary }[] = [
+  // First, because it is the one most people actually want: Saturday
+  // is the classic package-changeover day, Sunday the established
+  // cheaper alternative -- "weekend" searches both.
+  { value: "weekend", key: "weekdayWeekend" },
   { value: "monday", key: "weekdayMonday" },
   { value: "tuesday", key: "weekdayTuesday" },
   { value: "wednesday", key: "weekdayWednesday" },
@@ -368,6 +372,12 @@ export function SearchCard({
                   <option key={value} value={value} className="bg-canvas">{t(key)}</option>
                 ))}
               </select>
+              {/* Research-sourced guidance, shown once a day is being
+                  chosen: Sat = classic changeover, Sun = cheaper,
+                  midweek = cheapest. */}
+              {startWeekday !== "" && (
+                <p className="mt-1 text-[11px] leading-snug text-subtle">{t("weekdayHint")}</p>
+              )}
             </div>
           </div>
           <p className="-mt-3 text-[11px] text-subtle">{t("rangeHint")}</p>

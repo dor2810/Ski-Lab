@@ -38,6 +38,11 @@ present.
 """
 
 EQUIPMENT_RENTAL_URLS: dict[str, str] = {
+    # Added 2026-08-28. Gudauri: no Skiset/Intersport coverage in
+    # Georgia -- gudauri.com's own rentals page is the local aggregator.
+    # Sella Ronda: Skiset serves Selva, the circuit's largest village.
+    "Gudauri": "https://gudauri.com/about-gudauri/ski-rentals.html",
+    "Sella Ronda (Dolomiti)": "https://www.skiset.co.uk/ski-resort/selva-di-val-gardena",
     "Grandvalira (Andorra)": "https://www.grandvalira.com/en/services/equipment-rental",
     "Vallnord (Pal-Arinsal)": "https://www.palarinsal.com/en/services/equipment-rental",
     "St. Anton am Arlberg": "https://www.intersportrent.com/skirent-st-anton-am-arlberg~12382",

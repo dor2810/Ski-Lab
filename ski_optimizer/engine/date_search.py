@@ -106,7 +106,8 @@ WEEKDAY_NAMES = {
 
 def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
                           nights: int, step_days: int = 1,
-                          start_weekday: Optional[int] = None) -> List[datetime.date]:
+                          start_weekday: Optional[int] = None,
+                          start_weekdays: Optional[set] = None) -> List[datetime.date]:
     """
     Every valid start date whose full trip fits inside the window.
 
@@ -133,18 +134,31 @@ def candidate_start_dates(earliest: datetime.date, latest: datetime.date,
         raise ValueError(f"latest {latest} is before earliest {earliest}")
     if start_weekday is not None and not (0 <= start_weekday <= 6):
         raise ValueError(f"start_weekday must be 0-6 (Monday-Sunday), got {start_weekday}")
+    if start_weekdays is not None and not all(isinstance(d, int) and 0 <= d <= 6 for d in start_weekdays):
+        raise ValueError(f"start_weekdays must contain 0-6 (Monday-Sunday), got {start_weekdays}")
 
-    if start_weekday is not None:
-        day = earliest + datetime.timedelta(days=(start_weekday - earliest.weekday()) % 7)
-        step = 7
-    else:
+    # start_weekdays generalizes start_weekday to a SET of allowed
+    # days -- added for the "weekend" option (Sat-to-Sat is the classic
+    # package changeover, Sunday the established cheaper one, so a
+    # weekend search genuinely needs both). A single start_weekday
+    # folds into the same mechanism.
+    if start_weekdays is None and start_weekday is not None:
+        start_weekdays = {start_weekday}
+
+    if start_weekdays:
+        out = []
         day = earliest
-        step = step_days
+        while day + datetime.timedelta(days=nights) <= latest:
+            if day.weekday() in start_weekdays:
+                out.append(day)
+            day += datetime.timedelta(days=1)
+        return out
 
     out = []
+    day = earliest
     while day + datetime.timedelta(days=nights) <= latest:
         out.append(day)
-        day += datetime.timedelta(days=step)
+        day += datetime.timedelta(days=step_days)
     return out
 
 
@@ -238,6 +252,7 @@ def search_date_range(
     shortlist_size: int = 8,
     step_days: int = 1,
     start_weekday: Optional[int] = None,
+    start_weekdays: Optional[set] = None,
     top_n: int = 10,
     flight_cost_fn: Optional[Callable] = None,
     accommodation_cost_fn: Optional[Callable] = None,
@@ -316,7 +331,7 @@ def search_date_range(
     fit -- the user picked these resorts on purpose.
     """
     starts = candidate_start_dates(earliest_date, latest_date, prefs.nights,
-                                   step_days, start_weekday)
+                                   step_days, start_weekday, start_weekdays=start_weekdays)
     if not starts:
         return []
 

@@ -83,6 +83,10 @@ MAINSTREAM_RESORTS: dict[str, str] = {
     "Livigno": "skideal page present, though not currently on their /winter/ index",
     "Val Gardena (Selva)": "sold by skideal and Penguin as the Sella Ronda circuit, which includes Selva",
 
+    # --- Added 2026-08-28 at the owner's request, research pass ---
+    "Gudauri": "one of the largest Israeli ski markets outside Europe; direct TLV-TBS scheduled service (probed live)",
+    "Sella Ronda (Dolomiti)": "the circuit both Israeli operators actually SELL (recorded on the Val Gardena entry since the original study); now a first-class destination row",
+
     # --- Marquee: no operator in the study, kept anyway. See docstring. ---
     "Zermatt": "MARQUEE -- world-famous; no Club Med village and outside the Israeli charter market",
     "Chamonix": "MARQUEE -- world-famous; not in the studied operators' lineups",

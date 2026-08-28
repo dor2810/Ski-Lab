@@ -677,3 +677,20 @@ def test_coverage_first_rows_carry_spread_alternatives():
             assert alt.start_date.isocalendar()[:2] != shown_week, (
                 f"an alternative fell in the already-shown week: {alt.start_date}"
             )
+
+
+def test_candidate_dates_can_start_on_any_of_several_weekdays():
+    # "Weekend" start option (user request 2026-08-28): the classic ski
+    # week changes over SATURDAY-to-Saturday (most package availability,
+    # priciest flights); SUNDAY is the established cheaper changeover.
+    # A "weekend" search therefore needs BOTH days as candidates --
+    # start_weekday only ever took one.
+    from ski_optimizer.engine.date_search import candidate_start_dates
+
+    starts = candidate_start_dates(
+        datetime.date(2027, 1, 4), datetime.date(2027, 1, 31), nights=6,
+        start_weekdays={5, 6})  # Sat + Sun
+    assert starts, "a month window has weekend starts"
+    assert all(d.weekday() in (5, 6) for d in starts)
+    assert {d.weekday() for d in starts} == {5, 6}, "both weekend days must appear"
+    assert starts == sorted(starts)

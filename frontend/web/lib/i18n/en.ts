@@ -50,6 +50,8 @@ const en = {
   skiDaysHint: "= {nights} nights away (arrive the evening before, fly home the day after)",
   startDayOfWeek: "Start day of week",
   anyDay: "Any day",
+  weekdayWeekend: "Weekend (Sat or Sun)",
+  weekdayHint: "Saturday is the classic ski-week changeover (most packages, priciest flights); Sunday is the established cheaper changeover. Midweek starts are cheapest of all.",
   weekdayMonday: "Monday",
   weekdayTuesday: "Tuesday",
   weekdayWednesday: "Wednesday",

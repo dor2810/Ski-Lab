@@ -180,6 +180,16 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "PER-DAY tariff (EUR60.70/day for 2-7 days) rather than a 6-day line item -- EUR364.20 is "
         "that rate times six, which is how they price it, but it is arithmetic rather than a "
         "quoted total. Grand Massif area pass is EUR63.00/day."),
+    "Gudauri": SkiPassPrice(
+        116.00, None, "2025/26", "local", "sourced",
+        "gudauri.com official ski-pass page, researched 2026-08-28: 6-day adult 340 GEL, "
+        "converted at ~2.93 GEL/EUR. Single-band tariff (no published season split); the "
+        "engine scales peak via the global season multiplier."),
+    "Sella Ronda (Dolomiti)": SkiPassPrice(
+        None, 357.00, "2025/26", "area", "sourced",
+        "SCOPE=AREA by definition: the Sella Ronda circuit is skied on the Dolomiti Superski "
+        "pass (450 lifts / 1,200km) -- EUR357 6-day adult, the operator's published 25/26 "
+        "figure (26/27 not yet out at research time, dolomitisuperski.com)."),
     "Les Menuires": SkiPassPrice(
         315.00, None, "2026/27", "local", "sourced",
         "Official lesmenuires.com ski-passes page, researched 2026-08-28: 6-day pass EUR315 for "
