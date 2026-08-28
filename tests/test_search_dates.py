@@ -102,16 +102,34 @@ def test_10_day_window_7_night_trip_yields_four_candidate_dates(authed_client):
     assert body["candidate_dates_per_resort"] == 4
 
 
-def test_search_dates_returns_results_within_budget(authed_client):
+def test_search_dates_flags_budget_honestly(authed_client):
+    # CONTRACT CHANGE 2026-08-28, at the user's explicit request: "the
+    # budget is a goal but I am sure it is not the only thing that
+    # matters." Results may now include over-budget offers -- one per
+    # priced-out resort -- but ONLY flagged within_budget=False, which
+    # the UI renders with a warning banner. What this test pins is the
+    # honesty invariant: no over-budget total is ever presented as an
+    # affordable result, and the affordable ones lead.
     resp = authed_client.post("/trips/search-dates", json=BASE_PAYLOAD, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["results"]) > 0
-    for result in body["results"]:
-        assert result["cost"]["total_eur"] <= BASE_PAYLOAD["budget_eur_per_person"]
+    results = body["results"]
+    assert len(results) > 0
+    budget = BASE_PAYLOAD["budget_eur_per_person"]
+    for result in results:
+        if result["within_budget"]:
+            assert result["cost"]["total_eur"] <= budget
+        else:
+            assert result["cost"]["total_eur"] > budget, (
+                "a within-budget offer must never be flagged as over-budget"
+            )
         assert result["start_date"] < result["end_date"]
-    scores = [r["score"] for r in body["results"]]
-    assert scores == sorted(scores, reverse=True)
+    # The very first offer is always an affordable one when any exists
+    # -- alternatives never outrank what actually fits. (Full ordering
+    # -- coverage section then extra dates -- is pinned at the engine
+    # level in test_date_search.py.)
+    if any(r["within_budget"] for r in results):
+        assert results[0]["within_budget"] is True
 
 
 def test_search_dates_results_carry_dated_flight_and_accommodation_links(authed_client):

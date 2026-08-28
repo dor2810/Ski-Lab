@@ -553,3 +553,58 @@ def test_two_resort_pool_is_not_padded_with_duplicates():
     assert set(counts) == {"Bansko", "Pamporovo"}
     assert max(counts.values()) <= 3, f"padding crept back in: {dict(counts)}"
     assert len(out) == 6, f"expected 3+3 varied results, not a padded dozen: {dict(counts)}"
+
+
+def test_every_selected_resort_gets_its_best_offer_first():
+    # THE USER'S ACTUAL WANT, stated after two rounds of narrower fixes:
+    # "start giving the best offer for each resort even if it exceeds,
+    # and then the rest of the best offers... the budget is a goal but
+    # I am sure it is not the only thing that matters."
+    #
+    # Two measured failures this replaces:
+    #  - at the default EUR1500 budget, 8 of 10 selected resorts cost
+    #    EUR1526-1785 (just over) and were entirely invisible;
+    #  - at EUR2500, everything was affordable and the score-ranked,
+    #    capped list STILL showed only the 4 best-scoring resorts x 3
+    #    dates -- six affordable resorts hidden by depth-before-breadth.
+    #
+    # New contract for a multi-resort user-facing search: SECTION 1 is
+    # one best offer per selected resort -- affordable ones first in
+    # score order, then the priced-out ones flagged within_budget=False
+    # in ascending price order. SECTION 2 fills the remaining slots
+    # with the rest of the best offers (extra dates), still capped.
+    from collections import Counter
+    from ski_optimizer.engine.date_search import search_date_range
+
+    wanted = {"Bansko", "Pamporovo", "St. Anton am Arlberg", "Zermatt", "Val Thorens"}
+    resorts = [r for r in load_resorts() if r.name in wanted]
+    prefs = _prefs(budget_eur_per_person=1300, include_resorts=sorted(wanted))
+    earliest, latest = _window()
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=12, max_results_per_resort=3,
+                            pad_with_duplicates=False)
+
+    # SECTION 1: the first five rows cover all five resorts, exactly once.
+    first_five = out[:5]
+    assert Counter(t.resort.name for t in first_five) == Counter({n: 1 for n in wanted}), (
+        f"expected one best offer per selected resort first, got "
+        f"{[t.resort.name for t in first_five]}"
+    )
+    # Affordable ones lead; the priced-out ones follow, flagged, cheapest first.
+    within_first = [t for t in first_five if t.within_budget]
+    over_after = [t for t in first_five if not t.within_budget]
+    assert {t.resort.name for t in within_first} == {"Bansko", "Pamporovo"}
+    assert first_five[: len(within_first)] == within_first, "affordable best offers must lead"
+    over_totals = [t.cost.total_eur for t in over_after]
+    assert over_totals == sorted(over_totals)
+
+    # SECTION 2: the rest are additional best offers, still capped per
+    # resort (counting the section-1 row).
+    assert len(out) > 5, "leftover slots should be filled with more best offers"
+    counts = Counter(t.resort.name for t in out)
+    assert max(counts.values()) <= 3, f"per-resort cap must hold overall: {dict(counts)}"
+    assert all(t.within_budget for t in out[5:]), (
+        "section 2 is extra AFFORDABLE dates; over-budget rows appear once each in section 1"
+    )
+
+

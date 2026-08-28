@@ -503,6 +503,15 @@ def search_date_range(
 
     if results or not allow_over_budget_fallback:
         results.sort(key=lambda t: t.score, reverse=True)
+        # User-facing multi-resort searches assemble COVERAGE-FIRST --
+        # see assemble_coverage_first's docstring for the user quote and
+        # the two measured failures that shaped it. Everything else
+        # keeps the original score-ranked capped list.
+        distinct_evaluated = {t.resort.name for t in all_evaluated}
+        if not pad_with_duplicates and len(distinct_evaluated) >= 2:
+            return assemble_coverage_first(
+                results, all_evaluated, prefs.budget_eur_per_person,
+                top_n, max_results_per_resort, allow_over_budget_fallback)
         return cap_per_resort(results, top_n, max_results_per_resort,
                               pad_with_duplicates=pad_with_duplicates)
 
@@ -522,6 +531,76 @@ def search_date_range(
         within_budget=False,
     ) for t in fallback]
     return fallback[:top_n]
+
+
+def assemble_coverage_first(within_budget_sorted: List[DatedTripOption],
+                            all_evaluated: List[DatedTripOption],
+                            budget_eur: float,
+                            top_n: int,
+                            max_per_resort: int,
+                            allow_over_budget: bool) -> List[DatedTripOption]:
+    """
+    Result assembly for a user-facing multi-resort search: SECTION 1 is
+    one best offer per selected resort -- affordable resorts first in
+    score order, then the priced-out ones flagged within_budget=False
+    in ascending price order -- and SECTION 2 fills the remaining slots
+    with the rest of the best affordable offers, still capped per
+    resort.
+
+    Shaped by the user directly, after two narrower fixes missed the
+    point: "start giving the best offer for each resort even if it
+    exceeds, and then the rest of the best offers... the budget is a
+    goal but I am sure it is not the only thing that matters."
+
+    Two measured failures this replaces (both live, 2026-08-28):
+      - default EUR1500 budget: 8 of 10 selected resorts cost
+        EUR1526-1785 -- just over -- and were entirely invisible;
+      - EUR2500 budget: everything affordable, yet depth-before-breadth
+        showed only the 4 best-scoring resorts x 3 dates and hid the
+        other six.
+
+    Over-budget rows are never smuggled in as affordable: each carries
+    within_budget=False, which the UI renders with an explicit warning
+    banner. They appear ONCE each -- pointers to a real alternative,
+    not a second ranked list.
+    """
+    best_within: dict = {}
+    for t in within_budget_sorted:
+        best_within.setdefault(t.resort.name, t)
+    section1: List[DatedTripOption] = list(best_within.values())
+
+    if allow_over_budget:
+        over_best: dict = {}
+        for t in sorted(all_evaluated, key=lambda t: t.cost.total_eur):
+            name = t.resort.name
+            if name not in best_within and t.cost.total_eur > budget_eur:
+                over_best.setdefault(name, t)
+        flagged = [DatedTripOption(
+            resort=t.resort, start_date=t.start_date, end_date=t.end_date, cost=t.cost,
+            score=t.score, score_components=t.score_components, season=t.season,
+            within_budget=False,
+        ) for t in over_best.values()]
+        flagged.sort(key=lambda t: t.cost.total_eur)
+        section1 += flagged
+
+    section1 = section1[:top_n]
+
+    shown = {id(t) for t in best_within.values()}
+    per_resort = {}
+    for t in section1:
+        per_resort[t.resort.name] = per_resort.get(t.resort.name, 0) + 1
+
+    out = list(section1)
+    for t in within_budget_sorted:
+        if len(out) >= top_n:
+            break
+        if id(t) in shown:
+            continue
+        if max_per_resort > 0 and per_resort.get(t.resort.name, 0) >= max_per_resort:
+            continue
+        per_resort[t.resort.name] = per_resort.get(t.resort.name, 0) + 1
+        out.append(t)
+    return out
 
 
 def cap_per_resort(options: List[DatedTripOption], top_n: int,
