@@ -181,7 +181,13 @@ def test_logout_revokes_refresh_token(client):
     assert refresh_after_logout.status_code == 401
 
 
-def test_google_login_without_configured_credentials_returns_503(client):
+def test_google_login_without_configured_credentials_returns_503(client, monkeypatch):
+    # The guard reads the environment PER REQUEST, so the unconfigured
+    # state is simulated explicitly -- since 2026-08-28 the real OAuth
+    # credentials exist in the developer's .env, and this test's job is
+    # the graceful-degradation path, not the current machine's env.
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
     resp = client.get("/auth/google/login", follow_redirects=False)
     assert resp.status_code == 503
 

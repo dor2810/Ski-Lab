@@ -111,10 +111,24 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         # state check lands here too. Either way: redirect back to the
         # app with a clean signal, don't crash with an unhandled 500.
         return RedirectResponse(url=f"{FRONTEND_URL}#auth_error=google_oauth_failed")
-    # parse_id_token verifies the JWT signature/audience/issuer against
-    # Google's published keys -- this is the actual identity proof, not
-    # just "we got redirected back so it must be fine."
-    claims = await oauth.google.parse_id_token(request, token)
+    # The verified identity claims. authorize_access_token() in
+    # authlib 1.x ALREADY verifies the id_token's JWT signature/
+    # audience/issuer/nonce against Google's published keys and puts
+    # the parsed claims at token["userinfo"] -- so this is the actual
+    # identity proof, not just "we got redirected back so it must be
+    # fine."
+    #
+    # CAUGHT LIVE on the very first real sign-in (2026-08-28): the old
+    # line here called parse_id_token(request, token) -- the pre-1.0
+    # authlib signature, which crashes with a 500 under authlib 1.7 (it
+    # treats the Request object as the token). This module was
+    # "written and reviewed, never run" until OAuth credentials
+    # existed, and this is exactly the kind of bug that status warns
+    # about.
+    claims = token.get("userinfo")
+    if not claims:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY,
+                            "Google's token response carried no verified identity claims.")
 
     google_sub = claims["sub"]
     email = claims.get("email")
