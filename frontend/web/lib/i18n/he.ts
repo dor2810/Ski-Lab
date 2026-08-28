@@ -207,6 +207,10 @@ const he: Record<keyof typeof en, string> = {
   accommodationOptionsTitle: "מקומות לינה ({count})",
   accommodationPerNight: "€{price}/לילה",
   accommodationPerPersonStay: "€{price} לאדם לכל השהות",
+  moreDatesTitle: "תאריכים נוספים ב{resort} ({count})",
+  moreDatesNote: "שבועות אחרים בטווח החיפוש שלכם, מתומחרים באותה שיטה של הדירוג. המחירים מתעדכנים בחיפוש עם התאריכים המדויקים.",
+  moreDatesOverBudget: "מעל התקציב",
+
   accommodationOptionsNote: "מקומות אמיתיים במחירים חיים, מהזול ליקר. המחיר הכולל של הטיול מבוסס על הזול ביותר.",
 
   // --- Weather (result card) ---

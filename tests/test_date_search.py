@@ -608,3 +608,72 @@ def test_every_selected_resort_gets_its_best_offer_first():
     )
 
 
+
+
+# --- alternative dates (the per-resort "More dates" expander) ---
+
+def _dated(resort, start_iso, score, total=1000.0):
+    import datetime as _dt
+    from ski_optimizer.engine.date_search import DatedTripOption
+    from ski_optimizer.models import CostBreakdown
+    start = _dt.date.fromisoformat(start_iso)
+    # total_eur is a computed property; steer it via the flight line.
+    cost = CostBreakdown(flight_eur=total - 700, transfer_eur=50, accommodation_eur=300,
+                         ski_pass_eur=200, equipment_eur=100, food_eur=50, misc_eur=0)
+    return DatedTripOption(resort=resort, start_date=start,
+                           end_date=start + _dt.timedelta(days=6),
+                           cost=cost, score=score, score_components={}, season="high")
+
+
+def test_spread_alternatives_pick_one_best_date_per_distinct_week():
+    # THE USER'S OBSERVATION, verbatim: "I gave a big time range, a
+    # month, and I only got one date for Val Thorens... everything was
+    # for the beginning." Static totals tie across adjacent dates, so
+    # the earliest always won, and a month-wide window collapsed to a
+    # cluster of early-month rows. Alternatives must therefore come
+    # from DIFFERENT CALENDAR WEEKS than the row already shown -- an
+    # early/mid/late spread, not Jan 7/8/9 again.
+    from ski_optimizer.engine.date_search import spread_alternative_dates
+
+    resort = next(r for r in load_resorts() if r.name == "Val Thorens")
+    shown = _dated(resort, "2027-01-07", score=0.9)
+    pool = [
+        shown,
+        _dated(resort, "2027-01-08", score=0.89),  # same week as shown -> never an alternative
+        _dated(resort, "2027-01-12", score=0.80),  # week 2
+        _dated(resort, "2027-01-14", score=0.85),  # week 2, better -> the week's pick
+        _dated(resort, "2027-01-21", score=0.70),  # week 3
+        _dated(resort, "2027-01-28", score=0.60),  # week 4
+    ]
+    alts = spread_alternative_dates(pool, shown, limit=2)
+    assert [a.start_date.isoformat() for a in alts] == ["2027-01-14", "2027-01-21"], (
+        f"expected the best pick of each later week, chronologically: "
+        f"{[a.start_date.isoformat() for a in alts]}"
+    )
+
+
+def test_coverage_first_rows_carry_spread_alternatives():
+    # End to end through the real funnel: the one-row-per-resort search
+    # that motivated the feature must now let each row expand into
+    # dates from other weeks of the window.
+    from ski_optimizer.engine.date_search import search_date_range
+
+    wanted = {"Bansko", "Val Thorens"}
+    resorts = [r for r in load_resorts() if r.name in wanted]
+    prefs = _prefs(budget_eur_per_person=2500, include_resorts=sorted(wanted))
+    earliest, latest = _window(days=30)
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=4, max_results_per_resort=1,
+                            pad_with_duplicates=False)
+
+    by_resort = {}
+    for t in out:
+        by_resort.setdefault(t.resort.name, t)
+    for name, row in by_resort.items():
+        assert row.alternatives, f"{name}'s row should carry alternative dates"
+        shown_week = row.start_date.isocalendar()[:2]
+        for alt in row.alternatives:
+            assert alt.resort.name == name
+            assert alt.start_date.isocalendar()[:2] != shown_week, (
+                f"an alternative fell in the already-shown week: {alt.start_date}"
+            )

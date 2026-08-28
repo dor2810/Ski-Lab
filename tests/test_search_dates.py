@@ -369,3 +369,32 @@ def test_a_two_resort_pool_is_not_padded_with_the_cheapest_resort(authed_client)
     counts = Counter(r["resort"]["name"] for r in resp.json()["results"])
     assert max(counts.values()) <= 3, f"duplicate padding is back: {dict(counts)}"
     assert len(counts) >= 2, f"expected both resorts represented: {dict(counts)}"
+
+
+def test_results_carry_week_spread_alternative_dates(authed_client):
+    # The per-resort "More dates" expander, end to end: a month-wide
+    # multi-resort search must let each resort's row expand into dates
+    # from OTHER calendar weeks -- the user's complaint was a month
+    # window collapsing to one early-month date per resort.
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "earliest_date": "2027-01-05", "latest_date": "2027-02-05",
+        "top_n": 6, "include_resorts": ["Bansko", "Val Thorens"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    seen_with_alts = 0
+    import datetime as _dt
+    for r in results:
+        alts = r["alternative_dates"]
+        if not alts:
+            continue
+        seen_with_alts += 1
+        row_week = _dt.date.fromisoformat(r["start_date"]).isocalendar()[:2]
+        for a in alts:
+            alt_week = _dt.date.fromisoformat(a["start_date"]).isocalendar()[:2]
+            assert alt_week != row_week, f"alternative in the shown week: {a['start_date']}"
+            assert a["total_eur"] > 0
+            assert isinstance(a["within_budget"], bool)
+            assert isinstance(a["flight_price_is_live"], bool)
+    assert seen_with_alts >= 2, "both resorts' lead rows should expand"

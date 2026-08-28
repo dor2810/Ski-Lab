@@ -187,6 +187,21 @@ export interface AccommodationOption {
   url: string;
 }
 
+/**
+ * One other good date for the same resort, from a different calendar
+ * week than the row it hangs off (the "More dates" expander). The
+ * total is the same static-or-live figure the engine ranked with.
+ */
+export interface AlternativeDate {
+  start_date: string;
+  end_date: string;
+  season: "peak" | "high" | "shoulder";
+  total_eur: number;
+  within_budget: boolean;
+  flight_price_is_live: boolean;
+  accommodation_price_is_live: boolean;
+}
+
 export interface TripResult {
   resort: Resort;
   cost: CostBreakdown;
@@ -198,6 +213,10 @@ export interface TripResult {
   start_date?: string;
   end_date?: string;
   season?: "peak" | "high" | "shoulder";
+  // Other good dates for this resort in the searched window, each from
+  // a different calendar week -- the "More dates" expander. Only on
+  // dated results; empty/absent otherwise.
+  alternative_dates?: AlternativeDate[];
   // Deep links to Google's own live search results. For the single
   // top-ranked result, these usually land directly on the specific
   // priced flight/hotel when a live quote could be matched to a real

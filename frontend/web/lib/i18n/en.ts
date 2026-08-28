@@ -215,6 +215,10 @@ const en = {
   accommodationOptionsTitle: "Places to stay ({count})",
   accommodationPerNight: "€{price}/night",
   accommodationPerPersonStay: "€{price} per person for the stay",
+  moreDatesTitle: "More dates at {resort} ({count})",
+  moreDatesNote: "Other weeks in your search window, priced the same way the ranking was. Prices firm up when searched with those exact dates.",
+  moreDatesOverBudget: "over budget",
+
   accommodationOptionsNote: "Real places with live prices, cheapest first. The cheapest one is what the trip total is priced on.",
 
   // --- Weather (result card) ---

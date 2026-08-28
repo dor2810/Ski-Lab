@@ -10,6 +10,7 @@ import { WeatherWeek } from "./WeatherWeek";
 import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
 import { AccommodationOptions } from "./AccommodationOptions";
+import { MoreDates } from "./MoreDates";
 import {
   FlightIcon,
   TransferIcon,
@@ -245,6 +246,8 @@ export function ResultCard({ result, maxConnections = null }: {
         <SearchLinkButton href={r.ski_pass_search_url} label={t("viewSkiPass")} />
         <span className="text-[11px] text-subtle">{t("searchLinkDisclaimer")}</span>
       </div>
+
+      <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
 
       <FlightOptions options={r.flight_options} booking={booking} />
 

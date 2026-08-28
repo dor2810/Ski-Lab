@@ -1160,6 +1160,23 @@ class SearchDateRangeRequest(BaseModel):
         return v
 
 
+class AlternativeDateOut(BaseModel):
+    """
+    One other good date for the same resort, from a different calendar
+    week than the row it hangs off (the "More dates" expander -- see
+    engine/date_search.spread_alternative_dates for why weeks). The
+    total is the same static-or-live figure the engine ranked with;
+    the *_is_live flags say which, per alternative, honestly.
+    """
+    start_date: datetime.date
+    end_date: datetime.date
+    season: str
+    total_eur: float
+    within_budget: bool
+    flight_price_is_live: bool
+    accommodation_price_is_live: bool
+
+
 class DatedTripResultOut(BaseModel):
     resort: ResortOut
     start_date: datetime.date
@@ -1170,6 +1187,9 @@ class DatedTripResultOut(BaseModel):
     score_components: Dict[str, float]
     explanation: str
     within_budget: bool
+    # Other good dates for this resort in the searched window -- the
+    # "More dates" expander. Empty for non-coverage rows.
+    alternative_dates: List[AlternativeDateOut] = []
     # See TripResultOut's matching fields -- same contract.
     flight_search_url: Optional[str] = None
     accommodation_search_url: str
@@ -1356,6 +1376,13 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
             t.cost.accommodation_price_is_live)
         results.append(DatedTripResultOut(
+            alternative_dates=[AlternativeDateOut(
+                start_date=a.start_date, end_date=a.end_date, season=a.season,
+                total_eur=round(a.cost.total_eur, 2),
+                within_budget=(a.cost.total_eur <= payload.budget_eur_per_person),
+                flight_price_is_live=a.cost.flight_price_is_live,
+                accommodation_price_is_live=a.cost.accommodation_price_is_live,
+            ) for a in getattr(t, "alternatives", ())],
             resort=_to_resort_out(t.resort),
             start_date=t.start_date,
             end_date=t.end_date,

@@ -85,6 +85,12 @@ class DatedTripOption:
     season: str
     # See models.TripOption.within_budget -- same contract, same reason.
     within_budget: bool = True
+    # Other good dates for THIS resort in the searched window, from
+    # DIFFERENT calendar weeks than this row -- the per-resort "More
+    # dates" expander. Populated only on coverage-first rows (one per
+    # resort); empty everywhere else. Tuple, not list: these are
+    # attached via dataclasses.replace and never mutated after.
+    alternatives: tuple = ()
 
     @property
     def total_eur(self) -> float:
@@ -533,6 +539,41 @@ def search_date_range(
     return fallback[:top_n]
 
 
+def spread_alternative_dates(resort_pool: List[DatedTripOption],
+                             shown: DatedTripOption,
+                             limit: int = 2) -> tuple:
+    """
+    Up to `limit` other good dates for one resort, each from a
+    DIFFERENT calendar week -- both from each other and from the row
+    already shown -- returned chronologically.
+
+    WHY WEEKS, in the user's own words: "I gave a big time range, a
+    month, and I only got one date for Val Thorens... everything was
+    for the beginning." Static totals tie across adjacent dates, so
+    score order alone offers Jan 7/8/9 -- three near-identical copies
+    of the shown row. One-best-per-ISO-week turns a month window into
+    an early/mid/late spread, which is the comparison a person actually
+    wants to make.
+
+    Within each week the BEST-SCORING date wins (not the cheapest --
+    same ranking currency as the main list); weeks are then kept in
+    score order up to `limit` and presented chronologically.
+    """
+    shown_week = shown.start_date.isocalendar()[:2]
+    best_per_week: dict = {}
+    for t in resort_pool:
+        if t.resort.name != shown.resort.name:
+            continue
+        week = t.start_date.isocalendar()[:2]
+        if week == shown_week:
+            continue
+        current = best_per_week.get(week)
+        if current is None or t.score > current.score:
+            best_per_week[week] = t
+    picked = sorted(best_per_week.values(), key=lambda t: t.score, reverse=True)[:max(0, limit)]
+    return tuple(sorted(picked, key=lambda t: t.start_date))
+
+
 def assemble_coverage_first(within_budget_sorted: List[DatedTripOption],
                             all_evaluated: List[DatedTripOption],
                             budget_eur: float,
@@ -600,6 +641,18 @@ def assemble_coverage_first(within_budget_sorted: List[DatedTripOption],
             continue
         per_resort[t.resort.name] = per_resort.get(t.resort.name, 0) + 1
         out.append(t)
+
+    # Attach the "More dates" alternatives to each resort's FIRST row.
+    # dataclasses.replace, not mutation: the rows are shared with the
+    # caller's own evaluated pool.
+    import dataclasses
+    first_index_by_resort: dict = {}
+    for i, t in enumerate(out):
+        first_index_by_resort.setdefault(t.resort.name, i)
+    for name, i in first_index_by_resort.items():
+        alts = spread_alternative_dates(all_evaluated, out[i], limit=2)
+        if alts:
+            out[i] = dataclasses.replace(out[i], alternatives=alts)
     return out
 
 
