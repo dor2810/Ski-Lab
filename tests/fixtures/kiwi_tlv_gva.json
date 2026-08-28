@@ -1,0 +1,1709 @@
+{
+ "query": "TLV \u00e2\u0086\u0092 GVA on 09/01/2027, returning 15/01/2027, 1 adult [\u00e2\u0089\u00a41 stops/sector]",
+ "currency": "EUR",
+ "passengers": {
+  "adults": 1,
+  "children": 0,
+  "infants": 0
+ },
+ "resultsCount": 15,
+ "itineraries": [
+  {
+   "id": "100723fa515b51618130544d_0|100723fa515b51618130544d_1|100723fa515b51618130544d_2|100723fa515b51618130544d_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 76800,
+   "bookingUrl": "https://kiwi.com/u/nsxvgj",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T10:05:00",
+    "arrivalTime": "2027-01-15T16:55:00",
+    "durationSeconds": 21000,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T10:05:00",
+      "arrivalTime": "2027-01-15T11:00:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2807",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T12:05:00",
+      "arrivalTime": "2027-01-15T16:55:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX252",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161398e2cb4_0|100723fa515b5161398e2cb4_1|100723fa515b5161398e2cb4_2|100723fa515b5161398e2cb4_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 78600,
+   "bookingUrl": "https://kiwi.com/u/gx2gvxv",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T20:15:00",
+    "arrivalTime": "2027-01-16T03:35:00",
+    "durationSeconds": 22800,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-15T21:05:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2819",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T22:45:00",
+      "arrivalTime": "2027-01-16T03:35:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX256",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161524a79ac_0|100723fa515b5161524a79ac_1|100723fa515b5161524a79ac_2|100723fa515b5161524a79ac_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 81300,
+   "bookingUrl": "https://kiwi.com/u/gx8kfy",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T09:45:00",
+    "durationSeconds": 60300,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T08:55:00",
+      "arrivalTime": "2027-01-10T09:45:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2804",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T10:05:00",
+    "arrivalTime": "2027-01-15T16:55:00",
+    "durationSeconds": 21000,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T10:05:00",
+      "arrivalTime": "2027-01-15T11:00:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2807",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T12:05:00",
+      "arrivalTime": "2027-01-15T16:55:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX252",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161eaf40155_0|100723fa515b5161eaf40155_1|100723fa515b5161eaf40155_2|100723fa515b5161eaf40155_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 83100,
+   "bookingUrl": "https://kiwi.com/u/r7jtv5",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T09:45:00",
+    "durationSeconds": 60300,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T08:55:00",
+      "arrivalTime": "2027-01-10T09:45:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2804",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T20:15:00",
+    "arrivalTime": "2027-01-16T03:35:00",
+    "durationSeconds": 22800,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-15T21:05:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2819",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T22:45:00",
+      "arrivalTime": "2027-01-16T03:35:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX256",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b516188ba7885_0|100723fa515b516188ba7885_1|100723fa515b516188ba7885_2|100723fa515b516188ba7885_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 83100,
+   "bookingUrl": "https://kiwi.com/u/knftfq",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T19:00:00",
+    "arrivalTime": "2027-01-16T03:35:00",
+    "durationSeconds": 27300,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T19:00:00",
+      "arrivalTime": "2027-01-15T19:55:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2817",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T22:45:00",
+      "arrivalTime": "2027-01-16T03:35:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX256",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161f9f1925d_0|100723fa515b5161f9f1925d_1|100723fa515b5161f9f1925d_2|100723fa515b5161f9f1925d_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 85500,
+   "bookingUrl": "https://kiwi.com/u/vhnp32",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T07:40:00",
+    "arrivalTime": "2027-01-15T16:55:00",
+    "durationSeconds": 29700,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T07:40:00",
+      "arrivalTime": "2027-01-15T08:30:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2805",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T12:05:00",
+      "arrivalTime": "2027-01-15T16:55:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX252",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b51615bc05564_0|100723fa515b51615bc05564_1|100723fa515b51615bc05564_2|100723fa515b51615bc05564_3",
+   "price": 280.0,
+   "priceFormatted": "280 EUR",
+   "totalDurationSeconds": 87600,
+   "bookingUrl": "https://kiwi.com/u/b6uk4u",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T09:45:00",
+    "durationSeconds": 60300,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T08:55:00",
+      "arrivalTime": "2027-01-10T09:45:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2804",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T19:00:00",
+    "arrivalTime": "2027-01-16T03:35:00",
+    "durationSeconds": 27300,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T19:00:00",
+      "arrivalTime": "2027-01-15T19:55:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2817",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T22:45:00",
+      "arrivalTime": "2027-01-16T03:35:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX256",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161685d5427_0|100723fa515b5161685d5427_1|100723fa515b5161685d5427_2|100723fa515b5161685d5427_3",
+   "price": 284.0,
+   "priceFormatted": "284 EUR",
+   "totalDurationSeconds": 77400,
+   "bookingUrl": "https://kiwi.com/u/9hkcbd",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T17:40:00",
+    "arrivalTime": "2027-01-16T00:40:00",
+    "durationSeconds": 21600,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "VIE",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "VIE",
+      "fromCity": "Geneva",
+      "toCity": "Vienna",
+      "fromName": "Geneva",
+      "toName": "Vienna International Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Austria",
+      "departureTime": "2027-01-15T17:40:00",
+      "arrivalTime": "2027-01-15T19:15:00",
+      "durationSeconds": 5700,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS154",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "VIE",
+      "to": "TLV",
+      "fromCity": "Vienna",
+      "toCity": "Tel Aviv",
+      "fromName": "Vienna International Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Austria",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-16T00:40:00",
+      "durationSeconds": 12300,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS83",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b51610dbe730c_0|100723fa515b51610dbe730c_1|100723fa515b51610dbe730c_2|100723fa515b51610dbe730c_3",
+   "price": 284.0,
+   "priceFormatted": "284 EUR",
+   "totalDurationSeconds": 81900,
+   "bookingUrl": "https://kiwi.com/u/vr6y9d",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T09:45:00",
+    "durationSeconds": 60300,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T08:55:00",
+      "arrivalTime": "2027-01-10T09:45:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2804",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T17:40:00",
+    "arrivalTime": "2027-01-16T00:40:00",
+    "durationSeconds": 21600,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "VIE",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "VIE",
+      "fromCity": "Geneva",
+      "toCity": "Vienna",
+      "fromName": "Geneva",
+      "toName": "Vienna International Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Austria",
+      "departureTime": "2027-01-15T17:40:00",
+      "arrivalTime": "2027-01-15T19:15:00",
+      "durationSeconds": 5700,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS154",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "VIE",
+      "to": "TLV",
+      "fromCity": "Vienna",
+      "toCity": "Tel Aviv",
+      "fromName": "Vienna International Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Austria",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-16T00:40:00",
+      "durationSeconds": 12300,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS83",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b516117325dfc_0|100723fa515b516117325dfc_1|100723fa515b516117325dfc_2|100723fa515b516117325dfc_3",
+   "price": 287.0,
+   "priceFormatted": "287 EUR",
+   "totalDurationSeconds": 81600,
+   "bookingUrl": "https://kiwi.com/u/tbtrnq",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 0,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T07:00:00",
+    "arrivalTime": "2027-01-15T15:10:00",
+    "durationSeconds": 25800,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "BRU",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "BRU",
+      "fromCity": "Geneva",
+      "toCity": "Brussels",
+      "fromName": "Geneva",
+      "toName": "Brussels",
+      "fromCountry": "Switzerland",
+      "toCountry": "Belgium",
+      "departureTime": "2027-01-15T07:00:00",
+      "arrivalTime": "2027-01-15T08:15:00",
+      "durationSeconds": 4500,
+      "carrier": "SN",
+      "carrierName": "Brussels Airlines",
+      "flightNumber": "SN5110",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "BRU",
+      "to": "TLV",
+      "fromCity": "Brussels",
+      "toCity": "Tel Aviv",
+      "fromName": "Brussels",
+      "toName": "Ben Gurion",
+      "fromCountry": "Belgium",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T09:40:00",
+      "arrivalTime": "2027-01-15T15:10:00",
+      "durationSeconds": 16200,
+      "carrier": "SN",
+      "carrierName": "Brussels Airlines",
+      "flightNumber": "SN3289",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b51619b7ac925_0|100723fa515b51619b7ac925_1|100723fa515b51619b7ac925_2|100723fa515b51619b7ac925_3",
+   "price": 290.0,
+   "priceFormatted": "290 EUR",
+   "totalDurationSeconds": 83400,
+   "bookingUrl": "https://kiwi.com/u/yzdpsn",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T18:00:00",
+    "arrivalTime": "2027-01-10T08:30:00",
+    "durationSeconds": 55800,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "ZRH",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "ZRH",
+      "fromCity": "Tel Aviv",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Ben Gurion",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Israel",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T18:00:00",
+      "arrivalTime": "2027-01-09T21:25:00",
+      "durationSeconds": 15900,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX253",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "GVA",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Geneva",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Geneva",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:35:00",
+      "arrivalTime": "2027-01-10T08:30:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2802",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T06:50:00",
+    "arrivalTime": "2027-01-15T15:30:00",
+    "durationSeconds": 27600,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "FRA",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "FRA",
+      "fromCity": "Geneva",
+      "toCity": "Frankfurt",
+      "fromName": "Geneva",
+      "toName": "Frankfurt International Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Germany",
+      "departureTime": "2027-01-15T06:50:00",
+      "arrivalTime": "2027-01-15T08:05:00",
+      "durationSeconds": 4500,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH1223",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "FRA",
+      "to": "TLV",
+      "fromCity": "Frankfurt",
+      "toCity": "Tel Aviv",
+      "fromName": "Frankfurt International Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Germany",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T10:20:00",
+      "arrivalTime": "2027-01-15T15:30:00",
+      "durationSeconds": 15000,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH686",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161b991370a_0|100723fa515b5161b991370a_1|100723fa515b5161b991370a_2|100723fa515b5161b991370a_3",
+   "price": 292.0,
+   "priceFormatted": "292 EUR",
+   "totalDurationSeconds": 80400,
+   "bookingUrl": "https://kiwi.com/u/9kdwuu",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 0,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T17:10:00",
+    "arrivalTime": "2027-01-10T08:40:00",
+    "durationSeconds": 59400,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "MUC",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "MUC",
+      "fromCity": "Tel Aviv",
+      "toCity": "Munich",
+      "fromName": "Ben Gurion",
+      "toName": "Munich",
+      "fromCountry": "Israel",
+      "toCountry": "Germany",
+      "departureTime": "2027-01-09T17:10:00",
+      "arrivalTime": "2027-01-09T20:20:00",
+      "durationSeconds": 15000,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH681",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "MUC",
+      "to": "GVA",
+      "fromCity": "Munich",
+      "toCity": "Geneva",
+      "fromName": "Munich",
+      "toName": "Geneva",
+      "fromCountry": "Germany",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:25:00",
+      "arrivalTime": "2027-01-10T08:40:00",
+      "durationSeconds": 4500,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH9444",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T10:05:00",
+    "arrivalTime": "2027-01-15T16:55:00",
+    "durationSeconds": 21000,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T10:05:00",
+      "arrivalTime": "2027-01-15T11:00:00",
+      "durationSeconds": 3300,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2807",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T12:05:00",
+      "arrivalTime": "2027-01-15T16:55:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX252",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b5161012f4ff3_0|100723fa515b5161012f4ff3_1|100723fa515b5161012f4ff3_2|100723fa515b5161012f4ff3_3",
+   "price": 292.0,
+   "priceFormatted": "292 EUR",
+   "totalDurationSeconds": 82200,
+   "bookingUrl": "https://kiwi.com/u/hmm787k",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 0,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T17:10:00",
+    "arrivalTime": "2027-01-10T08:40:00",
+    "durationSeconds": 59400,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "MUC",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "MUC",
+      "fromCity": "Tel Aviv",
+      "toCity": "Munich",
+      "fromName": "Ben Gurion",
+      "toName": "Munich",
+      "fromCountry": "Israel",
+      "toCountry": "Germany",
+      "departureTime": "2027-01-09T17:10:00",
+      "arrivalTime": "2027-01-09T20:20:00",
+      "durationSeconds": 15000,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH681",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "MUC",
+      "to": "GVA",
+      "fromCity": "Munich",
+      "toCity": "Geneva",
+      "fromName": "Munich",
+      "toName": "Geneva",
+      "fromCountry": "Germany",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:25:00",
+      "arrivalTime": "2027-01-10T08:40:00",
+      "durationSeconds": 4500,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH9444",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T20:15:00",
+    "arrivalTime": "2027-01-16T03:35:00",
+    "durationSeconds": 22800,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ZRH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ZRH",
+      "fromCity": "Geneva",
+      "toCity": "Z\u00c3\u00bcrich",
+      "fromName": "Geneva",
+      "toName": "Z\u00c3\u00bcrich Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-15T21:05:00",
+      "durationSeconds": 3000,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX2819",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ZRH",
+      "to": "TLV",
+      "fromCity": "Z\u00c3\u00bcrich",
+      "toCity": "Tel Aviv",
+      "fromName": "Z\u00c3\u00bcrich Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Switzerland",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T22:45:00",
+      "arrivalTime": "2027-01-16T03:35:00",
+      "durationSeconds": 13800,
+      "carrier": "LX",
+      "carrierName": "Swiss International Air Lines",
+      "flightNumber": "LX256",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b51611566522e_0|100723fa515b51611566522e_1|100723fa515b51611566522e_2|100723fa515b51611566522e_3",
+   "price": 296.0,
+   "priceFormatted": "296 EUR",
+   "totalDurationSeconds": 81000,
+   "bookingUrl": "https://kiwi.com/u/hsy8xd",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 1,
+    "cabinBag": 0,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T17:10:00",
+    "arrivalTime": "2027-01-10T08:40:00",
+    "durationSeconds": 59400,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "MUC",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "MUC",
+      "fromCity": "Tel Aviv",
+      "toCity": "Munich",
+      "fromName": "Ben Gurion",
+      "toName": "Munich",
+      "fromCountry": "Israel",
+      "toCountry": "Germany",
+      "departureTime": "2027-01-09T17:10:00",
+      "arrivalTime": "2027-01-09T20:20:00",
+      "durationSeconds": 15000,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH681",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "MUC",
+      "to": "GVA",
+      "fromCity": "Munich",
+      "toCity": "Geneva",
+      "fromName": "Munich",
+      "toName": "Geneva",
+      "fromCountry": "Germany",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-10T07:25:00",
+      "arrivalTime": "2027-01-10T08:40:00",
+      "durationSeconds": 4500,
+      "carrier": "LH",
+      "carrierName": "Lufthansa",
+      "flightNumber": "LH9444",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T17:40:00",
+    "arrivalTime": "2027-01-16T00:40:00",
+    "durationSeconds": 21600,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "VIE",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "VIE",
+      "fromCity": "Geneva",
+      "toCity": "Vienna",
+      "fromName": "Geneva",
+      "toName": "Vienna International Airport",
+      "fromCountry": "Switzerland",
+      "toCountry": "Austria",
+      "departureTime": "2027-01-15T17:40:00",
+      "arrivalTime": "2027-01-15T19:15:00",
+      "durationSeconds": 5700,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS154",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "VIE",
+      "to": "TLV",
+      "fromCity": "Vienna",
+      "toCity": "Tel Aviv",
+      "fromName": "Vienna International Airport",
+      "toName": "Ben Gurion",
+      "fromCountry": "Austria",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-15T20:15:00",
+      "arrivalTime": "2027-01-16T00:40:00",
+      "durationSeconds": 12300,
+      "carrier": "OS",
+      "carrierName": "Austrian Airlines",
+      "flightNumber": "OS83",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  },
+  {
+   "id": "100723fa515b000073f5b193_0|100723fa515b000073f5b193_1|23fa100751610000336b2cb8_0|23fa100751610000336b2cb8_1",
+   "price": 336.0,
+   "priceFormatted": "336 EUR",
+   "totalDurationSeconds": 61500,
+   "bookingUrl": "https://kiwi.com/u/vfjxs7",
+   "imageId": "geneva_ch",
+   "baggage": {
+    "personalItem": 0,
+    "cabinBag": 1,
+    "checkedBag": 0
+   },
+   "outbound": {
+    "from": "TLV",
+    "to": "GVA",
+    "departureTime": "2027-01-09T10:35:00",
+    "arrivalTime": "2027-01-09T19:00:00",
+    "durationSeconds": 33900,
+    "stops": 1,
+    "route": [
+     "TLV",
+     "WAW",
+     "GVA"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "TLV",
+      "to": "WAW",
+      "fromCity": "Tel Aviv",
+      "toCity": "Warsaw",
+      "fromName": "Ben Gurion",
+      "toName": "Warsaw Chopin",
+      "fromCountry": "Israel",
+      "toCountry": "Poland",
+      "departureTime": "2027-01-09T10:35:00",
+      "arrivalTime": "2027-01-09T13:40:00",
+      "durationSeconds": 14700,
+      "carrier": "LO",
+      "carrierName": "LOT Polish Airlines",
+      "flightNumber": "LO156",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "WAW",
+      "to": "GVA",
+      "fromCity": "Warsaw",
+      "toCity": "Geneva",
+      "fromName": "Warsaw Chopin",
+      "toName": "Geneva",
+      "fromCountry": "Poland",
+      "toCountry": "Switzerland",
+      "departureTime": "2027-01-09T16:40:00",
+      "arrivalTime": "2027-01-09T19:00:00",
+      "durationSeconds": 8400,
+      "carrier": "LO",
+      "carrierName": "LOT Polish Airlines",
+      "flightNumber": "LO415",
+      "cabinClass": "Economy"
+     }
+    ]
+   },
+   "inbound": {
+    "from": "GVA",
+    "to": "TLV",
+    "departureTime": "2027-01-15T18:15:00",
+    "arrivalTime": "2027-01-16T02:55:00",
+    "durationSeconds": 27600,
+    "stops": 1,
+    "route": [
+     "GVA",
+     "ATH",
+     "TLV"
+    ],
+    "cabinClass": "Economy",
+    "segments": [
+     {
+      "from": "GVA",
+      "to": "ATH",
+      "fromCity": "Geneva",
+      "toCity": "Athens",
+      "fromName": "Geneva",
+      "toName": "Athens International",
+      "fromCountry": "Switzerland",
+      "toCountry": "Greece",
+      "departureTime": "2027-01-15T18:15:00",
+      "arrivalTime": "2027-01-15T22:00:00",
+      "durationSeconds": 9900,
+      "carrier": "A3",
+      "carrierName": "Aegean",
+      "flightNumber": "A3857",
+      "cabinClass": "Economy"
+     },
+     {
+      "from": "ATH",
+      "to": "TLV",
+      "fromCity": "Athens",
+      "toCity": "Tel Aviv",
+      "fromName": "Athens International",
+      "toName": "Ben Gurion",
+      "fromCountry": "Greece",
+      "toCountry": "Israel",
+      "departureTime": "2027-01-16T00:55:00",
+      "arrivalTime": "2027-01-16T02:55:00",
+      "durationSeconds": 7200,
+      "carrier": "A3",
+      "carrierName": "Aegean",
+      "flightNumber": "A3928",
+      "cabinClass": "Economy"
+     }
+    ]
+   }
+  }
+ ],
+ "searchTimeMs": 689,
+ "error": null
+}

@@ -345,3 +345,103 @@ def test_fare_suppression_triggers_the_serpapi_fallback_like_a_block():
     assert price == 321.0, "the fallback's price must be used"
     assert fb.called
     assert was_provider_blocked() is True, "suppression must be reported like a block"
+
+
+# --- Kiwi MCP as the free fallback behind the scraper (2026-08-28) ---
+
+def _chamonix():
+    from ski_optimizer.data.resort_repository import load_resorts
+    return next(r for r in load_resorts() if r.name == "Chamonix")
+
+
+def test_kiwi_rescues_a_route_google_cannot_price(monkeypatch):
+    # The user's ask, verbatim: "make the kiwi a backup if our scraper
+    # doesn't find it." Google returning EMPTY (null payload / fares
+    # not published -- measured live for TLV-LYS in January) must fall
+    # through to Kiwi's free MCP search BEFORE the paid SerpApi, and a
+    # Kiwi rescue is a real live price -- NOT a provider-blocked event.
+    import datetime as _dt
+    from unittest import mock
+
+    from ski_optimizer.adapters import google_flights_adapter, kiwi_mcp_adapter
+    from ski_optimizer.engine import cost_calculator as cc
+    from ski_optimizer.engine.provider_status import reset_provider_status, was_provider_blocked
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    reset_provider_status()
+    empty = FlightSearchResult(options=[], insight=None)
+    kiwi_hit = FlightSearchResult(options=[FlightOption(
+        price_eur=333.0, origin_airport="TLV", destination_airport="GVA",
+        airline="SWISS", total_duration_minutes=400, stops=1)])
+
+    with mock.patch.object(google_flights_adapter, "search_flights", return_value=empty), \
+         mock.patch.object(kiwi_mcp_adapter, "search_flights", return_value=kiwi_hit) as kiwi, \
+         mock.patch.object(cc, "_serpapi_flight_fallback") as serp:
+        price = cc.live_flight_cost_eur(_chamonix(), _dt.date(2027, 1, 10), _dt.date(2027, 1, 16))
+
+    assert price == 333.0
+    assert kiwi.called
+    assert not serp.called, "the paid fallback must not be spent when the free one answers"
+    assert was_provider_blocked() is False, "a Kiwi rescue is live data, not a block"
+
+
+def test_kiwi_is_not_called_when_google_already_priced(monkeypatch):
+    import datetime as _dt
+    from unittest import mock
+
+    from ski_optimizer.adapters import google_flights_adapter, kiwi_mcp_adapter
+    from ski_optimizer.engine import cost_calculator as cc
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    priced = FlightSearchResult(options=[FlightOption(
+        price_eur=280.0, origin_airport="TLV", destination_airport="GVA",
+        airline="SWISS", total_duration_minutes=400, stops=1)])
+    with mock.patch.object(google_flights_adapter, "search_flights", return_value=priced), \
+         mock.patch.object(kiwi_mcp_adapter, "search_flights") as kiwi:
+        price = cc.live_flight_cost_eur(_chamonix(), _dt.date(2027, 1, 10), _dt.date(2027, 1, 16))
+    assert price == 280.0
+    assert not kiwi.called, "no fallback traffic when the primary answered"
+
+
+def test_suppressed_google_still_reaches_serpapi_when_kiwi_also_fails(monkeypatch):
+    # The existing suppression contract survives the new middle layer:
+    # fare-stripped pages + a Kiwi miss must still spend SerpApi and
+    # still be reported as a block.
+    import datetime as _dt
+    from unittest import mock
+
+    from ski_optimizer.adapters import google_flights_adapter, kiwi_mcp_adapter
+    from ski_optimizer.adapters.base import AdapterError
+    from ski_optimizer.engine import cost_calculator as cc
+    from ski_optimizer.engine.provider_status import reset_provider_status, was_provider_blocked
+    from ski_optimizer.models import FlightSearchResult
+
+    reset_provider_status()
+    suppressed = FlightSearchResult(options=[], insight=None, fares_suppressed=True)
+    with mock.patch.object(google_flights_adapter, "search_flights", return_value=suppressed), \
+         mock.patch.object(kiwi_mcp_adapter, "search_flights",
+                           side_effect=AdapterError("kiwi down")), \
+         mock.patch.object(cc, "_serpapi_flight_fallback", return_value=444.0) as serp:
+        price = cc.live_flight_cost_eur(_chamonix(), _dt.date(2027, 1, 10), _dt.date(2027, 1, 16))
+    assert price == 444.0
+    assert serp.called
+    assert was_provider_blocked() is True
+
+
+def test_a_crashed_scraper_falls_through_to_kiwi(monkeypatch):
+    import datetime as _dt
+    from unittest import mock
+
+    from ski_optimizer.adapters import google_flights_adapter, kiwi_mcp_adapter
+    from ski_optimizer.adapters.base import AdapterError
+    from ski_optimizer.engine import cost_calculator as cc
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    kiwi_hit = FlightSearchResult(options=[FlightOption(
+        price_eur=350.0, origin_airport="TLV", destination_airport="GVA",
+        airline="El Al", total_duration_minutes=215, stops=0)])
+    with mock.patch.object(google_flights_adapter, "search_flights",
+                           side_effect=AdapterError("scraper exploded")), \
+         mock.patch.object(kiwi_mcp_adapter, "search_flights", return_value=kiwi_hit):
+        price = cc.live_flight_cost_eur(_chamonix(), _dt.date(2027, 1, 10), _dt.date(2027, 1, 16))
+    assert price == 350.0

@@ -302,6 +302,13 @@ def live_flight_cost_eur(
             adults=adults,
             max_connections=max_connections,
         )
+        if not result.options:
+            # The scraper found NOTHING (null payload, unpublished
+            # fares, or a fare-stripped page). Free fallback first.
+            price = _kiwi_flight_fallback(
+                resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+            if price is not None:
+                return price
         if not result.options and getattr(result, "fares_suppressed", False):
             # Google LISTED flights but stripped every fare -- seen live
             # from the Cloud Run egress IP while the same query priced
@@ -327,10 +334,14 @@ def live_flight_cost_eur(
         # spending quota on: the free path is not merely slow, it is
         # unavailable.
         note_provider_blocked()
+        price = _kiwi_flight_fallback(
+            resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+        if price is not None:
+            return price
         price = _serpapi_flight_fallback(
             resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
         if price is None:
-            logger.warning("live flight pricing BLOCKED for %s and no SerpApi fallback available",
+            logger.warning("live flight pricing BLOCKED for %s and no fallback available",
                            resort.name)
         return price
     except Exception:
@@ -340,6 +351,37 @@ def live_flight_cost_eur(
         # actual reason is diagnosable server-side without changing
         # that user-facing contract.
         logger.exception("live_flight_cost_eur failed for %s", resort.name)
+        return _kiwi_flight_fallback(
+            resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+
+
+def _kiwi_flight_fallback(resort, codes, outbound_date, return_date,
+                          origin_airport, adults, max_connections):
+    """
+    The FREE fallback: Kiwi.com's official MCP search (see
+    adapters/kiwi_mcp_adapter.py). Tried whenever the Google scraper
+    finds nothing, BEFORE the metered SerpApi -- Kiwi's virtual-
+    interline inventory often prices routes Google can't (TLV-LYS in
+    January, measured 2026-08-28: Google zero, and this is exactly the
+    user's ask: "make the kiwi a backup if our scraper doesn't find
+    it"). Returns None on any failure, never raises.
+    """
+    try:
+        from ..adapters import kiwi_mcp_adapter
+        result = kiwi_mcp_adapter.search_flights(
+            origin_airport=origin_airport,
+            destination_airports=codes,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            max_connections=max_connections,
+        )
+        price = kiwi_mcp_adapter.cheapest_price_eur(result)
+        if price is not None:
+            logger.info("Kiwi MCP fallback rescued %s: EUR%.0f", resort.name, price)
+        return price
+    except Exception:
+        logger.warning("Kiwi MCP fallback failed for %s", resort.name, exc_info=True)
         return None
 
 

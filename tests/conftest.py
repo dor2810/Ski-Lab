@@ -109,3 +109,24 @@ def _no_retry_backoff_in_tests(monkeypatch):
     from ski_optimizer.engine import date_search
 
     monkeypatch.setattr(date_search, "_REQUEST_STAGGER_S", 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_kiwi_mcp(monkeypatch):
+    """
+    Keep the suite OFFLINE: with Kiwi wired in as the scraper's
+    fallback (cost_calculator._kiwi_flight_fallback), every pre-existing
+    test that mocks Google Flights to fail/return-empty would otherwise
+    fall through to a REAL network call against mcp.kiwi.com -- turning
+    a 10-second suite into minutes of live traffic. The transport is
+    stubbed to raise; tests that want Kiwi behavior mock
+    kiwi_mcp_adapter.search_flights directly (mock.patch inside the
+    test body overrides this setup-time stub).
+    """
+    from ski_optimizer.adapters import kiwi_mcp_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _offline(_args):
+        raise AdapterError("network disabled in tests (see conftest._no_real_kiwi_mcp)")
+
+    monkeypatch.setattr(kiwi_mcp_adapter, "_call_search_tool", _offline)
