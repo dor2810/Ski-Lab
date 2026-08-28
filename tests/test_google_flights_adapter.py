@@ -37,7 +37,14 @@ _VALID_LEG = [0, 1, 2, "TLV", "Ben Gurion", "Geneva", "GVA", 7, [8, 30],
 
 
 def _valid_card(price_cents=42000):
-    return [[0, ["LX"], [_VALID_LEG]], [[None, price_cents]]]
+    # Flight-level [22] is the carbon-extras list parse_js reads at
+    # [7]/[8] -- the mirror's third drift (2026-08-28) was exactly this
+    # index, so a "valid" card must carry it or the filter (correctly)
+    # rejects the fixture.
+    flight_level = [0, ["LX"], [_VALID_LEG], None, None, None, None, None, None, None,
+                    None, None, None, None, None, None, None, None, None, None,
+                    None, None, [0, 1, 2, 3, 4, 5, 6, 180, 200]]
+    return [flight_level, [[None, price_cents]]]
 
 from fast_flights.model import Airport, CarbonEmission, Flights, SimpleDatetime, SingleFlight
 
@@ -707,3 +714,155 @@ def test_a_card_with_a_malformed_leg_is_also_dropped():
     js = f"AF_init(data:{json.dumps(payload)}, x)"
     kept = json.loads(gfa._drop_priceless_cards(js).split("data:", 1)[1].rsplit(",", 1)[0])[3][0]
     assert kept == [good]
+
+
+def test_a_card_with_short_carbon_extras_is_dropped():
+    # THIRD mirror drift, found in production 2026-08-28: parse_js also
+    # reads extras = flight[22]; extras[7]; extras[8] (carbon data) with
+    # no guards. A card whose extras list is short -- carbon unavailable
+    # -- passed the mirror and killed the whole route with IndexError,
+    # logged as "route skipped" while sibling routes priced fine.
+    import json
+
+    good = _valid_card()
+    # Priced, healthy legs, but flight-level [22] is too short for
+    # extras[7]/extras[8].
+    flight_level = [0, ["LX"], [_VALID_LEG], None, None, None, None, None, None, None,
+                    None, None, None, None, None, None, None, None, None, None,
+                    None, None, [0, 1]]
+    short_extras = [flight_level, [[None, 42000]]]
+    payload = [None, None, None, [[good, short_extras]], None, None, None, None]
+    js = f"AF_init(data:{json.dumps(payload)}, sideChannel: {{}})"
+
+    kept = json.loads(gfa._drop_priceless_cards(js).split("data:", 1)[1].rsplit(",", 1)[0])[3][0]
+    assert kept == [good], "the short-extras card should have been dropped"
+
+
+def test_a_mirror_evading_crasher_drops_one_card_not_the_route(monkeypatch):
+    # The mirror has now drifted from the real parser THREE times (price,
+    # short legs, carbon extras) -- each time production silently lost
+    # whole routes to estimates until someone diffed the logs. This test
+    # pins the STRUCTURAL fix: when the full-payload parse still raises
+    # IndexError (i.e. a card evaded the mirror), the route must degrade
+    # to "that one card is dropped", never to "no results".
+    #
+    # The mirror is stubbed to pass everything, simulating exactly the
+    # next drift, whatever index it happens to be on.
+    import json
+
+    import fast_flights.fetcher as ff_fetcher
+
+    good = _valid_card()
+    crasher = [[0, ["XX"], [_VALID_LEG]], [[None, 999]]]  # no [22] -> real parser crashes
+    payload = [None, None, None, [[good, crasher]], None, None, None,
+               [None, [[], []]]]  # [7][1] = alliances/airlines metadata parse_js reads
+    monkeypatch.setattr(gfa, "_card_is_parseable", lambda c: True)
+    monkeypatch.setattr(
+        ff_fetcher, "fetch_flights_html",
+        lambda *a, **k: f'<html><script class="ds:1">AF_init(data:{json.dumps(payload)}, x)</script></html>')
+
+    result = gfa.search_flights("TLV", "GVA", date(2027, 1, 10), date(2027, 1, 17), use_cache=False)
+
+    assert len(result.options) == 1, "the good card must survive the crasher"
+    assert result.options[0].price_eur == 42000.0  # raw slot value; currency handling is upstream of this test
+
+
+# --- fare suppression detection ---
+
+def _html_for(payload):
+    import json
+    return f'<html><script class="ds:1">AF_init(data:{json.dumps(payload)}, x)</script></html>'
+
+
+def test_a_page_of_only_unpriced_cards_is_flagged_as_fare_suppression(monkeypatch):
+    # SEEN IN PRODUCTION 2026-08-28: Google serves the Cloud Run egress
+    # IP pages that LIST flights but carry no prices on any card (the
+    # same page from a residential IP has fares). That is not "no
+    # service on this route" -- it is the provider refusing us prices,
+    # and it must be distinguishable so the caller can spend SerpApi
+    # quota on it, exactly like a hard block. Logged as "salvaged 0
+    # card(s)" three times in one request before this existed.
+    import fast_flights.fetcher as ff_fetcher
+
+    unpriced = [[0, ["6H"], [_VALID_LEG]], []]  # a card with flights but no price slot
+    payload = [None, None, None, [[unpriced, unpriced]], None, None, None, [None, [[], []]]]
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: _html_for(payload))
+
+    result = gfa.search_flights("TLV", "SOF", date(2027, 1, 7), date(2027, 1, 13), use_cache=False)
+    assert result.options == []
+    assert result.fares_suppressed is True
+
+
+def test_a_null_payload_is_not_fare_suppression(monkeypatch):
+    # No cards at all = no service on this route (measured: GNB/LJU
+    # return null in the same batch where GVA/MXP price) -- must NOT
+    # trigger the paid fallback.
+    import fast_flights.fetcher as ff_fetcher
+
+    payload = [None, None, None, None, None, None, None, [None, [[], []]]]
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: _html_for(payload))
+
+    result = gfa.search_flights("TLV", "GNB", date(2027, 1, 7), date(2027, 1, 13), use_cache=False)
+    assert result.options == []
+    assert result.fares_suppressed is False
+
+
+def test_a_priced_page_is_not_fare_suppression(monkeypatch):
+    import fast_flights.fetcher as ff_fetcher
+
+    payload = [None, None, None, [[_valid_card()]], None, None, None, [None, [[], []]]]
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: _html_for(payload))
+
+    result = gfa.search_flights("TLV", "GVA", date(2027, 1, 7), date(2027, 1, 13), use_cache=False)
+    assert len(result.options) == 1
+    assert result.fares_suppressed is False
+
+
+def test_a_suppressed_empty_result_is_not_cached(monkeypatch):
+    # CAUGHT IN PRODUCTION, THE SAME DAY THE FLAG SHIPPED: the engine's
+    # first (reranker) lookup hit a fare-stripped page, the empty result
+    # was CACHED, and every later lookup for the same route -- including
+    # the one that decides what the user sees -- got the poisoned cache
+    # entry with the flag stripped by the cache-hit reconstruction. The
+    # SerpApi fallback never fired, and the logs showed "salvaged 0"
+    # with no "fares suppressed" warning ever following it.
+    import fast_flights.fetcher as ff_fetcher
+
+    unpriced = [[0, ["6H"], [_VALID_LEG]], []]
+    suppressed_payload = [None, None, None, [[unpriced]], None, None, None, [None, [[], []]]]
+    priced_payload = [None, None, None, [[_valid_card()]], None, None, None, [None, [[], []]]]
+    pages = iter([suppressed_payload, priced_payload])
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", lambda *a, **k: _html_for(next(pages)))
+
+    first = gfa.search_flights("TLV", "GVA", date(2027, 1, 7), date(2027, 1, 13), use_cache=True)
+    assert first.fares_suppressed is True and first.options == []
+
+    second = gfa.search_flights("TLV", "GVA", date(2027, 1, 7), date(2027, 1, 13), use_cache=True)
+    assert second.options, "a fresh attempt must re-fetch, not inherit the poisoned entry"
+    assert second.fares_suppressed is False
+
+
+def test_cache_hits_preserve_the_suppression_flag(monkeypatch):
+    # Multi-airport case: one airport priced (so the result IS cached),
+    # the other suppressed. The flag must survive the cache-hit
+    # reconstruction -- it was being silently reset to the default.
+    import fast_flights.fetcher as ff_fetcher
+
+    unpriced = [[0, ["6H"], [_VALID_LEG]], []]
+
+    def page_for(*args, **kwargs):
+        # fetch_flights_html(query): tfs encodes the airport; vary by call order
+        page_for.calls += 1
+        payload = ([None, None, None, [[_valid_card()]], None, None, None, [None, [[], []]]]
+                   if page_for.calls == 1 else
+                   [None, None, None, [[unpriced]], None, None, None, [None, [[], []]]])
+        return _html_for(payload)
+    page_for.calls = 0
+
+    monkeypatch.setattr(ff_fetcher, "fetch_flights_html", page_for)
+    first = gfa.search_flights("TLV", ["GVA", "CMF"], date(2027, 1, 7), date(2027, 1, 13), use_cache=True)
+    assert first.options and first.fares_suppressed is True
+
+    hit = gfa.search_flights("TLV", ["GVA", "CMF"], date(2027, 1, 7), date(2027, 1, 13), use_cache=True)
+    assert hit.from_cache is True
+    assert hit.fares_suppressed is True, "the cache-hit copy dropped the flag"

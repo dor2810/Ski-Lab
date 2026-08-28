@@ -302,6 +302,21 @@ def live_flight_cost_eur(
             adults=adults,
             max_connections=max_connections,
         )
+        if not result.options and getattr(result, "fares_suppressed", False):
+            # Google LISTED flights but stripped every fare -- seen live
+            # from the Cloud Run egress IP while the same query priced
+            # fine from a residential one. From the user's seat this is
+            # indistinguishable from a hard block (a wall of EST.), and
+            # it means the same thing: the data exists and we were
+            # refused it. Report it and spend the paid fallback exactly
+            # as the ProviderBlockedError branch below does.
+            note_provider_blocked()
+            price = _serpapi_flight_fallback(
+                resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+            if price is None:
+                logger.warning("fares suppressed for %s and no SerpApi fallback available",
+                               resort.name)
+            return price
         return flight_adapter.cheapest_price_eur(result)
     except ProviderBlockedError:
         # Google served an anti-bot challenge. Retrying the same scraper

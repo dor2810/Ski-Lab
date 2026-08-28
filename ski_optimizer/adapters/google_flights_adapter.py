@@ -62,6 +62,7 @@ import datetime
 import random
 import time
 import json
+import threading
 from typing import List, Optional
 
 from ..models import FlightOption, FlightSearchResult
@@ -534,6 +535,69 @@ def booking_url(
 # string is the only block signal kept.
 _REAL_BLOCK_MARKER = "unusual traffic"
 
+# Per-thread scratch state for one search_flights() call. search_flights
+# walks its airports SEQUENTIALLY in the calling thread (the engine's
+# concurrency is one whole search per worker thread), so thread-local
+# gives exact per-call scoping with no signature changes through the
+# retry wrapper. Reset at the top of every search_flights call.
+_fetch_state = threading.local()
+
+
+def _count_cards(js: str) -> int:
+    """How many result cards the RAW payload carries, before any
+    filtering -- 0 for a null payload or anything unrecognisable."""
+    try:
+        payload = json.loads(js.split("data:", 1)[1].rsplit(",", 1)[0])
+        return len(payload[3][0] or [])
+    except (IndexError, ValueError, TypeError, KeyError):
+        return 0
+
+
+def _note_fares_suppressed():
+    """Record that this thread's current search saw cards but no prices."""
+    _fetch_state.suppressed = True
+
+
+def _salvage_parse(js: str):
+    """
+    Last-resort per-card parsing for a payload whose FULL parse raised
+    IndexError even after _drop_priceless_cards -- i.e. a card shape the
+    mirror doesn't know yet.
+
+    Rebuilds a single-card payload for each card and runs the real
+    upstream parser on it, keeping whichever cards parse cleanly. O(n)
+    parses of a handful of cards -- trivially cheap next to the network
+    fetch that produced them, and infinitely cheaper than losing every
+    priced flight on the route, which is what "return [], []" cost in
+    production for hours before this existed.
+
+    Returns (parsed, raw_cards), index-aligned like the caller's own
+    contract. ([], []) when nothing survives or the payload is beyond
+    understanding -- same degradation as before, now as the LAST resort
+    rather than the first response.
+    """
+    from fast_flights import parser as ff_parser
+
+    try:
+        data_str = js.split("data:", 1)[1].rsplit(",", 1)[0]
+        payload = json.loads(data_str)
+        cards = payload[3][0] or []
+    except (IndexError, ValueError, TypeError, KeyError):
+        return [], []
+
+    parsed, kept = [], []
+    for card in cards:
+        try:
+            single = json.loads(data_str)
+            single[3][0] = [card]
+            result = ff_parser.parse_js("data:" + json.dumps(single) + ", sideChannel")
+        except Exception:
+            continue  # this is the card that broke the full parse
+        if result:
+            parsed.extend(result)
+            kept.extend([card] * len(result))
+    return parsed, kept
+
 
 def _card_is_parseable(card) -> bool:
     """
@@ -546,6 +610,14 @@ def _card_is_parseable(card) -> bool:
     single_flight[3], [4], [5], [6], [8], [10], [11], [17], [20] and
     [21] with no guards either, so a short leg list is just as fatal as
     a missing price.
+
+    THIRD drift, production 2026-08-28: parse_js also reads
+    extras = flight[22]; extras[7]; extras[8] (carbon data), unguarded.
+    Cards with short carbon extras evaded the mirror and took whole
+    routes to "route skipped" -- every flight on the results page
+    showed EST. while accommodation on the same rows was live. This is
+    why _salvage_parse exists as the structural backstop: the mirror
+    WILL drift again, and next time it must cost one card, not a route.
 
     Coupled to a specific upstream version by nature. That is acceptable
     because being WRONG here is cheap and safe -- an unrecognised card is
@@ -561,6 +633,9 @@ def _card_is_parseable(card) -> bool:
                 _ = leg[index]
             tuple(leg[20])
             tuple(leg[21])
+        extras = flight[22]
+        _ = extras[7]
+        _ = extras[8]
     except (IndexError, TypeError, KeyError):
         return False
     return True
@@ -641,6 +716,9 @@ def _fetch_and_parse(query):
         return [], []
     js = script.text()
 
+    # Counted BEFORE filtering: "the page listed flights" is the fact
+    # that distinguishes fare suppression from an empty route.
+    total_cards = _count_cards(js)
 
     js = _drop_priceless_cards(js)
 
@@ -655,15 +733,19 @@ def _fetch_and_parse(query):
         logger.debug("no flight payload for this route (treated as no service)")
         return [], []
     except IndexError:
-        # Upstream defect in fast_flights 3.1.0 (parser.py: price =
-        # k[1][0][1]) -- a result card with no price raises IndexError
-        # and takes the WHOLE route's results with it, including the
-        # cards that did have prices. Nothing we can fix from here
-        # without reimplementing their parser, but it must not surface
-        # as a hard error: degrade to "no results for this route" and
-        # let the retry have another go.
-        logger.warning("fast_flights parser IndexError (priceless result card) -- route skipped")
-        return [], []
+        # A card evaded _drop_priceless_cards' mirror and crashed the
+        # unguarded upstream loop (fast_flights 3.1.0 parser.py). The
+        # mirror has drifted from the real parser three separate times
+        # now, so this no longer gives up on the route: parse the cards
+        # ONE BY ONE and keep the survivors. One weird card costs one
+        # card, never every priced flight on the route.
+        parsed, kept_cards = _salvage_parse(js)
+        logger.warning(
+            "fast_flights parser IndexError despite card filter -- salvaged %d card(s)",
+            len(parsed))
+        if total_cards and not parsed:
+            _note_fares_suppressed()
+        return parsed, kept_cards
 
     try:
         data_str = js.split("data:", 1)[1].rsplit(",", 1)[0]
@@ -674,6 +756,11 @@ def _fetch_and_parse(query):
         # _extract_booking_ingredients()) -- a raw-payload shape
         # surprise here shouldn't sink the already-parsed results.
         raw_cards = [None] * len(parsed)
+
+    if total_cards and not parsed:
+        # The page LISTED flights and every one was dropped as
+        # unpriced: fare suppression, not an empty route.
+        _note_fares_suppressed()
 
     return parsed, raw_cards
 
@@ -774,8 +861,10 @@ def search_flights(
         cached = get_cache().get(key)
         if cached is not None:
             return FlightSearchResult(options=cached.options, insight=cached.insight,
-                                      from_cache=True)
+                                      from_cache=True,
+                                      fares_suppressed=getattr(cached, "fares_suppressed", False))
 
+    _fetch_state.suppressed = False
     all_options: List[FlightOption] = []
     errors: List[str] = []
     blocked = False
@@ -802,8 +891,13 @@ def search_flights(
             )
         raise AdapterError(f"Google Flights search failed for every airport: {joined}")
 
-    result = FlightSearchResult(options=all_options, insight=None)
-    if use_cache:
+    result = FlightSearchResult(options=all_options, insight=None,
+                                fares_suppressed=getattr(_fetch_state, "suppressed", False))
+    # A suppressed EMPTY result is never cached: caching it would pin
+    # "Google refused us prices" for the whole TTL and poison every
+    # later lookup on the route -- exactly how the SerpApi fallback
+    # silently never fired in production the day this flag shipped.
+    if use_cache and not (result.fares_suppressed and not result.options):
         get_cache().set(key, result)
     return result
 

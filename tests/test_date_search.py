@@ -526,3 +526,30 @@ def test_cap_of_zero_disables_diversification():
                             top_n=12, max_results_per_resort=0)
     counts = Counter(t.resort.name for t in out)
     assert max(counts.values()) > 3, "cap=0 should allow a resort to dominate again"
+
+
+def test_two_resort_pool_is_not_padded_with_duplicates():
+    # REPRODUCED IN PRODUCTION 2026-08-28: the most-popular shortlist at
+    # a EUR1500 budget left only two resorts affordable, and the
+    # backfill pass padded the remaining six slots with MORE BANSKO --
+    # the user saw Bansko nine times and read it, correctly, as "it
+    # just picks the cheapest place over and over". Nobody is choosing
+    # between Bansko on the 13th, 14th and 15th of the same trip -- and
+    # with static estimates those duplicate rows even carry IDENTICAL
+    # totals. When the pool has real variety (2+ resorts), a shorter
+    # varied list beats a padded one; backfill remains only for the
+    # single-resort ("when should I go to Chamonix?") case, which the
+    # test above this section pins.
+    from collections import Counter
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = [r for r in load_resorts() if r.name in ("Bansko", "Pamporovo")]
+    prefs = _prefs()
+    earliest, latest = _window()
+    out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
+                            top_n=12, max_results_per_resort=3,
+                            pad_with_duplicates=False)
+    counts = Counter(t.resort.name for t in out)
+    assert set(counts) == {"Bansko", "Pamporovo"}
+    assert max(counts.values()) <= 3, f"padding crept back in: {dict(counts)}"
+    assert len(out) == 6, f"expected 3+3 varied results, not a padded dozen: {dict(counts)}"

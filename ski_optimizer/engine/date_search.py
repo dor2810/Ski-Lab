@@ -238,6 +238,9 @@ def search_date_range(
     allow_over_budget_fallback: bool = True,
     live_reprice_n: Optional[int] = None,
     max_results_per_resort: int = 3,
+    # See cap_per_resort: False = user-facing result lists, where a
+    # shorter varied list beats one padded with duplicate resorts.
+    pad_with_duplicates: bool = True,
 ) -> List[DatedTripOption]:
     """
     Full funnel: shortlist resorts, then evaluate each across every
@@ -500,7 +503,8 @@ def search_date_range(
 
     if results or not allow_over_budget_fallback:
         results.sort(key=lambda t: t.score, reverse=True)
-        return cap_per_resort(results, top_n, max_results_per_resort)
+        return cap_per_resort(results, top_n, max_results_per_resort,
+                              pad_with_duplicates=pad_with_duplicates)
 
     if not all_evaluated:
         return []  # genuinely nothing could be priced at all -- not a budget question
@@ -510,7 +514,8 @@ def search_date_range(
     # Diversify the fallback too -- "nothing fit your budget" is even
     # more useless as twenty rows of the same resort.
     cheapest_first = sorted(all_evaluated, key=lambda t: t.cost.total_eur)
-    fallback = cap_per_resort(cheapest_first, max(top_n, 3), max_results_per_resort)
+    fallback = cap_per_resort(cheapest_first, max(top_n, 3), max_results_per_resort,
+                              pad_with_duplicates=pad_with_duplicates)
     fallback = [DatedTripOption(
         resort=t.resort, start_date=t.start_date, end_date=t.end_date, cost=t.cost,
         score=t.score, score_components=t.score_components, season=t.season,
@@ -520,7 +525,8 @@ def search_date_range(
 
 
 def cap_per_resort(options: List[DatedTripOption], top_n: int,
-                   max_per_resort: int) -> List[DatedTripOption]:
+                   max_per_resort: int,
+                   pad_with_duplicates: bool = True) -> List[DatedTripOption]:
     """
     Keeps the result list VARIED: at most `max_per_resort` dates from
     any one resort, then fills any remaining slots with the next best
@@ -560,7 +566,23 @@ def cap_per_resort(options: List[DatedTripOption], top_n: int,
         else:
             leftovers.append(opt)
 
-    if len(picked) < top_n:
+    # pad_with_duplicates=False suppresses the backfill UNLESS the pool
+    # is effectively one resort (the pinned "when should I go to
+    # Chamonix?" case, where 12 dates of one place is exactly the
+    # question asked). It exists for user-facing result lists:
+    # reproduced in production 2026-08-28, a two-resort pool at
+    # top_n=12 returned Bansko NINE times -- the cap filled 3+3 and the
+    # backfill padded the remaining six slots with more of the cheapest
+    # resort, whose statically-estimated duplicate rows even carry
+    # identical totals. A shorter varied list beats a padded one.
+    #
+    # The default stays True because engine-level callers legitimately
+    # use a huge top_n to mean "give me the whole pool" (e.g. to
+    # reprice or analyse every candidate date) -- silently shrinking
+    # their result set broke three of their tests when this was first
+    # made unconditional.
+    distinct_resorts = len(per_resort)
+    if len(picked) < top_n and (pad_with_duplicates or distinct_resorts < 2):
         picked.extend(leftovers[: top_n - len(picked)])
     return picked[:top_n]
 

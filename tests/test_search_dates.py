@@ -331,3 +331,23 @@ def test_search_dates_each_result_carries_season_and_explanation(authed_client):
     for result in results:
         assert result["season"] in ("peak", "high", "shoulder")
         assert isinstance(result["explanation"], str) and result["explanation"]
+
+
+def test_a_two_resort_pool_is_not_padded_with_the_cheapest_resort(authed_client):
+    # THE USER'S OWN COMPLAINT, reproduced live 2026-08-28: the popular
+    # shortlist at a EUR1500 budget left two affordable resorts and the
+    # response was Bansko NINE times out of twelve. The engine's
+    # pad_with_duplicates=False must actually be wired into THIS
+    # endpoint -- the engine test alone stays green if the route stops
+    # passing the flag.
+    from collections import Counter
+
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 1500, "ski_days": 5, "group_size": 2,
+        "earliest_date": "2027-01-05", "latest_date": "2027-02-05",
+        "top_n": 12, "include_resorts": ["Bansko", "Pamporovo"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    counts = Counter(r["resort"]["name"] for r in resp.json()["results"])
+    assert max(counts.values()) <= 3, f"duplicate padding is back: {dict(counts)}"
+    assert len(counts) >= 2, f"expected both resorts represented: {dict(counts)}"

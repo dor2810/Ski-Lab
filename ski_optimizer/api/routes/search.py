@@ -1291,6 +1291,10 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         top_n=payload.top_n,
         flight_cost_fn=flight_cost_fn, accommodation_cost_fn=accommodation_cost_fn,
         allow_over_budget_fallback=payload.allow_over_budget_fallback,
+        # User-facing list: never pad the tail with duplicate resorts --
+        # reproduced live: a two-resort pool returned Bansko x9. A
+        # shorter varied list beats a padded one (see cap_per_resort).
+        pad_with_duplicates=False,
         # Caps live pricing to a bounded number of (resort, date) pairs.
         #
         # RAISED FROM 6 TO 24 on 2026-08-27, once repricing was made

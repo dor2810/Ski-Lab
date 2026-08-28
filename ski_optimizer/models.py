@@ -335,6 +335,14 @@ class FlightSearchResult:
     options: list                                # List[FlightOption]
     insight: Optional[PriceInsight] = None
     from_cache: bool = False
+    # True when the provider LISTED flights but priced none of them --
+    # seen live 2026-08-28 from the Cloud Run egress IP, where Google
+    # serves schedule data with every fare stripped while the same
+    # query from a residential IP has prices. Distinct from an empty
+    # result (no service): this means "the data exists and we were
+    # refused it", which callers treat like a block (paid fallback,
+    # honest reporting) rather than like an empty route.
+    fares_suppressed: bool = False
 
 
 # ---------------------------------------------------------------------------

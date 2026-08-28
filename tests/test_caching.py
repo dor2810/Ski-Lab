@@ -316,3 +316,32 @@ def test_empty_result_records_nothing_without_crashing():
     db = _session()
     assert record_search_result(db, "TLV", date(2027, 1, 15), None,
                                  FlightSearchResult(options=[])) == 0
+
+
+def test_fare_suppression_triggers_the_serpapi_fallback_like_a_block():
+    # Fare-suppressed pages (flights listed, no prices -- see the
+    # adapter's own suppression tests) previously fell through to a
+    # silent estimate: the SerpApi fallback only fired on a HARD block.
+    # From the user's seat both look identical -- a wall of EST. -- and
+    # both mean the same thing: Google has the data and won't give it
+    # to us. Spend the quota in both cases.
+    import datetime as _dt
+    from unittest import mock
+
+    from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.engine import cost_calculator as cc
+    from ski_optimizer.engine.provider_status import reset_provider_status, was_provider_blocked
+    from ski_optimizer.models import FlightSearchResult
+
+    resort = next(r for r in load_resorts() if r.name == "Chamonix")
+    reset_provider_status()
+
+    suppressed = FlightSearchResult(options=[], insight=None, fares_suppressed=True)
+    from ski_optimizer.adapters import google_flights_adapter
+    with mock.patch.object(google_flights_adapter, "search_flights", return_value=suppressed), \
+         mock.patch.object(cc, "_serpapi_flight_fallback", return_value=321.0) as fb:
+        price = cc.live_flight_cost_eur(resort, _dt.date(2027, 1, 10), _dt.date(2027, 1, 16))
+
+    assert price == 321.0, "the fallback's price must be used"
+    assert fb.called
+    assert was_provider_blocked() is True, "suppression must be reported like a block"
