@@ -23,7 +23,15 @@ from passlib.context import CryptContext
 # GPU-based cracking than bcrypt's cost factor alone). deprecated="auto"
 # means if this list ever gains a second scheme, passlib will
 # transparently re-hash old hashes into the new scheme on next login.
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    # Pinned explicitly (security review 2026-08-28, LOW): the library
+    # defaults drift across passlib/argon2-cffi upgrades, making the
+    # hashing cost non-reproducible. These are OWASP's Argon2id
+    # minimums, comfortably inside the 1Gi Cloud Run instance.
+    argon2__memory_cost=19456, argon2__time_cost=2, argon2__parallelism=1,
+    deprecated="auto",
+)
 
 
 def hash_password(plain_password: str) -> str:
@@ -121,7 +129,7 @@ def refresh_token_expiry() -> datetime.datetime:
 
 # --- lightweight CSRF mitigation ---
 #
-# Because auth tokens live in httpOnly cookies (not a header the JS
+# Because NOTE (2026-08-28): auth is bearer-token now, NOT cookies -- bearer tokens are not ambient credentials, so classic CSRF cannot target these routes today; this header is kept as defense-in-depth so any future reintroduction of cookie auth fails closed, not because it is load-bearing. Historical rationale: auth tokens lived in httpOnly cookies (not a header the JS
 # sets explicitly), the browser attaches them automatically to ANY
 # request to this origin -- including one triggered by a malicious
 # third-party page. Requiring a custom header on state-changing

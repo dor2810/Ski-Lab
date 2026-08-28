@@ -38,6 +38,7 @@ from ...db.models import User, RefreshToken
 from ...adapters import email_adapter
 from .. import security
 from ..schemas import RegisterRequest, LoginRequest, UserOut, AuthResponse, RefreshRequest, MessageResponse
+from ..rate_limit import enforce_auth_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -102,7 +103,7 @@ def get_current_user_for_search(request: Request, db: Session = Depends(get_db))
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(enforce_auth_rate_limit)])
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         # Same message either way a real attacker would try email
@@ -132,7 +133,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     return AuthResponse(user=user, access_token=access_token, refresh_token=refresh_token)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, dependencies=[Depends(enforce_auth_rate_limit)])
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     # Verify against a real dummy hash even when no user is found (see
@@ -149,7 +150,24 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     return AuthResponse(user=user, access_token=access_token, refresh_token=refresh_token)
 
 
-@router.post("/refresh", response_model=AuthResponse)
+def _revoke_if_active(db: Session, token_id, replaced_by_id) -> bool:
+    """
+    Atomically revoke a refresh token IF it is still active. Returns
+    False when another request already revoked it -- the caller lost a
+    rotation race and must treat that as reuse. Conditional UPDATE at
+    the database, not ORM read-modify-write: under SQLite's serialized
+    writers the two competing UPDATEs are strictly ordered and exactly
+    one matches revoked_at IS NULL. Same pattern as credits.try_spend.
+    """
+    updated = (db.query(RefreshToken)
+               .filter(RefreshToken.id == token_id, RefreshToken.revoked_at.is_(None))
+               .update({"revoked_at": datetime.datetime.utcnow(),
+                        "replaced_by_id": replaced_by_id},
+                       synchronize_session=False))
+    return updated == 1
+
+
+@router.post("/refresh", response_model=AuthResponse, dependencies=[Depends(enforce_auth_rate_limit)])
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     raw_token = payload.refresh_token
     token_hash = security.hash_refresh_token(raw_token)
@@ -191,8 +209,23 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
     )
     db.add(new_token)
     db.flush()  # get new_token.id before using it below
-    stored.revoked_at = datetime.datetime.utcnow()
-    stored.replaced_by_id = new_token.id
+    if not _revoke_if_active(db, stored.id, replaced_by_id=new_token.id):
+        # LOST THE RACE (security review 2026-08-28, MEDIUM): another
+        # request rotated this same token between our read and this
+        # conditional UPDATE. The old read-then-write version let BOTH
+        # racers win -- which meant a token thief racing the real
+        # user's refresh minted a session the reuse detector never
+        # saw, because neither racer ever presented an already-revoked
+        # token. The loser now gets exactly the reuse treatment:
+        # revoke the whole family, force fresh logins everywhere.
+        db.rollback()
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == stored.user_id,
+            RefreshToken.revoked_at.is_(None),
+        ).update({"revoked_at": datetime.datetime.utcnow()})
+        db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED,
+                            "Refresh token reuse detected; all sessions revoked.")
     db.commit()
 
     access_token = security.create_access_token(user.id)

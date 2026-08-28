@@ -53,6 +53,11 @@ def _fresh_db():
     # from this file's perspective) engine instead of its own.
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
+    # Auth endpoints are rate limited (security review 2026-08-28) and
+    # every test in this file shares one client identity -- clear
+    # between tests exactly as test_search.py does.
+    from ski_optimizer.api import rate_limit as _rl
+    _rl.clear_all()
     yield
     Base.metadata.drop_all(bind=engine)
     del app.dependency_overrides[get_db]
@@ -246,3 +251,97 @@ def test_email_surrounding_whitespace_is_stripped(client):
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 201
     assert resp.json()["user"]["email"] == "spaced@example.com"
+
+
+# --- security review 2026-08-28: auth hardening ---
+
+def test_auth_endpoints_are_rate_limited(client):
+    # HIGH finding: /auth/* had NO rate limiting -- credential stuffing
+    # and mass account creation ran at full speed while /trips/search
+    # was carefully throttled. Argon2's cost is incidental, not a
+    # control. 10/min per IP; the 11th call in a minute is refused.
+    for _ in range(10):
+        r = client.post("/auth/login", json={
+            "email": "nobody@example.com", "password": "wrong-password",
+        }, headers=CSRF_HEADERS)
+        assert r.status_code == 401
+    r = client.post("/auth/login", json={
+        "email": "nobody@example.com", "password": "wrong-password",
+    }, headers=CSRF_HEADERS)
+    assert r.status_code == 429
+
+
+def test_google_login_refuses_to_link_an_unverified_password_account():
+    # CRITICAL finding (dormant until OAuth credentials exist):
+    # register victim@x.com with the ATTACKER's password (registration
+    # never verifies email ownership), wait for the real victim to
+    # "Sign in with Google" -- the old code silently linked the
+    # victim's Google identity onto the attacker-controlled row,
+    # whose password the attacker still knows. Linking by bare email
+    # match must be refused when that account never proved it owns
+    # the address.
+    import pytest as _pytest
+    from ski_optimizer.api.routes.google_oauth import (
+        UnverifiedAccountCollision, _resolve_google_user)
+    from ski_optimizer.db.models import User
+
+    db = TestingSessionLocal()
+    try:
+        attacker_row = User(email="victim@example.com",
+                            password_hash="$argon2-fake", is_email_verified=False)
+        db.add(attacker_row); db.commit()
+
+        with _pytest.raises(UnverifiedAccountCollision):
+            _resolve_google_user(db, google_sub="g-123",
+                                 email="victim@example.com", display_name="Victim")
+        db.refresh(attacker_row)
+        assert attacker_row.google_sub is None, "the Google identity must NOT be linked"
+    finally:
+        db.close()
+
+
+def test_google_login_still_links_a_verified_account_and_creates_new_ones():
+    # The two legitimate paths must keep working: linking onto an
+    # account that DID prove email ownership, and first-time signup.
+    from ski_optimizer.api.routes.google_oauth import _resolve_google_user
+    from ski_optimizer.db.models import User
+
+    db = TestingSessionLocal()
+    try:
+        verified = User(email="proved@example.com",
+                        password_hash="$argon2-fake", is_email_verified=True)
+        db.add(verified); db.commit()
+
+        linked = _resolve_google_user(db, google_sub="g-1", email="proved@example.com",
+                                      display_name="P")
+        assert linked.id == verified.id and linked.google_sub == "g-1"
+
+        fresh = _resolve_google_user(db, google_sub="g-2", email="new@example.com",
+                                     display_name="N")
+        assert fresh.google_sub == "g-2" and fresh.is_email_verified is True
+    finally:
+        db.close()
+
+
+def test_refresh_rotation_revocation_is_atomic():
+    # MEDIUM finding: rotation was ORM read-then-write, so two refreshes
+    # racing with the SAME still-valid token could both win -- a token
+    # thief racing the real user minted a session the reuse detector
+    # never saw. The revoke step is now a conditional UPDATE; the loser
+    # observes 0 rows and is treated as reuse.
+    from ski_optimizer.api.routes.auth import _revoke_if_active
+    from ski_optimizer.db.models import RefreshToken, User
+    from ski_optimizer.api import security as sec
+
+    db = TestingSessionLocal()
+    try:
+        u = User(email="r@example.com", password_hash="x", is_email_verified=False)
+        db.add(u); db.commit()
+        t = RefreshToken(user_id=u.id, token_hash=sec.hash_refresh_token("raw"),
+                         expires_at=sec.refresh_token_expiry())
+        db.add(t); db.commit()
+
+        assert _revoke_if_active(db, t.id, replaced_by_id=None) is True, "first revoke wins"
+        assert _revoke_if_active(db, t.id, replaced_by_id=None) is False, "second observes the loss"
+    finally:
+        db.close()

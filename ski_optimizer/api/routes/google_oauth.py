@@ -57,6 +57,45 @@ async def google_login(request: Request):
     return await oauth.google.authorize_redirect(request, GOOGLE_REDIRECT_URI)
 
 
+class UnverifiedAccountCollision(Exception):
+    """A Google sign-in's email matches an existing account that never
+    proved it owns that address -- linking is refused."""
+
+
+def _resolve_google_user(db: Session, google_sub: str, email: str, display_name):
+    """
+    Find or create the User for a verified Google identity.
+
+    SECURITY (review 2026-08-28, CRITICAL, fixed before OAuth was ever
+    enabled): the old inline version linked by bare email match. But
+    password registration never verifies email ownership -- so an
+    attacker could pre-register victim@x.com with a password only THEY
+    know, wait for the victim to "Sign in with Google", and the
+    victim's real Google identity would be silently attached to the
+    attacker-controlled row. Linking is now allowed ONLY onto accounts
+    that already proved email ownership (is_email_verified); an
+    unverified collision raises and the user is told to sign in with
+    the password flow instead.
+    """
+    user = db.query(User).filter(User.google_sub == google_sub).first()
+    if user:
+        return user
+    existing = db.query(User).filter(User.email == email).first()
+    if existing is not None:
+        if not existing.is_email_verified:
+            raise UnverifiedAccountCollision(email)
+        existing.google_sub = google_sub
+        db.commit()
+        db.refresh(existing)
+        return existing
+    user = User(email=email, google_sub=google_sub,
+                display_name=display_name, is_email_verified=True)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.get("/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     _require_google_configured()
@@ -91,22 +130,13 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     # duplicate instead.
     email = email.strip().lower()
 
-    user = db.query(User).filter(User.google_sub == google_sub).first()
-    if not user:
-        # An account with this email might already exist from password
-        # signup -- link them by email rather than creating a duplicate,
-        # but only because Google has already verified this email above.
-        user = db.query(User).filter(User.email == email).first()
-        if user:
-            user.google_sub = google_sub
-        else:
-            user = User(
-                email=email, google_sub=google_sub,
-                display_name=claims.get("name"), is_email_verified=True,
-            )
-            db.add(user)
-        db.commit()
-        db.refresh(user)
+    try:
+        user = _resolve_google_user(db, google_sub=google_sub, email=email,
+                                    display_name=claims.get("name"))
+    except UnverifiedAccountCollision:
+        # Refuse the silent merge and say why, without leaking more.
+        return RedirectResponse(
+            f"{FRONTEND_URL}/sign-in#error=account_exists_use_password")
 
     access_token, refresh_token = _issue_tokens(db, user)
     # Tokens travel in the URL FRAGMENT (#...), not a query string or a

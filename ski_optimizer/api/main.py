@@ -34,7 +34,14 @@ from .routes import auth, google_oauth, search
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 FRONTEND_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(",") if origin.strip()]
-SESSION_SECRET = os.environ.get("SECRET_KEY", "")  # required for Authlib's OAuth state; see security.py
+SESSION_SECRET = os.environ.get("SECRET_KEY", "")
+# Fail FAST if unset (security review 2026-08-28, MEDIUM): the JWT path
+# refuses a missing SECRET_KEY loudly (security._require_secret_key),
+# but this silently fell back to signing the OAuth-state session cookie
+# with an EMPTY key -- forgeable by anyone. A misconfigured deploy now
+# dies at startup instead of degrading quietly.
+if not SESSION_SECRET:
+    raise RuntimeError("SECRET_KEY must be set (signs both JWTs and the OAuth state cookie)")  # required for Authlib's OAuth state; see security.py
 
 app = FastAPI(title="Ski Lab API")
 

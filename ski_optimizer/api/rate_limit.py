@@ -1,7 +1,7 @@
 """
 In-memory rate limiting for the search endpoints.
 
-WHY THIS EXISTS: search is anonymous by default (see
+WHY THIS EXISTS: search requires auth by default (ALLOW_ANONYMOUS_SEARCH is the dev escape hatch); credits are the primary per-user cost control, these limiters the per-IP backstop (see
 routes/auth.get_current_user_for_search) -- the product deliberately
 shows no login, matching the frontend's "no accounts" design (see
 frontend/web's brand spec). That means there is NO per-account
@@ -101,7 +101,13 @@ def _client_key(request: Request) -> str:
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        # LAST hop, not first (security review 2026-08-28): proxies --
+        # Cloud Run's front end included -- APPEND the real client IP
+        # to whatever X-Forwarded-For the client sent, so the first
+        # entry is exactly the one an attacker controls. Keying on it
+        # let one caller mint a fresh rate-limit bucket per request
+        # with a random header value.
+        return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -116,6 +122,15 @@ _per_ip_limiter = RateLimiter(max_requests=_PER_IP_LIMIT, window_seconds=60)
 _BOOKING_LINK_LIMIT = int(os.environ.get("BOOKING_LINK_RATE_LIMIT_PER_MINUTE", "30"))
 _booking_link_limiter = RateLimiter(max_requests=_BOOKING_LINK_LIMIT, window_seconds=60)
 
+# Auth endpoints get their own, STRICTER limiter (security review
+# 2026-08-28, HIGH): /auth/* previously had none at all, so credential
+# stuffing and mass account registration ran at full speed while search
+# was carefully throttled. Argon2's hashing cost is incidental friction,
+# not a control. 10/min per IP covers every legitimate flow (register,
+# login, a burst of refreshes across tabs) with room to spare.
+_AUTH_LIMIT = int(os.environ.get("AUTH_RATE_LIMIT_PER_MINUTE", "10"))
+_auth_limiter = RateLimiter(max_requests=_AUTH_LIMIT, window_seconds=60)
+
 _DAILY_LIVE_LIMIT = int(os.environ.get("MAX_LIVE_SEARCHES_PER_DAY", "8"))
 _live_pricing_limiter = RateLimiter(max_requests=_DAILY_LIVE_LIMIT, window_seconds=86400)
 _GLOBAL_KEY = "global"
@@ -128,6 +143,13 @@ def enforce_search_rate_limit(request: Request) -> None:
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"Too many search requests -- limit is {_PER_IP_LIMIT} per minute. Try again shortly.",
         )
+
+
+def enforce_auth_rate_limit(request: Request) -> None:
+    """Per-IP limit for /auth/* -- see _auth_limiter's comment."""
+    if not _auth_limiter.allow(_client_key(request)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many authentication attempts; try again in a minute.")
 
 
 def enforce_booking_link_rate_limit(request: Request) -> None:
@@ -153,5 +175,6 @@ def live_pricing_allowed() -> bool:
 def clear_all() -> None:
     """Test helper."""
     _booking_link_limiter.clear()
+    _auth_limiter.clear()
     _per_ip_limiter.clear()
     _live_pricing_limiter.clear()

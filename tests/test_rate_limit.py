@@ -84,3 +84,30 @@ def test_rejects_nonpositive_construction_args():
             assert False, f"expected ValueError for {kwargs}"
         except ValueError:
             pass
+
+
+def test_client_key_trusts_the_last_forwarded_hop_not_the_first():
+    # HIGH finding: the limiter keyed on the FIRST X-Forwarded-For
+    # entry -- the one the CLIENT writes. Any caller could send a
+    # random XFF per request and get a fresh bucket every time,
+    # bypassing every per-IP limit. Proxies (Cloud Run's front end
+    # included) APPEND the real client IP, so the trustworthy entry is
+    # the LAST one.
+    from ski_optimizer.api.rate_limit import _client_key
+
+    class _Client:
+        host = "10.0.0.1"
+
+    class _Req:
+        headers = {"x-forwarded-for": "6.6.6.6, 203.0.113.9"}
+        client = _Client()
+
+    assert _client_key(_Req()) == "203.0.113.9", (
+        "the spoofable first hop must not be the rate-limit key"
+    )
+
+    class _NoXff:
+        headers = {}
+        client = _Client()
+
+    assert _client_key(_NoXff()) == "10.0.0.1"
