@@ -214,6 +214,8 @@ const en = {
   // with Google's own "price has changed" banner).
   flightBookNote: "Book opens this exact flight on Google Flights. The final price is confirmed there and can differ from the search price.",
 
+  transferRealQuote: "Real transfer quote: €{price} one-way (van for 2) · ~{dur} drive",
+  transferDriveOnly: "No operator quote for this route — real drive from {iata_free}: ~{dur} ({km} km)",
   accommodationOptionsTitle: "Places to stay ({count})",
   accommodationPerNight: "€{price}/night",
   accommodationPerPersonStay: "€{price} per person for the stay",

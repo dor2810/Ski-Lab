@@ -210,6 +210,17 @@ export interface AlternativeDate {
   accommodation_price_is_live: boolean;
 }
 
+/** Provenance of the transfer line: a real Alps2Alps quote, or real
+ * drive figures plus the exact reason no quote exists. */
+export interface TransferInfo {
+  source: "alps2alps" | "drive_time_only" | "estimated";
+  price_eur: number | null;
+  duration_minutes: number | null;
+  distance_km: number | null;
+  vehicles_offered: number | null;
+  unavailable_reason: string | null;
+}
+
 export interface TripResult {
   resort: Resort;
   cost: CostBreakdown;
@@ -260,6 +271,7 @@ export interface TripResult {
   // api/routes/search.py's _transfer_search_url docstring on the
   // backend.
   transfer_search_url: string;
+  transfer_info?: TransferInfo | null;
   // Real, working links for equipment rental and lift-pass purchase --
   // see engine/links.py's equipment_search_url()/ski_pass_search_url()
   // on the backend for exactly what each is (a verified rental

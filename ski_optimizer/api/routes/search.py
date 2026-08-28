@@ -37,7 +37,7 @@ from ...engine.cost_calculator import (
     live_accommodation_property_name, live_accommodation_options,
     live_flight_options,
     apply_live_flight_price, apply_live_accommodation_price,
-    live_transfer_booking_url,
+    live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
     google_flights_url, google_hotels_url, alps2alps_search_url,
@@ -334,6 +334,29 @@ class FlightOptionOut(BaseModel):
     # just what the flight costs. The headline total assumes the
     # cheapest flight; this is what makes the alternatives comparable.
     trip_total_eur: float
+
+
+class TransferInfoOut(BaseModel):
+    """
+    Provenance of the transfer line -- the owner's ask, verbatim: "Make
+    it always show real data... If for some resort it doesn't work I
+    want to know exactly why."
+
+    source "alps2alps": price_eur is a REAL frozen quote (one-way,
+    cheapest vehicle for 2). "drive_time_only": no operator quote, but
+    duration/distance are REAL Google-measured road figures, and
+    unavailable_reason says exactly why there is no price.
+    "estimated": neither (should not occur -- drive times cover every
+    gateway). The cost line's transfer_eur stays the researched
+    per-person figure; this is the provenance beside it, never a
+    silent substitution.
+    """
+    source: str
+    price_eur: Optional[float] = None
+    duration_minutes: Optional[float] = None
+    distance_km: Optional[float] = None
+    vehicles_offered: Optional[int] = None
+    unavailable_reason: Optional[str] = None
 
 
 class AccommodationOptionOut(BaseModel):
@@ -992,6 +1015,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
+            transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=weather_by_index.get(i),
@@ -1251,6 +1275,7 @@ class DatedTripResultOut(BaseModel):
     accommodation_options: List[AccommodationOptionOut] = []
     total_eur_with_fastest_flight: Optional[float] = None
     transfer_search_url: str
+    transfer_info: Optional["TransferInfoOut"] = None
     equipment_search_url: str
     ski_pass_search_url: str
     weather: Optional[WeatherOut] = None
@@ -1478,6 +1503,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),
+            transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=weather_by_index.get(i),

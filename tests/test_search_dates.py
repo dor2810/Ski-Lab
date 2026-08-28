@@ -452,3 +452,25 @@ def test_weekend_start_option_is_accepted_and_respected(authed_client):
     for r in results:
         wd = _dt.date.fromisoformat(r["start_date"]).weekday()
         assert wd in (5, 6), f"non-weekend start leaked through: {r['start_date']}"
+
+
+def test_every_result_carries_transfer_provenance(authed_client):
+    # "Make it always show real data... if it doesn't work I want to
+    # know exactly why": each result carries either a REAL Alps2Alps
+    # price or real drive figures plus the precise reason.
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "earliest_date": "2027-01-05", "latest_date": "2027-01-20",
+        "top_n": 6, "include_resorts": ["Bansko", "Gudauri", "Val Thorens"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    for r in resp.json()["results"]:
+        info = r["transfer_info"]
+        assert info is not None, r["resort"]["name"]
+        if info["source"] == "alps2alps":
+            assert info["price_eur"] and info["price_eur"] > 0
+        else:
+            assert info["unavailable_reason"], (
+                f'{r["resort"]["name"]}: a missing quote must carry its reason'
+            )
+            assert info["duration_minutes"], "drive time must still be real"

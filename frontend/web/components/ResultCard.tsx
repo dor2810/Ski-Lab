@@ -123,6 +123,13 @@ function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Di
   ];
 }
 
+function formatMinutes(minutes: number | null): string {
+  if (minutes == null) return "";
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
+}
+
 export function ResultCard({ result, maxConnections = null }: {
   result: TripResult;
   // The max-connections preference the search ran with -- needed by
@@ -246,6 +253,27 @@ export function ResultCard({ result, maxConnections = null }: {
         <SearchLinkButton href={r.ski_pass_search_url} label={t("viewSkiPass")} />
         <span className="text-[11px] text-subtle">{t("searchLinkDisclaimer")}</span>
       </div>
+
+      {/* Transfer provenance -- a real Alps2Alps price, or the real
+          drive figures with (in the tooltip) the exact reason there is
+          no operator quote. Never a silent estimate. */}
+      {r.transfer_info && (
+        <p className="mt-2 text-[11px] leading-snug text-subtle"
+           title={r.transfer_info.unavailable_reason ?? undefined}>
+          {r.transfer_info.source === "alps2alps" && r.transfer_info.price_eur != null
+            ? t("transferRealQuote", {
+                price: String(Math.round(r.transfer_info.price_eur)),
+                dur: formatMinutes(r.transfer_info.duration_minutes),
+              })
+            : r.transfer_info.duration_minutes != null
+              ? t("transferDriveOnly", {
+                  iata_free: "",
+                  dur: formatMinutes(r.transfer_info.duration_minutes),
+                  km: String(Math.round(r.transfer_info.distance_km ?? 0)),
+                })
+              : null}
+        </p>
+      )}
 
       <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
 
