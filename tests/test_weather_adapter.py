@@ -363,3 +363,34 @@ def test_get_historical_average_skips_feb_29_years_cleanly(monkeypatch):
     result = wa.get_historical_average(resort, date(2028, 2, 29), years_back=4, use_cache=False)
     assert result is not None
     assert result.years_sampled <= 4
+
+
+# --- engine/weather.py wrapper (coverage pass 2026-08-28: 73% -> 100%) ---
+
+def test_engine_weather_returns_none_without_coordinates():
+    # The engine wrapper's own guard, distinct from the adapter's: a
+    # resort with no lat/lon must short-circuit to None BEFORE any
+    # provider import or request.
+    import dataclasses
+    import datetime
+    from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.engine.weather import get_trip_weather
+
+    resort = dataclasses.replace(next(iter(load_resorts())), latitude=None, longitude=None)
+    assert get_trip_weather(resort, datetime.date(2027, 1, 10), datetime.date(2027, 1, 16)) is None
+
+
+def test_engine_weather_degrades_to_none_when_the_adapter_raises(monkeypatch):
+    # "Degrade visibly, never break the search": a provider blowup must
+    # come back as None, exactly like every other live_* helper.
+    import datetime
+    from ski_optimizer.adapters import weather_adapter
+    from ski_optimizer.data.resort_repository import load_resorts
+    from ski_optimizer.engine.weather import get_trip_weather
+
+    def _boom(*a, **k):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(weather_adapter, "get_trip_weather", _boom)
+    resort = next(r for r in load_resorts() if r.latitude is not None)
+    assert get_trip_weather(resort, datetime.date(2027, 1, 10), datetime.date(2027, 1, 16)) is None
