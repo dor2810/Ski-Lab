@@ -108,6 +108,14 @@ def _client_key(request: Request) -> str:
 _PER_IP_LIMIT = int(os.environ.get("SEARCH_RATE_LIMIT_PER_MINUTE", "6"))
 _per_ip_limiter = RateLimiter(max_requests=_PER_IP_LIMIT, window_seconds=60)
 
+# Booking-link clicks get their OWN, looser per-IP budget (code review
+# 2026-08-28): they shared the 6/min search limiter, so one search plus
+# a few Book clicks tripped 429 and silently degraded the deep link to
+# the generic search page. A click is one cheap upstream request, not a
+# 24-lookup search -- 30/min bounds abuse without punishing real use.
+_BOOKING_LINK_LIMIT = int(os.environ.get("BOOKING_LINK_RATE_LIMIT_PER_MINUTE", "30"))
+_booking_link_limiter = RateLimiter(max_requests=_BOOKING_LINK_LIMIT, window_seconds=60)
+
 _DAILY_LIVE_LIMIT = int(os.environ.get("MAX_LIVE_SEARCHES_PER_DAY", "8"))
 _live_pricing_limiter = RateLimiter(max_requests=_DAILY_LIVE_LIMIT, window_seconds=86400)
 _GLOBAL_KEY = "global"
@@ -120,6 +128,14 @@ def enforce_search_rate_limit(request: Request) -> None:
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"Too many search requests -- limit is {_PER_IP_LIMIT} per minute. Try again shortly.",
         )
+
+
+def enforce_booking_link_rate_limit(request: Request) -> None:
+    """Per-IP limit for the flight-booking-link endpoint -- see
+    _booking_link_limiter's comment for why it is separate from search."""
+    if not _booking_link_limiter.allow(_client_key(request)):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many booking-link requests; try again in a minute.")
 
 
 def live_pricing_allowed() -> bool:
@@ -136,5 +152,6 @@ def live_pricing_allowed() -> bool:
 
 def clear_all() -> None:
     """Test helper."""
+    _booking_link_limiter.clear()
     _per_ip_limiter.clear()
     _live_pricing_limiter.clear()

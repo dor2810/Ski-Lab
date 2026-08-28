@@ -20,7 +20,7 @@ without a full restart (useful during a verification pass).
 """
 import datetime
 import os
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -53,7 +53,7 @@ from ...engine.provider_status import reset_provider_status, was_provider_blocke
 from ...nlp.explainer import explain
 from ...db.models import User
 from .auth import get_current_user_for_search
-from ..rate_limit import enforce_search_rate_limit, live_pricing_allowed
+from ..rate_limit import enforce_search_rate_limit, enforce_booking_link_rate_limit, live_pricing_allowed
 from .. import credits as credits_module
 from ...db.database import get_db
 from sqlalchemy.orm import Session
@@ -1033,13 +1033,13 @@ def list_resort_names(current_user: Optional[User] = Depends(get_current_user_fo
 # ---------------------------------------------------------------------------
 
 class FlightBookingLinkRequest(BaseModel):
-    resort_name: str
+    resort_name: str = Field(max_length=100)
     outbound_date: datetime.date
     return_date: datetime.date
     # The itinerary's real designators, e.g. ["A3 927", "A3 982"] --
     # the only stable identity a flight option has across fetches (see
     # cost_calculator.live_flight_booking_url's docstring).
-    flight_numbers: List[str] = Field(min_length=1, max_length=8)
+    flight_numbers: List[Annotated[str, Field(max_length=16)]] = Field(min_length=1, max_length=8)
     # Must match what the search that showed the option used, or the
     # re-run is a different query and may not contain it.
     max_connections: Optional[int] = Field(default=None, ge=0, le=2)
@@ -1054,7 +1054,7 @@ class FlightBookingLinkResponse(BaseModel):
 
 
 @router.post("/flight-booking-link", response_model=FlightBookingLinkResponse,
-             dependencies=[Depends(enforce_search_rate_limit)])
+             dependencies=[Depends(enforce_booking_link_rate_limit)])
 def flight_booking_link(payload: FlightBookingLinkRequest,
                         current_user: Optional[User] = Depends(get_current_user_for_search)):
     """
