@@ -398,3 +398,39 @@ def test_results_carry_week_spread_alternative_dates(authed_client):
             assert isinstance(a["within_budget"], bool)
             assert isinstance(a["flight_price_is_live"], bool)
     assert seen_with_alts >= 2, "both resorts' lead rows should expand"
+
+
+def test_every_result_carries_weather_not_just_the_top_one(authed_client, monkeypatch):
+    # USER-REPORTED 2026-08-28: "not all results contain weather." True
+    # by design until now -- weather was gated to the single top result
+    # because each lookup is several SEQUENTIAL provider requests. The
+    # provider (Open-Meteo) is free and uncapped at this volume, so the
+    # real cost was latency, and the fix is concurrency, not rationing:
+    # every shown result now gets its trip's weather, fetched in
+    # parallel. This test pins the contract; the engine-level weather
+    # function is mocked so it stays offline and provider-independent.
+    import datetime as _dt
+
+    from ski_optimizer.api.routes import search as search_module
+    from ski_optimizer.models import DailyWeather, TripWeatherSummary
+
+    def fake_weather(resort, start_date, end_date, *a, **k):
+        day = DailyWeather(date=start_date, temp_max_c=-2.0, temp_min_c=-9.0,
+                           snowfall_cm=4.0, snow_depth_cm=80.0,
+                           is_live_forecast=False, years_sampled=5)
+        return TripWeatherSummary(days=[day], avg_temp_max_c=-2.0, avg_temp_min_c=-9.0,
+                                  avg_snowfall_cm=4.0, avg_snow_depth_cm=80.0)
+
+    monkeypatch.setattr(search_module, "get_trip_weather", fake_weather)
+
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "earliest_date": "2027-01-05", "latest_date": "2027-02-05",
+        "top_n": 6, "include_resorts": ["Bansko", "Val Thorens", "Zermatt"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert len(results) >= 3
+    missing = [r["resort"]["name"] for r in results if r["weather"] is None]
+    assert missing == [], f"every result must carry weather, missing on: {missing}"
+    assert results[-1]["weather"]["avg_snow_depth_cm"] == 80.0

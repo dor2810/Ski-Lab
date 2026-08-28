@@ -161,7 +161,20 @@ def load_resorts(path: Path = DEFAULT_DATA_PATH) -> List[Resort]:
             family_friendliness=int(family),
             nearest_airport=airport,
             airport_distance_km=float(dist_km),
-            transfer_time_minutes=_parse_transfer_minutes(str(transfer_time_text)),
+            # The SCALAR is the FIRST-LISTED gateway's time, because
+            # airport_distance_km pairs with the first-listed airport
+            # (Val Thorens: 196km IS the Geneva distance) -- averaging
+            # in a deliberately-far alternate (Munich for Kitzbuhel,
+            # Venice for Krvavec, added 2026-08-28 for TLV fare
+            # coverage) produced physically impossible km/h figures the
+            # validation suite rightly rejects: Krvavec's 10km "took"
+            # 165 minutes. Rows without airport-scoped entries keep the
+            # old averaged parse; per-airport consumers use the dict.
+            transfer_time_minutes=(
+                next(iter(parse_transfer_minutes_by_airport(transfer_time_text).values()))
+                if parse_transfer_minutes_by_airport(transfer_time_text)
+                else _parse_transfer_minutes(str(transfer_time_text))
+            ),
             transfer_minutes_by_airport=parse_transfer_minutes_by_airport(transfer_time_text),
             ski_pass_6day_eur=float(pass_price),
             accommodation_eur_per_night=float(accom_price),

@@ -510,6 +510,39 @@ def _flight_search_url(resort: Resort, outbound_date, return_date, flight_price_
     return google_flights_url(resort, outbound_date, return_date)
 
 
+def _prefetch_weather(jobs) -> dict:
+    """
+    Trip weather for EVERY shown result, fetched CONCURRENTLY.
+
+    jobs: {index: (resort, start_date, end_date)}. Returns
+    {index: Optional[WeatherOut]}.
+
+    WHY THIS REPLACED the attempt_weather=(i == 0) gate: the user
+    noticed most results carried no weather. The gate existed because
+    one lookup is several SEQUENTIAL provider requests (one per sampled
+    historical year) -- but the provider (Open-Meteo) is free and
+    nowhere near any quota at this volume, so the real cost was only
+    LATENCY, and the honest fix is concurrency, not rationing. Twelve
+    results in parallel cost roughly one result's wall-clock time.
+    Same worker-pool sizing rationale as date_search's repricing pool.
+    """
+    if not jobs:
+        return {}
+    from concurrent.futures import ThreadPoolExecutor
+    out: dict = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {
+            i: pool.submit(_weather_out, resort, start, end, True)
+            for i, (resort, start, end) in jobs.items()
+        }
+        for i, fut in futures.items():
+            try:
+                out[i] = fut.result()
+            except Exception:
+                out[i] = None  # weather is enrichment, never a search-breaker
+    return out
+
+
 def _weather_out(resort: Resort, start_date, end_date, attempt_weather: bool) -> Optional[WeatherOut]:
     """
     WeatherOut for the WHOLE trip (start_date..end_date inclusive), or
@@ -905,6 +938,11 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             max_lookups=_SNOW_RERANK_LOOKUPS,
         )
 
+    weather_by_index = _prefetch_weather({
+        i: (t.resort, payload.outbound_date, return_date)
+        for i, t in enumerate(trip_options)
+        if payload.outbound_date is not None and return_date is not None
+    })
     results = []
     for i, t in enumerate(trip_options):
         property_name = _accommodation_property_name(
@@ -944,7 +982,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
-            weather=_weather_out(t.resort, payload.outbound_date, return_date, attempt_weather=(i == 0)),
+            weather=weather_by_index.get(i),
         ))
 
     return SearchResponse(query_resort_count=len(_resort_cache),
@@ -1370,6 +1408,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         effective_earliest, payload.latest_date, prefs.nights,
         payload.step_days, start_weekday))
 
+    weather_by_index = _prefetch_weather({
+        i: (t.resort, t.start_date, t.end_date) for i, t in enumerate(dated_options)
+    })
     results = []
     for i, t in enumerate(dated_options):
         property_name = _accommodation_property_name(
@@ -1419,7 +1460,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                                                      payload.group_size, attempt=(i == 0)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
-            weather=_weather_out(t.resort, t.start_date, t.end_date, attempt_weather=(i == 0)),
+            weather=weather_by_index.get(i),
         ))
 
     return SearchDateRangeResponse(

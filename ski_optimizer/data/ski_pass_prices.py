@@ -180,6 +180,19 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "PER-DAY tariff (EUR60.70/day for 2-7 days) rather than a 6-day line item -- EUR364.20 is "
         "that rate times six, which is how they price it, but it is arithmetic rather than a "
         "quoted total. Grand Massif area pass is EUR63.00/day."),
+    "Les Menuires": SkiPassPrice(
+        315.00, None, "2026/27", "local", "sourced",
+        "Official lesmenuires.com ski-passes page, researched 2026-08-28: 6-day pass EUR315 for "
+        "the 5-18 Dec 2026 and 10-18 Apr 2027 windows -- a SHOULDER figure; the peak-season "
+        "tariff was not published there yet, so the engine scales peak from this via the global "
+        "season multiplier. Replaces the earlier UNPRICED entry (SPA-only site at first research; "
+        "the tariff page has since been published)."),
+    "Les Deux Alpes": SkiPassPrice(
+        263.00, 311.00, "2026/27", "local", "sourced",
+        "Official skipass-2alpes.com pricing, researched 2026-08-28: adult 6-day EUR263 for "
+        "5-18 Dec 2026 (EUR246.50 for the pre-season 28 Nov-4 Dec week, not used -- outside "
+        "any trip this engine prices) and EUR311 peak. Replaces the earlier UNPRICED entry "
+        "(site had flipped to summer content at first research)."),
     "Les Arcs": SkiPassPrice(
         368.00, 368.00, "2026/27", "local", "sourced",
         "CLASSIC = Les Arcs/Peisey-Vallandry local, page states '6 DAYS EUR368', no season bands. "
@@ -282,14 +295,6 @@ UNPRICED_RESORTS: dict[str, str] = {
         "6-day figure would be invention.",
     "Astún-Candanchú":
         "NO 6-DAY PRODUCT. Multi-day passes are sold only as 3, 5 or 7 consecutive days.",
-    "Les Deux Alpes":
-        "Official site had flipped to summer 2026 content at research time; the winter tariff table "
-        "was absent from its embedded payload. A figure of EUR251.50 was found but attached to text "
-        "reading 'valid for 6 OR 7-day ski passes' -- ambiguous between two durations, so not used.",
-    "Les Menuires":
-        "Fully client-rendered site with no server payload; four plausible price-URL variants all "
-        "returned the SPA shell. Unconfirmed third-party figures circulating are local EUR350 peak "
-        "and 3 Vallees EUR421 peak / EUR378.50 early-late.",
     "Chamonix":
         "The Mont Blanc Unlimited page is a React app using div-based pseudo-tables. Flattening it "
         "yields six price triplets for six duration headers, but two consecutive triplets are "

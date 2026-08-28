@@ -435,11 +435,12 @@ def test_weather_is_none_when_the_provider_has_nothing(authed_client, monkeypatc
     assert body["results"][0]["weather"] is None
 
 
-def test_only_the_top_result_attempts_weather(authed_client, monkeypatch):
-    # Mirrors test_only_the_top_result_attempts_a_booking_link -- a
-    # historical breakdown costs several real, sequential live requests
-    # (one per sampled year), so this must never be attempted for every
-    # result in a broad search.
+def test_every_result_attempts_weather(authed_client, monkeypatch):
+    # CONTRACT CHANGE 2026-08-28, user-reported: "not all results
+    # contain weather." The old top-1 gate rationed a provider that is
+    # free and uncapped at this volume -- the real cost was latency,
+    # fixed with a concurrent prefetch (_prefetch_weather), not
+    # rationing. Every shown result now carries its trip's weather.
     from ski_optimizer.api.routes import search as search_route
     from ski_optimizer.models import DailyWeather, TripWeatherSummary
     from datetime import date
@@ -456,10 +457,9 @@ def test_only_the_top_result_attempts_weather(authed_client, monkeypatch):
     }, headers=CSRF_HEADERS)
     body = resp.json()
     assert len(body["results"]) > 1
-    assert len(calls) <= 1
-    assert body["results"][0]["weather"] is not None
-    for result in body["results"][1:]:
-        assert result["weather"] is None
+    assert len(calls) == len(body["results"]), "one weather fetch per shown result"
+    for result in body["results"]:
+        assert result["weather"] is not None
 
 
 def test_search_with_tiny_budget_falls_back_to_cheapest_flagged_over_budget(authed_client):
@@ -706,9 +706,10 @@ def test_far_future_search_spends_no_requests_on_snow_reranking(authed_client, m
         "budget_eur_per_person": 5000, "ski_days": 5, "outbound_date": "2027-01-10",
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
-    # At most the single top-result weather card -- never the re-ranking
-    # lookups on top of it.
-    assert len(calls) <= 1
+    # Exactly the per-result weather cards (see
+    # test_every_result_attempts_weather) -- and NOT ONE lookup more:
+    # the far-future re-ranking gate must add zero.
+    assert len(calls) == len(resp.json()["results"])
 
 
 def test_near_term_search_does_run_snow_reranking(authed_client, monkeypatch):
@@ -730,8 +731,12 @@ def test_near_term_search_does_run_snow_reranking(authed_client, monkeypatch):
         "budget_eur_per_person": 5000, "ski_days": 3, "outbound_date": soon,
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
-    assert len(calls) > 1, "re-ranking should have looked up several resorts inside the horizon"
-    assert len(calls) <= search_route._SNOW_RERANK_LOOKUPS + 1, "lookups must stay bounded"
+    n_results = len(resp.json()["results"])
+    assert len(calls) > n_results, (
+        "re-ranking should have looked up several resorts inside the horizon, "
+        "beyond the per-result weather cards"
+    )
+    assert len(calls) <= n_results + search_route._SNOW_RERANK_LOOKUPS, "lookups must stay bounded"
 
 
 # --- date sanity guards (found by an edge-case hunt, 2026-08-27) ---
