@@ -69,6 +69,20 @@ export function AccommodationOptions({ options }: { options: AccommodationOption
                   </span>
                 </div>
                 <div className="mt-0.5 flex min-w-0 items-baseline gap-2 text-[11px] text-subtle">
+                  {/* Distance to the lifts leads the detail line: on a
+                      ski trip it is the fact people actually choose on.
+                      Shown in metres under 1km (a "0.05 km" walk reads
+                      as noise), and only when genuinely known. */}
+                  {o.distance_to_lifts_km != null && (
+                    <span className="flex-none font-semibold text-sky">
+                      {t("accommodationToLifts", {
+                        m: String(Math.round(o.distance_to_lifts_km * 1000)),
+                      })}
+                    </span>
+                  )}
+                  {o.rating != null && (
+                    <span className="flex-none">{t("accommodationRating", { r: o.rating.toFixed(1) })}</span>
+                  )}
                   <span className="min-w-0 flex-1 truncate">
                     {t("accommodationPerPersonStay", { price: String(Math.round(o.per_person_eur)) })}
                   </span>

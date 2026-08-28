@@ -213,6 +213,8 @@ const he: Record<keyof typeof en, string> = {
   moreDatesNote: "שבועות אחרים בטווח החיפוש שלכם, מתומחרים באותה שיטה של הדירוג. המחירים מתעדכנים בחיפוש עם התאריכים המדויקים.",
   moreDatesOverBudget: "מעל התקציב",
 
+  accommodationToLifts: "{m} מ׳ מהמעליות",
+  accommodationRating: "★{r}",
   accommodationOptionsNote: "מקומות אמיתיים במחירים חיים, מהזול ליקר. המחיר הכולל של הטיול מבוסס על הזול ביותר.",
 
   // --- Weather (result card) ---

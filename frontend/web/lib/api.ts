@@ -177,6 +177,14 @@ export interface AccommodationOption {
   /** What this property costs this traveller for the whole stay. */
   per_person_eur: number;
   is_cheapest: boolean;
+  /** Guest rating out of 5, or null when unknown. */
+  rating: number | null;
+  /**
+   * Straight-line km to the nearest ski lift, computed from the
+   * property's coordinates against OpenStreetMap lift data. Not
+   * walking distance; null when unknown.
+   */
+  distance_to_lifts_km: number | null;
   /** The whole trip's cost if this property is the one booked. */
   trip_total_eur: number;
   /**

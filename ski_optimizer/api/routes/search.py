@@ -352,6 +352,16 @@ class AccommodationOptionOut(BaseModel):
     # live_accommodation_cost_eur_per_person prices the trip with.
     per_person_eur: float
     is_cheapest: bool
+    # Guest rating out of 5, when the provider supplied one (the
+    # `stays` backup does; our own scraper cannot parse it). None is
+    # honest "unknown", never a zero.
+    rating: Optional[float] = None
+    # STRAIGHT-LINE km to the nearest ski lift, computed from the
+    # property's coordinates against OpenStreetMap's aerialway data
+    # (adapters/lift_distance.py) -- not walking distance, and None
+    # whenever either side is unknown. The single most requested
+    # accommodation fact on a ski trip.
+    distance_to_lifts_km: Optional[float] = None
     # The whole trip's cost if this property is the one booked, via the
     # same apply_live_accommodation_price the engine prices with -- so
     # the misc buffer rescales identically, never a second formula.
@@ -665,6 +675,8 @@ def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
             price_eur_per_night=round(o.price_eur_per_night, 2),
             per_person_eur=per_person,
             is_cheapest=(i == 0),
+            rating=o.rating,
+            distance_to_lifts_km=o.distance_to_lifts_km,
             trip_total_eur=round(apply_live_accommodation_price(cost, per_person).total_eur, 2),
             url=google_hotels_url(resort, checkin_date, checkout_date,
                                   property_name=o.property_name),

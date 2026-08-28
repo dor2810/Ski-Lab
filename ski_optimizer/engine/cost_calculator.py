@@ -21,6 +21,7 @@ This separation is intentional and mirrors the architecture doc: nothing
 here should silently become load-bearing for an actual purchase decision
 without first being replaced by a real data source.
 """
+import dataclasses
 import logging
 import os
 import re
@@ -597,11 +598,49 @@ def _cheapest_live_accommodation_option(resort: Resort, checkin_date, nights: in
     hit, not a second live scrape), several uses. Returns the cheapest
     AccommodationOption, or None if the search found nothing.
     """
-    from ..adapters import google_hotels_adapter
-    result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
+    result = _live_accommodation_search(resort, checkin_date, nights, rooms_needed)
     if not result.options:
         return None
     return min(result.options, key=lambda o: o.price_eur_per_night)
+
+
+def _live_accommodation_search(resort: Resort, checkin_date, nights: int, rooms_needed: int):
+    """
+    Our own Google Hotels scraper first, the free `stays` package
+    second -- the accommodation twin of the flight chain's
+    Google -> Kiwi fallback, added 2026-08-28 at the owner's request
+    ("Make them a backup in a sequence you think is good").
+
+    WHY THIS ORDER: our adapter is the one we control and can fix; it
+    also needs no third-party dependency to be healthy. stays_adapter
+    is someone else's reverse-engineering of the same Google endpoint,
+    so it is the safety net rather than the primary -- but it carries
+    RATINGS and COORDINATES our scraper cannot parse, so when it is
+    the one that answers, the results are strictly richer (real
+    distance to the nearest lift included).
+
+    Both return AccommodationSearchResult, so callers see one shape.
+    """
+    from ..adapters import google_hotels_adapter
+    try:
+        result = google_hotels_adapter.search_accommodation(
+            resort, checkin_date, nights, rooms_needed)
+        if result.options:
+            return result
+    except Exception:
+        logger.warning("primary accommodation search failed for %s", resort.name, exc_info=True)
+
+    try:
+        from ..adapters import stays_adapter
+        backup = stays_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
+        if backup.options:
+            logger.info("stays fallback rescued accommodation for %s (%d options)",
+                        resort.name, len(backup.options))
+        return backup
+    except Exception:
+        logger.warning("stays accommodation fallback failed for %s", resort.name, exc_info=True)
+        from ..models import AccommodationSearchResult
+        return AccommodationSearchResult(options=[])
 
 
 def live_accommodation_property_name(resort: Resort, checkin_date, nights: int, rooms_needed: int) -> Optional[str]:
@@ -623,6 +662,67 @@ def live_accommodation_property_name(resort: Resort, checkin_date, nights: int, 
         return cheapest.property_name if cheapest else None
     except Exception:
         return None
+
+
+def _enrich_options(resort: Resort, checkin_date, nights: int, rooms_needed: int, options):
+    """
+    Add RATING and DISTANCE-TO-LIFTS to options that lack them.
+
+    THE OWNER'S PRIORITY, verbatim: "One of the most important info I
+    want about the accommodation is distance from ski lifts. This is a
+    ski vacation at the end of the day."
+
+    Why this needs a second source at all: our own Google Hotels
+    scraper (the primary, which usually answers) parses a name and a
+    price and nothing else -- no rating, and crucially no coordinates,
+    so there is nothing to measure a distance FROM. adapters/
+    stays_adapter.py hits the same Google data through a different
+    door and returns rating + lat/lng, which
+    adapters/lift_distance.py turns into real metres against
+    OpenStreetMap's lift map.
+
+    Matched by normalized property NAME -- the only key both sources
+    share. Unmatched properties simply keep their None fields: an
+    honest gap, never a borrowed number from a different hotel. Both
+    calls are response-cached, and lift geography is cached per resort
+    for the process, so a repeat search costs nothing.
+    """
+    if not options:
+        return options
+    if all(o.rating is not None and o.distance_to_lifts_km is not None for o in options):
+        return options
+
+    def norm(name: str) -> str:
+        return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+    try:
+        from ..adapters import stays_adapter
+        enriched = stays_adapter.search_accommodation(
+            resort, checkin_date, nights, rooms_needed)
+    except Exception:
+        logger.warning("accommodation enrichment unavailable for %s", resort.name, exc_info=True)
+        return options
+
+    by_name = {norm(o.property_name): o for o in enriched.options}
+    if not by_name:
+        return options
+
+    out = []
+    for option in options:
+        match = by_name.get(norm(option.property_name))
+        if match is None:
+            out.append(option)
+            continue
+        # dataclasses.replace, not mutation -- these objects come
+        # straight out of the response cache and are shared.
+        out.append(dataclasses.replace(
+            option,
+            rating=option.rating if option.rating is not None else match.rating,
+            distance_to_lifts_km=(option.distance_to_lifts_km
+                                  if option.distance_to_lifts_km is not None
+                                  else match.distance_to_lifts_km),
+        ))
+    return out
 
 
 def live_accommodation_options(
@@ -653,9 +753,9 @@ def live_accommodation_options(
     Returns [] rather than raising, matching every other live_* helper.
     """
     try:
-        from ..adapters import google_hotels_adapter
-        result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
-        by_price = sorted(result.options, key=lambda o: o.price_eur_per_night)
+        result = _live_accommodation_search(resort, checkin_date, nights, rooms_needed)
+        options = _enrich_options(resort, checkin_date, nights, rooms_needed, result.options)
+        by_price = sorted(options, key=lambda o: o.price_eur_per_night)
         return by_price[: max(1, limit)]
     except Exception:
         logger.exception("live_accommodation_options failed for %s", resort.name)

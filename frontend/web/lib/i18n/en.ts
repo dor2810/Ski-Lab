@@ -221,6 +221,8 @@ const en = {
   moreDatesNote: "Other weeks in your search window, priced the same way the ranking was. Prices firm up when searched with those exact dates.",
   moreDatesOverBudget: "over budget",
 
+  accommodationToLifts: "{m} m to lifts",
+  accommodationRating: "★{r}",
   accommodationOptionsNote: "Real places with live prices, cheapest first. The cheapest one is what the trip total is priced on.",
 
   // --- Weather (result card) ---

@@ -130,3 +130,24 @@ def _no_real_kiwi_mcp(monkeypatch):
         raise AdapterError("network disabled in tests (see conftest._no_real_kiwi_mcp)")
 
     monkeypatch.setattr(kiwi_mcp_adapter, "_call_search_tool", _offline)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_stays_or_overpass(monkeypatch):
+    """
+    Same offline discipline as _no_real_kiwi_mcp, for the accommodation
+    chain added 2026-08-28: any test that mocks the primary Google
+    Hotels scraper to fail now falls through to the `stays` backup,
+    and any option without a distance triggers an Overpass lookup.
+    Both are stubbed here so the suite stays offline and fast; tests
+    that want their behaviour stub them explicitly in the test body.
+    """
+    from ski_optimizer.adapters import lift_distance, stays_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _offline(*args, **kwargs):
+        raise AdapterError("network disabled in tests (see conftest)")
+
+    monkeypatch.setattr(stays_adapter, "_search_raw", _offline)
+    monkeypatch.setattr(lift_distance, "fetch_lift_points", lambda lat, lon: [])
+    lift_distance.clear_cache()
