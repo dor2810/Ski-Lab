@@ -1,0 +1,31 @@
+# Litestream configuration -- streams the SQLite database to Google
+# Cloud Storage so USER ACCOUNTS SURVIVE DEPLOYS AND RESTARTS.
+#
+# WHY THIS EXISTS: Cloud Run containers have an ephemeral filesystem.
+# Every deploy -- and every OOM kill, and every scale-to-zero restart --
+# wiped ski_lab.db, deleting every registered user and their credit
+# ledger. Measured pain, not theoretical: six deploys on 2026-08-28
+# alone, each one silently signing out every user of the product.
+#
+# WHY LITESTREAM, not hand-rolled backup/restore: battle-tested open
+# source built for exactly this (SQLite streaming replication to object
+# storage), restores to the exact last-replicated state on boot, and
+# replicates continuously rather than on a timer -- so a crash loses
+# seconds of writes, not hours. Chosen over the "proper" fix (managed
+# Postgres via DATABASE_URL, which db/database.py already supports)
+# only because that needs an account the project owner must create;
+# this needs nothing but a GCS bucket in the project we already run in.
+#
+# CONSTRAINT THIS IMPOSES: SQLite still has ONE writer. The Cloud Run
+# service MUST run with --max-instances=1 (set on the service). Two
+# instances replicating the same path would corrupt the replica.
+#
+# Auth: Application Default Credentials from the Cloud Run metadata
+# server -- the runtime service account holds storage.objectAdmin on
+# this bucket. No key file anywhere.
+dbs:
+  - path: /data/ski_lab.db
+    replicas:
+      - type: gcs
+        bucket: ski-lab-db-replica-449641203618
+        path: ski_lab

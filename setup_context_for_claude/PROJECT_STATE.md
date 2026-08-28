@@ -110,7 +110,7 @@ frontend/web/              Next.js app (the real frontend; older prototypes dele
 
 ### The one real infrastructure problem
 
-**The database is ephemeral.** `DATABASE_URL` defaults to `sqlite:///./ski_lab.db`, which on Cloud Run lives inside the container's disposable filesystem. **Every deploy wipes all registered users** — this was hit repeatedly during the 2026-08-26/27 sessions, requiring re-registration of the test account after each redeploy. Real users lose their accounts whenever we ship. `db/database.py` already reads `DATABASE_URL` from the environment, so pointing it at a free-tier Postgres (Neon/Supabase) is a **config change, not a code change**, and keeps the $0 target. Not yet done.
+**The database now SURVIVES deploys (2026-08-28): Litestream → GCS.** The container runs `litestream replicate -exec uvicorn` against `/data/ski_lab.db`, streaming every write to `gs://ski-lab-db-replica-449641203618` (1s sync) and restoring on boot (`run.sh`, `litestream.yml`, Dockerfile). **Verified live**: an account registered before a deploy logged in successfully from the fresh container afterwards — the first time that has ever worked in this project. Constraint: SQLite still has one writer, so the service runs with `--max-instances=1` (fine at current traffic; revisit before real scale). The *long-term* fix is still managed Postgres via `DATABASE_URL` (Neon/Supabase — needs the owner to create the account); when that happens, delete `run.sh`/`litestream.yml` and the Dockerfile's litestream layer.
 
 ---
 
@@ -147,7 +147,7 @@ Every data field carries a quality tag: `sourced`, `sourced_conflicting`, or `es
 - **65% of the total is still estimated** (§1). The biggest single lever.
 - **15 of 37 resorts have zero researched transfer data** (§5).
 - **11 resorts have estimated terrain data**, 4 more `sourced_conflicting`.
-- **Database is ephemeral** (§4) — accounts lost on every deploy.
+- ~~Database is ephemeral~~ — fixed 2026-08-28 via Litestream→GCS (§4); Postgres remains the eventual proper home.
 - **Google OAuth is unconfigured.** The "Continue with Google" button is live but cannot work until credentials exist in Google Cloud Console — a step only the project owner can perform.
 - ~~`engine/reranker.py` is a stub~~ **BUILT 2026-08-27** (blueprint Milestone 5). Snow depth now moves the ranking, weighted by the data's own forecast confidence and capped at 0.7 so one week never erases a resort's accumulated record. Hard-gated on the forecast horizon, so a trip beyond ~15 days out costs zero extra requests and is provably unchanged.
 - **`nlp/preference_parser.py` is a stub.** Free-text preference input (blueprint Milestone 6) is unbuilt; the form is the only input path.
@@ -162,7 +162,7 @@ Every data field carries a quality tag: `sourced`, `sourced_conflicting`, or `es
 ## 8. Immediate priorities
 
 1. **Check a complete Ski Lab total against a real booked trip.** Still the most important open question (§1), and now the cheapest it has ever been to answer, since four of seven lines are live or sourced.
-2. **Move off ephemeral SQLite** (§4) — small change, stops real users losing their accounts on every deploy.
+2. ~~Move off ephemeral SQLite~~ — done 2026-08-28 (Litestream→GCS, verified). Managed Postgres still wanted eventually (owner must create Neon/Supabase account).
 3. **Google OAuth credentials** — owner-only step; makes an already-shipped button functional.
 4. **Food and equipment costs** are the last big estimated lines; equipment especially, since `data/equipment_rental_links.py` already names the exact rental page per resort.
 5. Then: verify the 11 estimated-terrain resorts; NL preference parsing (Milestone 6); the "shift 2 days, save €X" suggestion (Milestone 7).
