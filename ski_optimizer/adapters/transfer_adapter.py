@@ -99,6 +99,64 @@ def _airport_city_name(nearest_airport_field: str) -> str:
     return first.split("(")[0].strip()
 
 
+def name_variants(name: str) -> list:
+    """
+    Progressively looser forms of a place name to try against
+    Alps2Alps' own gazetteer.
+
+    WHY (measured 2026-08-28 across all 39 resorts): most "Alps2Alps
+    doesn't serve this" results were really NAME MISMATCHES, not
+    missing coverage. Our database says "Milan Malpensa", "Grand Massif
+    (Flaine)", "St. Anton am Arlberg", "Val d'Isere / Tignes" -- their
+    gazetteer says "Malpensa", "Flaine", "St. Anton", "Val d'Isere".
+    Trying the obvious variants converts a documented gap into a real
+    quote, which is the whole point.
+
+    Ordered most- to least-specific, deduplicated, so the first hit is
+    the closest match rather than the loosest.
+    """
+    out = []
+
+    def add(candidate: str) -> None:
+        candidate = candidate.strip(" -/")
+        if candidate and candidate not in out:
+            out.append(candidate)
+
+    add(name)
+    # "Grand Massif (Flaine)" -> the parenthetical is usually the
+    # village an operator actually lists.
+    if "(" in name and ")" in name:
+        inner = name[name.index("(") + 1:name.rindex(")")]
+        add(inner)
+        add(name[:name.index("(")])
+    # "Val d'Isere / Tignes" -> either side is a real destination.
+    for part in name.split("/"):
+        add(part)
+    # "St. Anton am Arlberg" -> "St. Anton"; "Milan Malpensa" -> both words.
+    for separator in (" am ", " im ", " an der ", " sur ", " en "):
+        if separator in name:
+            add(name.split(separator)[0])
+    words = name.split()
+    if len(words) > 1:
+        add(words[-1])   # "Milan Malpensa" -> "Malpensa"
+        add(words[0])    # "Venice Marco Polo" -> "Venice"
+    add(name.replace("-", " "))
+    return out
+
+
+def resolve_location_any(query: str, location_type: Optional[str] = None,
+                         use_cache: bool = True):
+    """
+    resolve_location over name_variants -- returns (code, matched_name)
+    for the first variant Alps2Alps recognises, or (None, None).
+    """
+    for variant in name_variants(query):
+        code = resolve_location(variant, location_type=location_type, use_cache=use_cache)
+        if code is not None:
+            return code, variant
+    return None, None
+
+
 def resolve_location(query: str, location_type: Optional[str] = None, use_cache: bool = True) -> Optional[str]:
     """
     Resolves a free-text place name to Alps2Alps's own location code
@@ -189,14 +247,24 @@ def search_transfer_options(
     if adults <= 0:
         raise AdapterError(f"adults must be > 0, got {adults}")
 
+    # Name VARIANTS, not just our exact database spelling: measured
+    # across all 39 resorts, most "no location match" results were
+    # mismatches, not missing coverage (our "Milan Malpensa" vs their
+    # "Malpensa"). See name_variants(). The error messages name every
+    # variant tried, so a genuine gap is diagnosable rather than
+    # mysterious.
     origin_query = _airport_city_name(resort.nearest_airport)
-    origin_code = resolve_location(origin_query, location_type="airport", use_cache=use_cache)
+    origin_code, _ = resolve_location_any(origin_query, location_type="airport",
+                                          use_cache=use_cache)
     if origin_code is None:
-        raise AdapterError(f"Alps2Alps has no location match for airport {origin_query!r}")
+        raise AdapterError(
+            f"Alps2Alps recognises no airport among {name_variants(origin_query)!r}")
 
-    dest_code = resolve_location(resort.name, location_type="resort", use_cache=use_cache)
+    dest_code, _ = resolve_location_any(resort.name, location_type="resort",
+                                        use_cache=use_cache)
     if dest_code is None:
-        raise AdapterError(f"Alps2Alps has no location match for resort {resort.name!r}")
+        raise AdapterError(
+            f"Alps2Alps recognises no destination among {name_variants(resort.name)!r}")
 
     key = _cache_key("quote", origin_code, dest_code, pickup_date, pickup_time,
                      adults, return_date, return_time, currency)

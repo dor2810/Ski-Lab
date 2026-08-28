@@ -154,7 +154,10 @@ def test_search_transfer_options_raises_when_resort_cannot_be_resolved(monkeypat
         return "airport-1" if location_type == "airport" else None
 
     monkeypatch.setattr(ta, "resolve_location", fake_resolve)
-    with pytest.raises(AdapterError, match="resort"):
+    # The message now names every VARIANT tried, not just "resort" --
+    # that specificity is the point (see name_variants): a genuine gap
+    # must be diagnosable from the error alone.
+    with pytest.raises(AdapterError, match="recognises no destination"):
         ta.search_transfer_options(_resort(), date(2027, 1, 10), "14:30", adults=2)
 
 

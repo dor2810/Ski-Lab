@@ -849,6 +849,61 @@ def apply_live_flight_price(cost: CostBreakdown, live_price: float) -> CostBreak
     )
 
 
+def transfer_source_for(resort: Resort, airport_iata=None) -> dict:
+    """
+    What we actually know about this resort's airport transfer, and
+    where it came from -- the honest provenance the owner asked for
+    ("Make it always show real data... If for some resort it doesn't
+    work I want to know exactly why").
+
+    Returns a dict with:
+      source            "alps2alps" | "drive_time_only" | "estimated"
+      price_eur         real one-way Alps2Alps price, or None
+      duration_minutes  real driving time (Google Maps) where known
+      distance_km       real road distance where known
+      unavailable_reason  for anything short of a real price, the exact
+                        reason -- which airport/resort names Alps2Alps
+                        did not recognise, or that they offered no
+                        vehicle. Never a shrug.
+
+    Both datasets are frozen (data/transfer_quotes.py,
+    data/transfer_drive_times.py) because Alps2Alps allows ~14 calls
+    before a 429 with a >10 minute cooldown -- measured -- so live
+    per-search quoting is arithmetically impossible for a 12-result
+    page. See those modules' own docstrings.
+    """
+    import re
+
+    from ..data.transfer_drive_times import DRIVE_TIMES
+    from ..data.transfer_quotes import TRANSFER_QUOTES, UNQUOTED_ROUTES
+
+    codes = re.findall(r"\(([A-Z]{3})\)", resort.nearest_airport or "")
+    code = airport_iata or (codes[0] if codes else None)
+    drive = DRIVE_TIMES.get(f"{resort.name}|{code}") if code else None
+
+    quote = TRANSFER_QUOTES.get(resort.name)
+    if quote:
+        return {
+            "source": "alps2alps",
+            "price_eur": quote["price_eur"],
+            "duration_minutes": quote.get("duration_minutes") or (drive or {}).get("minutes"),
+            "distance_km": (drive or {}).get("km"),
+            "vehicles_offered": quote.get("vehicles_offered"),
+            "unavailable_reason": None,
+        }
+
+    reason = UNQUOTED_ROUTES.get(
+        resort.name, "No Alps2Alps quote was attempted for this resort.")
+    return {
+        "source": "drive_time_only" if drive else "estimated",
+        "price_eur": None,
+        "duration_minutes": (drive or {}).get("minutes"),
+        "distance_km": (drive or {}).get("km"),
+        "vehicles_offered": None,
+        "unavailable_reason": reason,
+    }
+
+
 def transfer_cost_eur_per_person(resort: Resort, group_size: int,
                                  travel_date=None, airport_iata=None,
                                  preferred_modes=None) -> float:

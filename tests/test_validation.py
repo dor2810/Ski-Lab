@@ -481,10 +481,17 @@ def test_unparseable_transfer_time_warns_rather_than_failing_silently():
         assert any("Could not parse" in str(x.message) for x in caught)
 
 
-def test_krvavec_transfer_is_twenty_minutes():
-    # Guards the specific data point the parser bug corrupted.
+def test_krvavec_transfer_is_the_measured_mountain_road_time():
+    # HISTORY: this guarded "~20min", the spreadsheet's estimate, after a
+    # parser bug once read it as 120. The estimate itself turned out to
+    # be wrong: Google Directions measures the real Ljubljana-to-Krvavec
+    # drive at 42 minutes (2026-08-29) -- the resort sits at the top of a
+    # winding mountain road, and 10km straight-line is not 10km of road.
+    # The guard now protects the MEASURED value, and the wider
+    # road-speed test below protects it from ever going physically
+    # nonsensical again.
     krvavec = next(r for r in load_resorts() if r.name == "Krvavec")
-    assert krvavec.transfer_time_minutes == 20.0
+    assert 30 <= krvavec.transfer_time_minutes <= 60
 
 
 def test_shortest_transfer_resort_wins_a_pure_convenience_search():

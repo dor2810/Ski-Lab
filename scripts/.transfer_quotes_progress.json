@@ -1,0 +1,294 @@
+{
+ "2:Bansko": {
+  "status": "ok",
+  "price_eur": 222.0,
+  "duration_minutes": 180.0,
+  "vehicle": null,
+  "vehicles_offered": 2,
+  "origin_code": "airport-44",
+  "dest_code": "resort-632"
+ },
+ "2:Chamonix": {
+  "status": "ok",
+  "price_eur": 286.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-1",
+  "dest_code": "resort-11"
+ },
+ "2:Val Thorens": {
+  "status": "ok",
+  "price_eur": 423.5,
+  "duration_minutes": 200.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-1",
+  "dest_code": "resort-80"
+ },
+ "2:St. Anton am Arlberg": {
+  "status": "ok",
+  "price_eur": 408.0,
+  "duration_minutes": 120.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Zermatt": {
+  "status": "ok",
+  "price_eur": 618.0,
+  "duration_minutes": 240.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-1",
+  "dest_code": "resort-256"
+ },
+ "2:Livigno": {
+  "status": "ok",
+  "price_eur": 684.0,
+  "duration_minutes": 340.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-24",
+  "dest_code": "resort-240"
+ },
+ "2:Kitzb\u00fchel": {
+  "status": "ok",
+  "price_eur": 306.0,
+  "duration_minutes": 145.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-19",
+  "dest_code": "resort-169"
+ },
+ "2:Grandvalira (Andorra)": {
+  "status": "ok",
+  "price_eur": 582.0,
+  "duration_minutes": 220.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Cervinia (Breuil-Cervinia)": {
+  "status": "ok",
+  "price_eur": 546.0,
+  "duration_minutes": 210.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Val Gardena (Selva)": {
+  "status": "ok",
+  "price_eur": 594.0,
+  "duration_minutes": 255.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Courchevel": {
+  "status": "ok",
+  "price_eur": 385.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-3",
+  "dest_code": "resort-72"
+ },
+ "2:Verbier": {
+  "status": "ok",
+  "price_eur": 516.0,
+  "duration_minutes": 170.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-1",
+  "dest_code": "resort-224"
+ },
+ "2:Ischgl": {
+  "status": "ok",
+  "price_eur": 318.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-19",
+  "dest_code": "resort-168"
+ },
+ "2:S\u00f6lden": {
+  "status": "ok",
+  "price_eur": 300.0,
+  "duration_minutes": 90.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-19",
+  "dest_code": "resort-175"
+ },
+ "2:Serre Chevalier": {
+  "status": "ok",
+  "price_eur": 534.0,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-25",
+  "dest_code": "resort-28"
+ },
+ "2:Saalbach-Hinterglemm": {
+  "status": "ok",
+  "price_eur": 360.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-20",
+  "dest_code": "resort-172"
+ },
+ "2:Alpe d'Huez": {
+  "status": "ok",
+  "price_eur": 346.5,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-2",
+  "dest_code": "resort-21"
+ },
+ "2:Pamporovo": {
+  "status": "ok",
+  "price_eur": 252.0,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 2,
+  "origin_code": "airport-45",
+  "dest_code": "resort-634"
+ },
+ "2:Poiana Brasov": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no airport among ['Bucharest']"
+ },
+ "2:Kranjska Gora": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no airport among ['Ljubljana']"
+ },
+ "2:M\u00e9ribel": {
+  "status": "ok",
+  "price_eur": 363.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-3",
+  "dest_code": "resort-78"
+ },
+ "2:Val d'Is\u00e8re / Tignes": {
+  "status": "ok",
+  "price_eur": 429.0,
+  "duration_minutes": 155.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Obergurgl-Hochgurgl": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no destination among ['Obergurgl-Hochgurgl', 'Obergurgl Hochgurgl']"
+ },
+ "2:Cortina d'Ampezzo": {
+  "status": "ok",
+  "price_eur": 432.0,
+  "duration_minutes": 200.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-39",
+  "dest_code": "resort-243"
+ },
+ "2:Les Deux Alpes": {
+  "status": "ok",
+  "price_eur": 363.0,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-2",
+  "dest_code": "resort-27"
+ },
+ "2:Formigal": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no destination among ['Formigal']"
+ },
+ "2:Grand Massif (Flaine)": {
+  "status": "ok",
+  "price_eur": 297.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Krvavec": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no airport among ['Ljubljana']"
+ },
+ "2:Ast\u00fan-Candanch\u00fa": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no destination among ['Ast\u00fan-Candanch\u00fa', 'Ast\u00fan Candanch\u00fa']"
+ },
+ "2:Bardonecchia": {
+  "status": "ok",
+  "price_eur": 384.0,
+  "duration_minutes": 155.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-25",
+  "dest_code": "resort-143"
+ },
+ "2:Passo Tonale": {
+  "status": "ok",
+  "price_eur": 456.0,
+  "duration_minutes": 210.0,
+  "vehicle": null,
+  "vehicles_offered": 3
+ },
+ "2:Mayrhofen": {
+  "status": "ok",
+  "price_eur": 270.0,
+  "duration_minutes": 75.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-19",
+  "dest_code": "resort-165"
+ },
+ "2:Zell am See": {
+  "status": "ok",
+  "price_eur": 318.0,
+  "duration_minutes": 110.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-20",
+  "dest_code": "resort-173"
+ },
+ "2:Les Arcs": {
+  "status": "ok",
+  "price_eur": 385.0,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-3",
+  "dest_code": "resort-66"
+ },
+ "2:Avoriaz": {
+  "status": "ok",
+  "price_eur": 302.5,
+  "duration_minutes": 130.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-1",
+  "dest_code": "resort-3"
+ },
+ "2:Les Menuires": {
+  "status": "ok",
+  "price_eur": 396.0,
+  "duration_minutes": 120.0,
+  "vehicle": null,
+  "vehicles_offered": 3,
+  "origin_code": "airport-3",
+  "dest_code": "resort-77"
+ },
+ "2:Vallnord (Pal-Arinsal)": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no destination among ['Vallnord (Pal-Arinsal)', 'Pal-Arinsal', 'Vallnord', '(Pal-Arinsal)', 'Vallnord (Pal Arinsal)']"
+ },
+ "2:Gudauri": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no airport among ['Tbilisi']"
+ },
+ "2:Sella Ronda (Dolomiti)": {
+  "status": "adapter_error",
+  "why": "Alps2Alps recognises no airport among ['Verona']"
+ }
+}
