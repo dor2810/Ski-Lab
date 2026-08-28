@@ -771,8 +771,11 @@ def test_an_absurd_date_window_is_rejected(authed_client):
     today = _dt.date.today()
     resp = authed_client.post("/trips/search-dates", json={
         "budget_eur_per_person": 3000, "ski_days": 5,
+        # Measure the window from the season floor, which is what the
+        # API itself measures from (max of today and Dec 1).
         "earliest_date": today.isoformat(),
-        "latest_date": (today + _dt.timedelta(days=MAX_SEARCH_WINDOW_DAYS + 10)).isoformat(),
+        "latest_date": (max(today, _dt.date(today.year, 12, 1) if 5 <= today.month <= 11 else today)
+                        + _dt.timedelta(days=MAX_SEARCH_WINDOW_DAYS + 10)).isoformat(),
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 400
     assert str(MAX_SEARCH_WINDOW_DAYS) in resp.json()["detail"]
@@ -785,14 +788,17 @@ def test_a_window_starting_in_the_past_is_clamped_not_rejected(authed_client):
     import datetime as _dt
 
     today = _dt.date.today()
+    # The floor is max(today, season start) -- in the off-season months
+    # the season floor governs (see _season_floor).
+    floor = today if not (5 <= today.month <= 11) else _dt.date(today.year, 12, 1)
     resp = authed_client.post("/trips/search-dates", json={
         "budget_eur_per_person": 3000, "ski_days": 5,
         "earliest_date": "2020-01-01",
-        "latest_date": (today + _dt.timedelta(days=60)).isoformat(),
+        "latest_date": (floor + _dt.timedelta(days=60)).isoformat(),
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     for result in resp.json()["results"]:
-        assert result["start_date"] >= today.isoformat(), "no result may start in the past"
+        assert result["start_date"] >= floor.isoformat(), "no result may start before the floor"
 
 
 # --- mainstream shortlist (frontend default scope) ---

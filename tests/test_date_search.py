@@ -694,3 +694,26 @@ def test_candidate_dates_can_start_on_any_of_several_weekdays():
     assert all(d.weekday() in (5, 6) for d in starts)
     assert {d.weekday() for d in starts} == {5, 6}, "both weekend days must appear"
     assert starts == sorted(starts)
+
+
+def test_tied_static_dates_prefer_the_saturday_changeover():
+    # Within one season band, static totals TIE EXACTLY (measured:
+    # Dec 1-18 at Val Thorens all EUR1620.45), and the old
+    # earliest-first tie-break made every December search open on
+    # Dec 1 -- arbitrary precision the owner rightly questioned.
+    # Among equals, prefer the SATURDAY: the classic package
+    # changeover (the same research behind the weekend start option).
+    from ski_optimizer.engine.date_search import search_date_range
+
+    resorts = [r for r in load_resorts() if r.name == "Bansko"]
+    prefs = _prefs(budget_eur_per_person=2500)
+    # A window fully inside one band: every candidate ties statically.
+    out = search_date_range(resorts, prefs,
+                            earliest_date=datetime.date(2027, 1, 4),
+                            latest_date=datetime.date(2027, 1, 17),
+                            top_n=1, max_results_per_resort=1)
+    assert out, "window has candidates"
+    assert out[0].start_date.weekday() == 5, (
+        f"among tied dates the Saturday should lead, got "
+        f"{out[0].start_date} ({out[0].start_date.strftime('%A')})"
+    )

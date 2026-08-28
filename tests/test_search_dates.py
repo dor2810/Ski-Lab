@@ -474,3 +474,31 @@ def test_every_result_carries_transfer_provenance(authed_client):
                 f'{r["resort"]["name"]}: a missing quote must carry its reason'
             )
             assert info["duration_minutes"], "drive time must still be real"
+
+
+def test_offseason_searches_are_clamped_to_season_start(authed_client, monkeypatch):
+    # Owner's rule: "until the first of december the start date will be
+    # first of december, i think its the minimum." Searching in August
+    # for October dates was spending live lookups on a season that
+    # hasn't started -- no lifts spin in October. The window's start is
+    # clamped to Dec 1 of the coming season whenever it falls in the
+    # off-season gap (May-Nov).
+    import datetime as _dt
+
+    today = _dt.date.today()
+    if not (5 <= today.month <= 11):
+        import pytest as _pytest
+        _pytest.skip("only meaningful when the test itself runs in the off-season")
+
+    dec1 = _dt.date(today.year, 12, 1)
+    resp = authed_client.post("/trips/search-dates", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "earliest_date": (today + _dt.timedelta(days=7)).isoformat(),
+        "latest_date": (dec1 + _dt.timedelta(days=20)).isoformat(),
+        "top_n": 4, "include_resorts": ["Bansko"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    for r in resp.json()["results"]:
+        assert r["start_date"] >= dec1.isoformat(), (
+            f"a trip cannot start before the season does: {r['start_date']}"
+        )

@@ -400,7 +400,16 @@ def search_date_range(
             if not (0 < cost.total_eur):
                 continue  # nonsensical cost, never a real result
             all_static.append(score_it(resort, start, end, cost))
-    all_static.sort(key=lambda t: t.score, reverse=True)
+    # Sort by score -- with a deliberate TIE-BREAK. Within one season
+    # band, static totals tie EXACTLY (measured: Dec 1-18 at Val
+    # Thorens, all EUR1620.45), and a bare score sort then surfaces
+    # whichever date came first -- which is why every December search
+    # used to open on Dec 1 with false precision. Among equals, prefer
+    # the SATURDAY start (the classic package changeover, per the same
+    # research behind the "weekend" start option), then the earlier
+    # date. Live pricing, where it covers a pair, differentiates the
+    # scores and makes this tie-break moot.
+    all_static.sort(key=lambda t: (-t.score, t.start_date.weekday() != 5, t.start_date))
 
     # STAGE 2: live-reprice only the top `live_reprice_n` (or ALL of
     # them when live_reprice_n is None -- the original, uncapped path).

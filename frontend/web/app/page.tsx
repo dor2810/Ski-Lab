@@ -155,10 +155,22 @@ export default function Home() {
               <p className="text-sm text-subtle">{t("noTripsFound")}</p>
             ) : (
               <div className="space-y-5">
-                {displayedResults.map((r, i) => (
-                  <ResultCard key={`${r.resort.name}-${r.start_date ?? i}`} result={r}
-                              maxConnections={showingRealSearch ? outcome!.maxConnections : null} />
-                ))}
+                {/* ONE card per resort, holding every result the search
+                    returned for it -- the pager inside the card flips
+                    between full deals. Rank order: a resort sits where
+                    its best deal ranked. */}
+                {(() => {
+                  const groups = new Map<string, typeof displayedResults>();
+                  for (const r of displayedResults) {
+                    const list = groups.get(r.resort.name);
+                    if (list) list.push(r);
+                    else groups.set(r.resort.name, [r]);
+                  }
+                  return [...groups.entries()].map(([name, list]) => (
+                    <ResultCard key={name} result={list[0]} variants={list}
+                                maxConnections={showingRealSearch ? outcome!.maxConnections : null} />
+                  ));
+                })()}
               </div>
             )}
 

@@ -787,6 +787,24 @@ def _charge_credits(db, current_user, candidate_dates: int) -> Optional[dict]:
     }
 
 
+def _season_floor(today: datetime.date) -> datetime.date:
+    """
+    The earliest date a ski trip can meaningfully start: December 1st
+    of the coming season (owner's rule -- "until the first of december
+    the start date will be first of december, i think its the
+    minimum"). During the off-season gap (May-November) every start
+    date is floored to the coming Dec 1; once the season is running
+    (December-April) the floor is inert -- today itself governs.
+    Deliberately a GLOBAL floor rather than per-resort season parsing:
+    a few glacier resorts open in November, but quoting a full priced
+    trip for a mostly-closed mountain would mislead more than the
+    floor costs.
+    """
+    if 5 <= today.month <= 11:
+        return datetime.date(today.year, 12, 1)
+    return datetime.date.min
+
+
 def _reject_past_date(value, field_name: str) -> None:
     """
     A trip in the past is never what anyone meant, and accepting one is
@@ -1317,7 +1335,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     # rather than rejecting, so we don't price start dates that have
     # already been and gone. Rejecting would be pedantic; silently
     # pricing the past would be wrong.
-    effective_earliest = max(payload.earliest_date, datetime.date.today())
+    effective_earliest = max(payload.earliest_date, datetime.date.today(),
+                             _season_floor(datetime.date.today()))
     window_days = (payload.latest_date - effective_earliest).days
     if window_days > MAX_SEARCH_WINDOW_DAYS:
         raise HTTPException(

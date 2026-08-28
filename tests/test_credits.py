@@ -57,7 +57,14 @@ def client():
 
 
 def _window(days_wide):
-    start = datetime.date.today() + datetime.timedelta(days=30)
+    # In-season, always: the API floors any off-season start to Dec 1
+    # of the coming season (the owner's "season starts December 1st"
+    # rule), so a today+30 window in August would be silently reshaped
+    # and the wide/narrow comparison would collapse.
+    start = max(datetime.date.today() + datetime.timedelta(days=30),
+                datetime.date(datetime.date.today().year, 12, 10)
+                if datetime.date.today().month >= 5
+                else datetime.date.today() + datetime.timedelta(days=30))
     return start.isoformat(), (start + datetime.timedelta(days=days_wide)).isoformat()
 
 

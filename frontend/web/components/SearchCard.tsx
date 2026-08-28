@@ -100,8 +100,19 @@ export function SearchCard({
   // that, the backend searches every valid start date in between. See
   // lib/api.searchFlexibleWindow -- there's no separate "fixed date" mode
   // in this UI any more, the search itself degrades to one date naturally.
-  const [earliest, setEarliest] = useState(todayPlusDays(30));
-  const [latest, setLatest] = useState(todayPlusDays(37));
+  // Ski season starts December 1st (the backend floors earlier dates
+  // to it anyway) -- default the form INTO the season instead of
+  // showing an autumn window the server would silently reshape.
+  const seasonFloor = (() => {
+    const now = new Date();
+    if (now.getMonth() + 1 >= 5 && now.getMonth() + 1 <= 11) {
+      return `${now.getFullYear()}-12-01`;
+    }
+    return todayPlusDays(1);
+  })();
+  const defaultEarliest = todayPlusDays(30) > seasonFloor ? todayPlusDays(30) : seasonFloor;
+  const [earliest, setEarliest] = useState(defaultEarliest);
+  const [latest, setLatest] = useState(addDays(defaultEarliest, 7));
   // Full days on the mountain -- what the user actually cares about, not
   // nights away (see lib/api.FixedDateSearchParams.ski_days). Nights
   // away is always skiDays + 1 (arrive the evening before day 1, leave
@@ -333,7 +344,7 @@ export function SearchCard({
             <div>
               <label htmlFor="earliest" className={labelClass()}>{t("earliestDate")}</label>
               <input
-                id="earliest" type="date" value={earliest}
+                id="earliest" type="date" min={seasonFloor} value={earliest}
                 onChange={(e) => handleEarliestChange(e.target.value)}
                 className={fieldClass()} required
               />

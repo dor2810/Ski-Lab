@@ -9,3 +9,4 @@ __pycache__/
 # Firebase CLI's local deploy-hash cache -- machine-local, not useful
 # to commit (see firebase.json/.firebaserc, which ARE committed).
 .firebase/
+.coverage

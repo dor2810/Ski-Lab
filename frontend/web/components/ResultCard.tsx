@@ -130,8 +130,15 @@ function formatMinutes(minutes: number | null): string {
   return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
 }
 
-export function ResultCard({ result, maxConnections = null }: {
+export function ResultCard({ result, variants, maxConnections = null }: {
   result: TripResult;
+  // Every result the search returned FOR THIS RESORT, rank order --
+  // the owner's ask: "Val Thorens and the best deal it found and some
+  // button to switch to the second best deal... without needing a
+  // long list." One card per resort; the pager flips between its
+  // full results (each with its own dates, costs, flights, hotels --
+  // they are complete results, not lightweight previews).
+  variants?: TripResult[];
   // The max-connections preference the search ran with -- needed by
   // the per-flight booking link, which re-runs the same query at
   // click time (see FlightOptions' BookingContext). Absent for the
@@ -140,7 +147,9 @@ export function ResultCard({ result, maxConnections = null }: {
 }) {
   const { t, locale } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const r = result;
+  const deals = variants && variants.length > 0 ? variants : [result];
+  const [dealIdx, setDealIdx] = useState(0);
+  const r = deals[Math.min(dealIdx, deals.length - 1)];
   // Dated results (the real search path) carry their own trip dates;
   // without them the booking endpoint has nothing to re-search.
   const booking = r.start_date && r.end_date
@@ -189,6 +198,27 @@ export function ResultCard({ result, maxConnections = null }: {
                 </span>
               )}
             </p>
+          )}
+          {deals.length > 1 && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label={t("dealPrev")}
+                disabled={dealIdx === 0}
+                onClick={() => setDealIdx((i) => Math.max(0, i - 1))}
+                className="rounded-md border border-line px-2 py-0.5 text-xs font-bold text-sky disabled:opacity-30"
+              >‹</button>
+              <span className="text-[11px] font-semibold text-subtle">
+                {t("dealOf", { i: String(dealIdx + 1), n: String(deals.length) })}
+              </span>
+              <button
+                type="button"
+                aria-label={t("dealNext")}
+                disabled={dealIdx >= deals.length - 1}
+                onClick={() => setDealIdx((i) => Math.min(deals.length - 1, i + 1))}
+                className="rounded-md border border-line px-2 py-0.5 text-xs font-bold text-sky disabled:opacity-30"
+              >›</button>
+            </div>
           )}
         </div>
 
