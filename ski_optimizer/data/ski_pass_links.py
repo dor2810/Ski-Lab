@@ -30,11 +30,21 @@ table is extended to cover it).
 """
 
 SKI_PASS_URLS: dict[str, str] = {
+    # ORDER-PAGE PASS, 2026-08-29: every link re-checked live (37 of 39
+    # resolved; the 2 "failures" were a broken TLS cert and a 403 to
+    # automated requests, not dead pages). Where a resort publishes a
+    # real WEBSHOP rather than a price list, the link now points at the
+    # shop -- Val Gardena's e-shop (5% online discount), Val d'Isere's
+    # buy/recharge page, Grand Massif's rates+booking page, Serre
+    # Chevalier's pass shop, Vallnord's ski-pass section (its day-pass
+    # deep link 404s). Gudauri now points at MTA, the lift operator that
+    # actually sells the pass, because gudauri.com's own certificate is
+    # broken.
     # Added 2026-08-28 with the Gudauri / Sella Ronda research pass.
-    "Gudauri": "https://gudauri.com/about-gudauri/ski-passes.html",
+    "Gudauri": "https://mta.ski/en",
     "Sella Ronda (Dolomiti)": "https://www.dolomitisuperski.com/en/plan-and-book/lift-pass",
     "Grandvalira (Andorra)": "https://www.grandvalira.com/en/ski-pass/day",
-    "Vallnord (Pal-Arinsal)": "https://www.palarinsal.com/en/ski-pass/day-pass",
+    "Vallnord (Pal-Arinsal)": "https://www.palarinsal.com/en/ski-pass",
     "St. Anton am Arlberg": "https://www.skiarlberg.at/en/tickets-season-times/webshop",
     "Kitzbühel": "https://www.kitzski.at/en/ticket-shop-kitzski.html",
     "Ischgl": "https://tickets.ischgl.com/en/",
@@ -48,18 +58,18 @@ SKI_PASS_URLS: dict[str, str] = {
     "Chamonix": "https://www.montblancnaturalresort.com/en/ticketing",
     "Val Thorens": "https://www.les3vallees.com/en/skipass",
     "Courchevel": "https://www.les3vallees.com/en/skipass",
-    "Serre Chevalier": "https://www.serrechevalier-pass.com/en/price-list",
+    "Serre Chevalier": "https://www.serrechevalier-pass.com/en/",
     "Alpe d'Huez": "https://skipass.alpedhuez.com/hiver/en/all-skipasses/",
     "Méribel": "https://www.les3vallees.com/en/skipass",
-    "Val d'Isère / Tignes": "https://www.valdisere.ski/en/",
+    "Val d'Isère / Tignes": "https://www.valdisere.com/en/prepare-for-your-stay/buy-my-skipass/",
     "Les Deux Alpes": "https://www.skipass-2alpes.com/en/",
-    "Grand Massif (Flaine)": "https://www.grand-massif.com/en/ski-offers/",
+    "Grand Massif (Flaine)": "https://www.grand-massif.com/en/ski-offers/package-rates/",
     "Les Arcs": "https://www.lesarcs-peiseyvallandry.com/en/forfaits_offre",
     "Avoriaz": "https://www.skipass-avoriaz.com/en/winter/tickets",
     "Les Menuires": "https://www.skipass-lesmenuires.com/en/",
     "Livigno": "https://www.skipasslivigno.com/en/skipass-shop-online/",
     "Cervinia (Breuil-Cervinia)": "https://www.cervinia.it/en/shop-e-promo",
-    "Val Gardena (Selva)": "https://www.valgardena.it/en/winter-holidays-dolomites/ski-passes/",
+    "Val Gardena (Selva)": "https://www.valgardena.it/en/winter-holidays-dolomites/ski-passes/skipass-eshop/",
     "Cortina d'Ampezzo": "https://skipasscortina.com/EN/art9-online-is-better",
     "Bardonecchia": "https://snowit.ski/skipass/bardonecchia",
     "Passo Tonale": "https://www.pontedilegnotonale.com/en/ski-pass-and-ski-lifts/pontedilegno-tonale-ski-passes/",

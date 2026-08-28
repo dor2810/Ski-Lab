@@ -49,6 +49,39 @@ published page. Nothing is extrapolated, averaged across sources, or
 interpolated between durations. The 8 missing resorts are missing
 because a real 6-day adult price could not be honestly obtained -- see
 UNPRICED_RESORTS at the bottom for exactly why, one by one.
+
+METHODOLOGY AUDIT, 2026-08-29 -- how each number was actually obtained,
+and where the method is weakest. Recorded here so the next person does
+not have to re-derive the shape of the data:
+
+  33 of 39 resorts priced, 6 documented as unpriceable (see
+  UNPRICED_RESORTS -- dynamic pricing or no 6-day product exists).
+
+  SOURCE. Every figure comes from the operator's OWN published tariff,
+  read from their site -- never a third-party aggregator, never a
+  computed guess. Where only a wider area pass could be sourced, scope
+  is "area" and the entry says so (3 resorts: Val Thorens/3 Vallees,
+  Avoriaz/Portes du Soleil, Sella Ronda/Dolomiti Superski). An area
+  figure OVERSTATES a skier who only wants the local domain.
+
+  TWO KNOWN WEAKNESSES, both visible in the data rather than hidden:
+
+  1. SINGLE-BAND ENTRIES (8). Where the operator published only one
+     price, the other season band is derived by the engine's global
+     season multiplier rather than researched. That is documented in
+     SkiPassPrice's docstring and is still far better than the seed
+     spreadsheet's estimate -- but it is arithmetic, not a source.
+     Affected: Alpe d'Huez, Courchevel, Gudauri, Les Menuires,
+     Meribel, Sella Ronda, Val Thorens, Zermatt.
+
+  2. STALE SEASON (10). Priced on the 2025/26 tariff (or, for Poiana
+     Brasov, an unstated one) because the 2026/27 table was not
+     published when researched. Ski tariffs typically rise 3-6% a
+     season, so these read slightly LOW. Re-check each autumn; the
+     season field on every entry is what makes this auditable at all.
+
+  Both lists are regenerable in seconds -- filter SKI_PASS_PRICES on
+  `season != "2026/27"` and on either band being None.
 """
 from dataclasses import dataclass
 from typing import Optional
