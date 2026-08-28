@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useTranslation } from "@/lib/i18n/context";
 import type { AccommodationOption } from "@/lib/api";
-import { StayIcon } from "./icons";
+import { ExternalLinkIcon, StayIcon } from "./icons";
 
 /**
  * The real, named properties behind a result's accommodation price --
@@ -51,9 +51,19 @@ export function AccommodationOptions({ options }: { options: AccommodationOption
                 className={`rounded-lg px-2 py-1.5 ${o.is_cheapest ? "bg-signal-soft" : ""}`}
               >
                 <div className="flex min-w-0 items-baseline gap-2 text-xs">
-                  <span className="min-w-0 flex-1 truncate font-semibold text-ink">
-                    {o.property_name}
-                  </span>
+                  {/* The name IS the link -- a separate button per row
+                      needed width the phone doesn't have (see the
+                      432px lesson in FlightOptions). Dated Google
+                      Hotels search narrowed to this property. */}
+                  <a
+                    href={o.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-w-0 flex-1 items-center gap-1 font-semibold text-sky hover:underline"
+                  >
+                    <span className="min-w-0 truncate">{o.property_name}</span>
+                    <ExternalLinkIcon size={11} className="flex-none opacity-70" />
+                  </a>
                   <span className="flex-none tabular-nums text-muted">
                     {t("accommodationPerNight", { price: String(Math.round(o.price_eur_per_night)) })}
                   </span>

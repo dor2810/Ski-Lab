@@ -1219,6 +1219,21 @@ def test_accommodation_options_list_real_named_properties_with_per_person_costs(
     # pricier property must cost more by at least the stay difference.
     assert listed[0]["trip_total_eur"] == result["cost"]["total_eur"]
     assert listed[-1]["trip_total_eur"] > listed[0]["trip_total_eur"]
+    # Every named property carries its own link -- the same property-
+    # narrowed Google Hotels search the headline accommodation link
+    # already uses as its fallback (engine/links.google_hotels_url):
+    # free to build (no extra network), available for every option, and
+    # carrying the trip's real dates.
+    from urllib.parse import unquote
+    for o in listed:
+        assert o["url"].startswith("https://www.google.com/travel/search?q="), o["url"]
+        assert o["property_name"] in unquote(o["url"]), (
+            f"link must be narrowed to the property: {o['url']}"
+        )
+        # Dates travel inside the base64url `ts` blob (see
+        # google_hotels_adapter.search_url) -- its presence IS the
+        # dated form; a bare q= link would be undated.
+        assert "&ts=" in o["url"], "the stay dates must ride along"
 
 
 def test_accommodation_options_are_empty_when_the_price_is_only_an_estimate(authed_client, monkeypatch):

@@ -356,6 +356,13 @@ class AccommodationOptionOut(BaseModel):
     # same apply_live_accommodation_price the engine prices with -- so
     # the misc buffer rescales identically, never a second formula.
     trip_total_eur: float
+    # A dated Google Hotels link narrowed to THIS property -- the same
+    # free (no extra network) property-narrowed search the headline
+    # accommodation link already falls back to. A narrowed results
+    # page with the property surfaced on top, not a guaranteed
+    # single-property landing page -- see
+    # google_hotels_adapter.search_url's verified-live note.
+    url: str
 
 
 class TripResultOut(BaseModel):
@@ -613,6 +620,7 @@ def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
     """
     if not accommodation_price_is_live or checkin_date is None:
         return []
+    checkout_date = checkin_date + datetime.timedelta(days=nights)
     options = live_accommodation_options(resort, checkin_date, nights, rooms_needed)
     out = []
     for i, o in enumerate(options):
@@ -625,6 +633,8 @@ def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
             per_person_eur=per_person,
             is_cheapest=(i == 0),
             trip_total_eur=round(apply_live_accommodation_price(cost, per_person).total_eur, 2),
+            url=google_hotels_url(resort, checkin_date, checkout_date,
+                                  property_name=o.property_name),
         ))
     return out
 

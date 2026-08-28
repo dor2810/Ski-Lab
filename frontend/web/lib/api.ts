@@ -179,6 +179,12 @@ export interface AccommodationOption {
   is_cheapest: boolean;
   /** The whole trip's cost if this property is the one booked. */
   trip_total_eur: number;
+  /**
+   * Dated Google Hotels link narrowed to this property (results page
+   * with the property surfaced on top -- not a guaranteed
+   * single-property landing page).
+   */
+  url: string;
 }
 
 export interface TripResult {
