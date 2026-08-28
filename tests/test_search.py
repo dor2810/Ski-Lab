@@ -962,6 +962,43 @@ def test_the_quoted_flight_price_matches_the_cheapest_listed_option(authed_clien
     assert result["cost"]["flight_eur"] == 311.0
 
 
+def test_flight_options_carry_curated_roles(authed_client, monkeypatch):
+    # Cheapest / Best / Fastest -- the triad every flight product uses
+    # (Skyscanner's default sort is literally "Best"). The middle
+    # option here is nearly as cheap AND nearly as fast, so it must win
+    # "best" while the extremes keep their own labels; an API that
+    # dropped roles, or a selection that degenerated to "best =
+    # cheapest", fails this test.
+    import datetime as _dt
+
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightOption, FlightSearchResult
+
+    options = [
+        FlightOption(price_eur=100.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="Ordeal Air", total_duration_minutes=1440, stops=2),
+        FlightOption(price_eur=500.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="El Al", total_duration_minutes=215, stops=0),
+        FlightOption(price_eur=140.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="SWISS", total_duration_minutes=300, stops=1),
+    ]
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=options, insight=None))
+
+    soon = (_dt.date.today() + _dt.timedelta(days=40)).isoformat()
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 6000, "ski_days": 5,
+        "target_resort": "Chamonix", "outbound_date": soon,
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    listed = resp.json()["results"][0]["flight_options"]
+
+    roles_by_airline = {o["airline"]: o["roles"] for o in listed}
+    assert roles_by_airline["Ordeal Air"] == ["cheapest"]
+    assert roles_by_airline["SWISS"] == ["best"]
+    assert roles_by_airline["El Al"] == ["fastest"]
+
+
 def test_flight_options_carry_real_flight_numbers_and_trip_totals(authed_client, monkeypatch):
     # Flight numbers make an option checkable against a departure board;
     # the per-option trip total makes the alternatives comparable AS
@@ -1031,3 +1068,173 @@ def test_the_fastest_flight_is_offered_even_when_it_is_not_among_the_cheapest(au
         f"the nonstop must be offered even though it is the priciest: {listed}"
     )
     assert listed[0]["is_cheapest"] is True
+
+
+# --- POST /trips/flight-booking-link ---
+#
+# The deep link is built at CLICK time, not search time: each link costs
+# an extra uncacheable live request (booking_url's own "choose return"
+# fetch), so building one per shown option per result would multiply
+# scrapes ~36x -- and a link built on click is also fresher than one
+# aged inside a search response. The endpoint matches the itinerary by
+# its flight numbers, the only stable identity an option has.
+
+def _booking_options():
+    from ski_optimizer.models import FlightOption
+    return [
+        FlightOption(price_eur=392.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="Aegean", total_duration_minutes=1475, stops=1,
+                     flight_numbers=["A3 927", "A3 982"], booking_token="tok-aegean"),
+        FlightOption(price_eur=442.0, origin_airport="TLV", destination_airport="GVA",
+                     airline="El Al", total_duration_minutes=215, stops=0,
+                     flight_numbers=["LY 345"], booking_token="tok-elal"),
+    ]
+
+
+def _future_trip_dates():
+    import datetime as _dt
+    start = _dt.date.today() + _dt.timedelta(days=40)
+    return start.isoformat(), (start + _dt.timedelta(days=6)).isoformat()
+
+
+def test_booking_link_is_built_for_the_exact_clicked_flight(authed_client, monkeypatch):
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightSearchResult
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=_booking_options(), insight=None))
+    seen = []
+
+    def fake_booking_url(option, outbound, ret, currency="EUR"):
+        seen.append(option)
+        return "https://www.google.com/travel/flights/booking?tfs=test"
+
+    monkeypatch.setattr(google_flights_adapter, "booking_url", fake_booking_url)
+
+    out, ret = _future_trip_dates()
+    resp = authed_client.post("/trips/flight-booking-link", json={
+        "resort_name": "Chamonix", "outbound_date": out, "return_date": ret,
+        "flight_numbers": ["LY 345"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    assert resp.json()["url"] == "https://www.google.com/travel/flights/booking?tfs=test"
+    # The link must be for the flight the user clicked -- the nonstop,
+    # NOT the cheapest -- or the page would book a different flight.
+    assert len(seen) == 1 and seen[0].flight_numbers == ["LY 345"]
+
+
+def test_booking_link_is_null_when_the_flight_is_no_longer_offered(authed_client, monkeypatch):
+    # A fresh fetch at click time may no longer contain the clicked
+    # itinerary. "The closest one" would book the WRONG FLIGHT, so the
+    # only honest answer is null (the client falls back to the plain
+    # search link).
+    from ski_optimizer.adapters import google_flights_adapter
+    from ski_optimizer.models import FlightSearchResult
+
+    monkeypatch.setattr(google_flights_adapter, "search_flights",
+                        lambda **_kw: FlightSearchResult(options=_booking_options(), insight=None))
+    # OBSERVE the calls rather than raising from the mock: the engine
+    # helper deliberately wraps everything in "except Exception ->
+    # None", so a raising mock is swallowed and a fall-back-to-cheapest
+    # bug would still pass. Proven the hard way -- the first version of
+    # this test stayed green with exactly that bug planted.
+    called = []
+
+    def fake_booking_url(option, *a, **k):
+        called.append(option)
+        return "https://www.google.com/travel/flights/booking?tfs=WRONG-FLIGHT"
+
+    monkeypatch.setattr(google_flights_adapter, "booking_url", fake_booking_url)
+
+    out, ret = _future_trip_dates()
+    resp = authed_client.post("/trips/flight-booking-link", json={
+        "resort_name": "Chamonix", "outbound_date": out, "return_date": ret,
+        "flight_numbers": ["XX 000"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 200
+    assert resp.json()["url"] is None
+    assert called == [], "no match must mean NO link -- never a link for a different flight"
+
+
+def test_booking_link_rejects_unknown_resort(authed_client):
+    out, ret = _future_trip_dates()
+    resp = authed_client.post("/trips/flight-booking-link", json={
+        "resort_name": "Atlantis", "outbound_date": out, "return_date": ret,
+        "flight_numbers": ["LY 345"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 404
+
+
+def test_booking_link_rejects_past_and_inverted_dates(authed_client):
+    import datetime as _dt
+    resp = authed_client.post("/trips/flight-booking-link", json={
+        "resort_name": "Chamonix", "outbound_date": "2020-01-10",
+        "return_date": "2020-01-16", "flight_numbers": ["LY 345"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 400
+
+    out, ret = _future_trip_dates()
+    resp = authed_client.post("/trips/flight-booking-link", json={
+        "resort_name": "Chamonix", "outbound_date": ret, "return_date": out,
+        "flight_numbers": ["LY 345"],
+    }, headers=CSRF_HEADERS)
+    assert resp.status_code == 400
+
+
+# --- accommodation_options: the real named properties behind the price ---
+
+def test_accommodation_options_list_real_named_properties_with_per_person_costs(authed_client, monkeypatch):
+    # Same reasoning as flight_options: the scrape always returned ~20
+    # named, priced properties and we showed ONE name. The alternatives
+    # are shown as per-person stay costs and whole-trip totals so they
+    # are comparable AS TRIPS, using the same apply_live_accommodation_
+    # price the engine itself prices with -- never a second formula.
+    from ski_optimizer.adapters import google_hotels_adapter
+    from ski_optimizer.models import AccommodationOption, AccommodationSearchResult
+
+    def fake_search_accommodation(*_args, **_kwargs):
+        return AccommodationSearchResult(options=[
+            AccommodationOption(price_eur_per_night=180.0, property_name="Grand Chalet"),
+            AccommodationOption(price_eur_per_night=77.0, property_name="Arve 1 et 2"),
+            AccommodationOption(price_eur_per_night=96.0, property_name="Les Campanules"),
+        ])
+
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", fake_search_accommodation)
+
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 2500, "ski_days": 5, "group_size": 2,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    result = resp.json()["results"][0]
+    assert result["cost"]["accommodation_price_is_live"] is True
+
+    listed = result["accommodation_options"]
+    assert [o["property_name"] for o in listed] == [
+        "Arve 1 et 2", "Les Campanules", "Grand Chalet"]
+    assert listed[0]["is_cheapest"] is True
+    assert all(o["is_cheapest"] is False for o in listed[1:])
+    # 6 nights (5 ski days + 1), 1 room, 2 people: 77*6*1/2 = 231.
+    assert listed[0]["per_person_eur"] == 231.0
+    # The cheapest property's trip total IS the headline total; a
+    # pricier property must cost more by at least the stay difference.
+    assert listed[0]["trip_total_eur"] == result["cost"]["total_eur"]
+    assert listed[-1]["trip_total_eur"] > listed[0]["trip_total_eur"]
+
+
+def test_accommodation_options_are_empty_when_the_price_is_only_an_estimate(authed_client, monkeypatch):
+    # With a static estimate there are no real properties to list, and
+    # inventing some is exactly the fabrication this project forbids.
+    from ski_optimizer.adapters import google_hotels_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _raise(*_args, **_kwargs):
+        raise AdapterError("no live accommodation data")
+
+    monkeypatch.setattr(google_hotels_adapter, "search_accommodation", _raise)
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 2500, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    result = resp.json()["results"][0]
+    assert result["cost"]["accommodation_price_is_live"] is False
+    assert result["accommodation_options"] == []

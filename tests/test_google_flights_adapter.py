@@ -302,7 +302,7 @@ def test_build_tfu_round_trips_the_raw_token():
 
 # --- _extract_booking_ingredients / booking_token round trip ---
 
-def _raw_card(price=129, token="tok-abc", legs=None):
+def _raw_card(price=129, token="tok-abc", legs=None, total_duration=None):
     # Matches the REAL raw payload shape: raw_card[0][2] is the leg
     # list (raw_card[0] carries other flight-level fields at indices 0
     # and 1 that _extract_booking_ingredients doesn't read), and each
@@ -310,12 +310,66 @@ def _raw_card(price=129, token="tok-abc", legs=None):
     # date/[carrier, flight_num, ..., airline_name] -- see
     # _extract_booking_ingredients's docstring and this module's own
     # docstring for how these indices were found.
+    #
+    # raw_card[0][9] is Google's own total journey duration in minutes
+    # (see _total_duration_from_card). Padded out with None so the
+    # index lands where it really does in the live payload.
     legs = legs or [
         [None, None, None, "TLV", "Ben Gurion", "Athens Intl", "ATH", None, [5, 20], None, [7, 30],
          130, None, 2, "28 in", None, 1, "Airbus A321neo", None, 0, [2026, 12, 11], [2026, 12, 11],
          ["A3", "929", None, "Aegean"]],
     ]
-    return [[None, None, legs], [[None, price], token]]
+    flight_level = [None, None, legs, None, None, None, None, None, None, total_duration]
+    return [flight_level, [[None, price], token]]
+
+
+def test_total_duration_comes_from_the_payload_not_local_clock_arithmetic():
+    # REGRESSION, found live 2026-08-28 against a real TLV->GVA card:
+    # Google's own booking page said "7 hr 20 min" where we displayed
+    # "6h20". Both clocks are LOCAL, and in January Tel Aviv is UTC+2
+    # while Geneva is UTC+1, so subtracting one from the other loses
+    # exactly the offset. Every westbound duration we showed was
+    # understated, every eastbound one overstated.
+    #
+    # The payload carries the real answer at [0][9] -- 440 minutes for
+    # this itinerary, which also equals 295 + 75 flying + 70 layover.
+    legs = [
+        _leg("TLV", "BRU", dep_time=(16, 10), arr_time=(20, 5), duration=295),
+        _leg("BRU", "GVA", dep_time=(21, 15), arr_time=(22, 30), duration=75),
+    ]
+    opt = gfa._parse_flight_result(
+        _flights_result(legs=legs), currency_is_eur=True,
+        raw_card=_raw_card(legs=[], total_duration=440),
+    )
+    # Naive clock subtraction gives 16:10 -> 22:30 = 380. The truth is 440.
+    assert opt.total_duration_minutes == 440
+
+
+def test_duration_falls_back_to_clock_math_when_the_payload_omits_it():
+    # The payload field is the authority, but it must never be the
+    # single point of failure: an older/mocked card without it still
+    # has to produce a usable duration rather than zero or a crash.
+    legs = [
+        _leg("TLV", "FRA", dep_time=(7, 55), arr_time=(11, 35), duration=280),
+        _leg("FRA", "GVA", dep_time=(21, 10), arr_time=(22, 25), duration=75),
+    ]
+    opt = gfa._parse_flight_result(
+        _flights_result(legs=legs), currency_is_eur=True,
+        raw_card=_raw_card(legs=[], total_duration=None),
+    )
+    assert opt.total_duration_minutes == 870  # 07:55 -> 22:25
+
+
+def test_nonsense_payload_duration_is_ignored_rather_than_displayed():
+    # "Never invent a number" cuts both ways: a zero, a negative, or a
+    # non-integer in that slot is not a duration, and must fall back
+    # rather than be shown as "0h".
+    for junk in (0, -30, "440", True, None):
+        opt = gfa._parse_flight_result(
+            _flights_result(), currency_is_eur=True,
+            raw_card=_raw_card(legs=[], total_duration=junk),
+        )
+        assert opt.total_duration_minutes == 210, f"{junk!r} should not be trusted"
 
 
 def test_extract_booking_ingredients_packs_token_and_segments():

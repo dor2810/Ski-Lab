@@ -35,6 +35,11 @@ export interface SearchOutcome {
   // See lib/api.ts's SearchResponse.live_pricing_blocked.
   livePricingBlocked: boolean;
   candidateDates: number;
+  // The max-connections preference THIS search ran with. The booking-
+  // link endpoint re-runs the same flight query at click time, and a
+  // different connections cap is a different query that may not
+  // contain the clicked itinerary.
+  maxConnections: number | null;
 }
 
 const SKILL_LEVELS: { value: SkillLevel; key: keyof Dictionary }[] = [
@@ -296,6 +301,7 @@ export function SearchCard({
         livePricingActive: data.live_pricing_active,
         livePricingBlocked: data.live_pricing_blocked,
         candidateDates: data.candidate_dates_per_resort,
+        maxConnections: maxConnections === "" ? null : Number(maxConnections),
       });
     } catch (err) {
       // A dead session is not a search failure -- say so plainly and

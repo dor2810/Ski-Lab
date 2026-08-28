@@ -2,23 +2,28 @@
 
 import { useState } from "react";
 import { useTranslation } from "@/lib/i18n/context";
-import type { FlightOption } from "@/lib/api";
+import { useAuth } from "@/lib/auth/context";
+import { fetchFlightBookingLink, type FlightOption } from "@/lib/api";
 import { FlightIcon } from "./icons";
 
 /**
- * The real itineraries behind a result's flight price.
+ * The real itineraries behind a result's flight price -- the curated
+ * Cheapest / Best / Fastest picks (engine/flight_picks.py), each with
+ * its flight numbers, whole-trip total, and a "book" action that
+ * fetches a Google Flights booking-page deep link for exactly that
+ * itinerary at click time.
  *
  * WHY THIS EXISTS: the flight search always returned a LIST of priced
  * flights and we kept one number off it. On a real TLV->GVA search the
  * cheapest was EUR283 for a FOURTEEN AND A HALF HOUR journey, while
  * EUR392 got there in six hours and a nonstop was 3h35. Showing only
  * the EUR283 makes the trip total look great while silently assuming
- * the traveller will spend two full days getting there -- technically
- * true, and exactly the kind of misleading number this project exists
- * not to produce.
+ * the traveller will spend two full days getting there.
  *
- * The point is not "more data". It is that "cheapest" stops being a
- * hidden assumption and becomes a visible choice.
+ * The labels are the triad travellers already know -- Skyscanner's
+ * default sort is literally called "Best" (price vs. convenience),
+ * alongside Cheapest and Fastest. Not "Luxury": we have no cabin-class
+ * data, so that word would claim knowledge of the seat we don't have.
  */
 
 // How much longer than the fastest option a flight has to be before it
@@ -33,7 +38,89 @@ function formatDuration(minutes: number): string {
   return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
 }
 
-export function FlightOptions({ options }: { options: FlightOption[] }) {
+/** Props the booking-link endpoint needs to re-find this itinerary. */
+export interface BookingContext {
+  resortName: string;
+  outboundDate: string; // YYYY-MM-DD
+  returnDate: string; // YYYY-MM-DD
+  maxConnections: number | null;
+  /** The always-working fallback when a deep link can't be built. */
+  flightSearchUrl: string | null;
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const { t } = useTranslation();
+  const label =
+    role === "cheapest" ? t("flightRoleCheapest")
+    : role === "best" ? t("flightRoleBest")
+    : role === "fastest" ? t("flightRoleFastest")
+    : null;
+  if (!label) return null;
+  // "best" carries the accent -- it is the recommendation; the other
+  // two are factual extremes and stay quiet.
+  const tone = role === "best"
+    ? "bg-signal text-white"
+    : "bg-sunken text-muted border border-line";
+  return (
+    <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${tone}`}>
+      {label}
+    </span>
+  );
+}
+
+function BookFlightButton({ option, booking }: { option: FlightOption; booking: BookingContext }) {
+  const { t } = useTranslation();
+  const { runAuthed } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  // Only offered when the itinerary is identifiable: without flight
+  // numbers the endpoint has nothing stable to match, and the row's
+  // generic search link already exists one level up on the card.
+  if (option.flight_numbers.length === 0) return null;
+
+  async function onClick() {
+    // Open the window synchronously so the popup blocker treats it as
+    // user-initiated, then point it at the link once fetched.
+    const popup = window.open("about:blank", "_blank");
+    setBusy(true);
+    try {
+      const { url } = await runAuthed((token) =>
+        fetchFlightBookingLink(
+          {
+            resort_name: booking.resortName,
+            outbound_date: booking.outboundDate,
+            return_date: booking.returnDate,
+            flight_numbers: option.flight_numbers,
+            max_connections: booking.maxConnections,
+          },
+          token
+        )
+      );
+      const target = url ?? booking.flightSearchUrl;
+      if (popup && target) popup.location.href = target;
+      else if (popup) popup.close();
+    } catch {
+      // Degrade to the plain dated search link -- never a dead popup.
+      if (popup && booking.flightSearchUrl) popup.location.href = booking.flightSearchUrl;
+      else if (popup) popup.close();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className="flex-none rounded-md bg-signal-soft px-2 py-0.5 text-[11px] font-semibold text-signal hover:bg-signal hover:text-white disabled:opacity-60"
+    >
+      {busy ? t("flightBookLoading") : t("flightBook")}
+    </button>
+  );
+}
+
+export function FlightOptions({ options, booking }: { options: FlightOption[]; booking: BookingContext | null }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -76,14 +163,19 @@ export function FlightOptions({ options }: { options: FlightOption[] }) {
           {options.map((o, i) => (
             <li
               key={`${o.airline}-${o.price_eur}-${i}`}
-              className={`rounded-lg px-2 py-1.5 ${o.is_cheapest ? "bg-signal-soft" : ""}`}
+              className={`rounded-lg px-2 py-1.5 ${o.roles.includes("best") ? "bg-signal-soft" : ""}`}
             >
-              {/* TWO lines, not one. Six pieces of data (fare, airline,
-                  flight numbers, duration, stops, trip total) in a
-                  single row needed 432px against roughly 300px of usable
-                  width on a phone, and pushed the whole page into
-                  horizontal scroll. The first line is what you choose
-                  between; the second is the detail you check after. */}
+              {/* THREE compact lines, not one. Six-plus pieces of data
+                  in a single row needed 432px against roughly 300px of
+                  usable width on a phone and pushed the whole page into
+                  horizontal scroll. Line 1: what it IS (labels). Line
+                  2: what you choose between. Line 3: the detail you
+                  check afterwards, plus the action. */}
+              {o.roles.length > 0 && (
+                <div className="mb-0.5 flex flex-wrap items-center gap-1">
+                  {o.roles.map((role) => <RoleBadge key={role} role={role} />)}
+                </div>
+              )}
               <div className="flex min-w-0 items-baseline gap-2 text-xs">
                 <span className="w-12 flex-none font-semibold tabular-nums text-ink">
                   €{Math.round(o.price_eur)}
@@ -100,17 +192,22 @@ export function FlightOptions({ options }: { options: FlightOption[] }) {
                       : t("flightStops", { n: String(o.stops) })}
                 </span>
               </div>
-              <div className="mt-0.5 flex min-w-0 items-baseline gap-2 text-[11px] text-subtle">
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-subtle">
                 <span className="min-w-0 flex-1 truncate">
-                  {o.flight_numbers.length > 0 ? o.flight_numbers.join(" · ") : "\u00a0"}
+                  {o.flight_numbers.length > 0 ? o.flight_numbers.join(" · ") : " "}
                 </span>
                 <span className="flex-none tabular-nums">
                   {t("flightTripTotal", { total: String(Math.round(o.trip_total_eur)) })}
                 </span>
+                {booking && <BookFlightButton option={o} booking={booking} />}
               </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {open && booking && (
+        <p className="mt-2 text-[10px] leading-snug text-subtle">{t("flightBookNote")}</p>
       )}
     </div>
   );

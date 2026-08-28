@@ -170,6 +170,43 @@ def _flight_numbers_from_card(raw_card) -> list:
         return []
 
 
+def _total_duration_from_card(raw_card) -> Optional[int]:
+    """
+    Google's OWN total journey duration in minutes, read from index
+    [0][9] of the raw card.
+
+    WHY THIS EXISTS, because the obvious approach is wrong and shipped
+    wrong for a while: the duration used to be computed by subtracting
+    the first leg's departure from the last leg's arrival. BOTH OF
+    THOSE CLOCKS ARE LOCAL TO THEIR OWN AIRPORT. In January, Tel Aviv
+    is UTC+2 and Geneva UTC+1, so TLV 16:10 -> GVA 22:30 is 7h20 of
+    real elapsed time but only 6h20 of clock difference. Caught by
+    opening our own booking deep link and reading Google's own figure
+    next to ours.
+
+    Summing the per-leg `duration` fields is not the fix either -- that
+    drops layovers, which on these itineraries run to nine hours.
+
+    Doing it properly ourselves would mean a per-airport timezone table
+    plus DST rules for every date. Google already did that work and
+    puts the answer in the payload: 440 for the itinerary above, which
+    independently checks out as 295 + 75 flying + 70 on the ground.
+
+    Validated rather than trusted, because this is an undocumented
+    internal format: a value that isn't a positive int isn't a
+    duration, and the caller falls back instead of displaying it. bool
+    is excluded explicitly -- it is an int subclass in Python, so True
+    would otherwise sail through as a one-minute flight.
+    """
+    try:
+        total = raw_card[0][9]
+    except (IndexError, TypeError, KeyError):
+        return None
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        return None
+    return total
+
+
 def _parse_flight_result(flight, currency_is_eur: bool, raw_card=None) -> Optional[FlightOption]:
     """
     Converts one `fast_flights.model.Flights` result (one full,
@@ -206,15 +243,22 @@ def _parse_flight_result(flight, currency_is_eur: bool, raw_card=None) -> Option
     airlines = list(dict.fromkeys(flight.airlines or []))
     airline = airlines[0] if len(airlines) == 1 else (" + ".join(airlines[:2]) if airlines else "Unknown")
 
-    try:
-        dep = _to_datetime(first.departure, first.departure.date[0] if first.departure.date else 2000)
-        arr = _to_datetime(last.arrival, last.arrival.date[0] if last.arrival.date else 2000)
-        duration_minutes = max(0, int((arr - dep).total_seconds() // 60))
-    except Exception:
-        # Duration is informational only (see module docstring -- not
-        # consumed downstream today) -- never let a date-arithmetic
-        # hiccup take down an otherwise-good price.
-        duration_minutes = sum(leg.duration or 0 for leg in legs)
+    # Google's own figure first -- it is the only one that accounts for
+    # timezone offsets between the origin and destination airports. See
+    # _total_duration_from_card for why the two fallbacks below are
+    # both wrong in their own way and used only when it is unavailable.
+    duration_minutes = _total_duration_from_card(raw_card) if raw_card is not None else None
+    if duration_minutes is None:
+        try:
+            dep = _to_datetime(first.departure, first.departure.date[0] if first.departure.date else 2000)
+            arr = _to_datetime(last.arrival, last.arrival.date[0] if last.arrival.date else 2000)
+            # Understates westbound and overstates eastbound by the
+            # offset; still far closer than dropping layovers.
+            duration_minutes = max(0, int((arr - dep).total_seconds() // 60))
+        except Exception:
+            # Never let a date-arithmetic hiccup take down an
+            # otherwise-good price.
+            duration_minutes = sum(leg.duration or 0 for leg in legs)
 
     return FlightOption(
         price_eur=price if currency_is_eur else price,  # see module docstring's currency note

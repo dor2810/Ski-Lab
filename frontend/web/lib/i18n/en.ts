@@ -202,6 +202,20 @@ const en = {
   flightOneStop: "1 stop",
   flightStops: "{n} stops",
   flightCheapestIsSlow: "The cheapest flight takes {cheapDuration}. Paying about €{extra} more gets you there in {fastDuration}.",
+  flightRoleCheapest: "Cheapest",
+  flightRoleBest: "Best",
+  flightRoleFastest: "Fastest",
+  flightBook: "Book",
+  flightBookLoading: "Opening…",
+  // Honest by necessity: Google re-prices at the booking step (seen
+  // live: €268 on the search page became €392 on the booking page,
+  // with Google's own "price has changed" banner).
+  flightBookNote: "Book opens this exact flight on Google Flights. The final price is confirmed there and can differ from the search price.",
+
+  accommodationOptionsTitle: "Places to stay ({count})",
+  accommodationPerNight: "€{price}/night",
+  accommodationPerPersonStay: "€{price} per person for the stay",
+  accommodationOptionsNote: "Real places with live prices, cheapest first. The cheapest one is what the trip total is priced on.",
 
   // --- Weather (result card) ---
   weatherTitle: "Weather this week",

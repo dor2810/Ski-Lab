@@ -25,7 +25,7 @@ import logging
 import os
 import re
 from datetime import timedelta
-from typing import Optional
+from typing import List, Optional
 
 from ..adapters.base import ProviderBlockedError
 from .provider_status import note_provider_blocked
@@ -368,11 +368,11 @@ def live_flight_options(
     origin_airport: str = "TLV",
     adults: int = 1,
     max_connections: int = 1,
-    limit: int = 4,
 ):
     """
-    The real flight itineraries behind this result's flight price --
-    cheapest first, at most `limit` of them.
+    The curated flight picks behind this result's flight price --
+    engine/flight_picks.py's Cheapest / Best / Fastest selection,
+    cheapest first, as FlightPicks (each carrying the roles it won).
 
     COSTS NOTHING EXTRA. live_flight_cost_eur() already ran exactly this
     search moments ago for the same (resort, dates, connections), so
@@ -404,24 +404,14 @@ def live_flight_options(
             adults=adults,
             max_connections=max_connections,
         )
-        by_price = sorted(result.options, key=lambda o: o.price_eur)
-        if not by_price:
-            return []
-
-        # Cheapest few, PLUS the fastest itinerary even when it is
-        # pricier than all of them.
-        #
-        # Taking the N cheapest alone makes the list -- and any range
-        # built from it -- describe only one end of the real choice. On
-        # a live TLV->GVA search the four cheapest were all 14-24 hour
-        # journeys while the 3h35 nonstop sat outside them entirely, so
-        # a "cheapest 4" view showed a user four versions of the same
-        # bad option and hid the one they might actually want.
-        chosen = by_price[: max(1, limit - 1)]
-        fastest = min(result.options, key=lambda o: o.total_duration_minutes)
-        if fastest not in chosen:
-            chosen = chosen + [fastest]
-        return sorted(chosen, key=lambda o: o.price_eur)
+        # Selection lives in engine/flight_picks.py -- pure, offline-
+        # tested maths. The earlier inline version here ("cheapest N-1
+        # plus the fastest") still made the user read a list and do the
+        # trade-off themselves; the picks module returns the three
+        # answers every flight product already gives (Cheapest / Best /
+        # Fastest), merged onto fewer options when one wins several.
+        from .flight_picks import pick_flights
+        return pick_flights(result.options)
     except Exception:
         logger.exception("live_flight_options failed for %s", resort.name)
         return []
@@ -434,15 +424,25 @@ def live_flight_booking_url(
     origin_airport: str = "TLV",
     adults: int = 1,
     max_connections: int = 1,
+    flight_numbers: Optional[List[str]] = None,
 ) -> Optional[str]:
     """
     A deep link to Google Flights' own booking page for the SAME
-    cheapest flight live_flight_cost_eur() just priced, or None if
-    unavailable for any reason -- see
-    adapters/google_flights_adapter.booking_url()'s own docstring for
-    what "unavailable" covers (missing booking ingredients, an expired
-    selection token, a failed second fetch for round trip) and why
-    every one of those degrades to None rather than a broken link.
+    cheapest flight live_flight_cost_eur() just priced -- or, when
+    `flight_numbers` is given (e.g. ["A3 927", "A3 982"]), for that
+    SPECIFIC itinerary instead. None if unavailable for any reason --
+    see adapters/google_flights_adapter.booking_url()'s own docstring
+    for what "unavailable" covers (missing booking ingredients, an
+    expired selection token, a failed second fetch for round trip) and
+    why every one of those degrades to None rather than a broken link.
+
+    Matching by flight numbers, not by list index or price: the link
+    is built at CLICK time, possibly long after the search that showed
+    the option, and by then the freshly-fetched list may be ordered or
+    priced differently. The flight designators are the only stable
+    identity an itinerary has. No match -> None, never "the closest
+    one" -- a booking page for a different flight than the one clicked
+    would be worse than no link at all.
 
     Re-runs search_flights() rather than taking a FlightOption in --
     deliberately, so callers don't have to thread one through. This
@@ -466,8 +466,18 @@ def live_flight_booking_url(
         )
         if not result.options:
             return None
-        cheapest = min(result.options, key=lambda o: o.price_eur)
-        return flight_adapter.booking_url(cheapest, outbound_date, return_date)
+        if flight_numbers:
+            wanted = [n.strip().upper() for n in flight_numbers]
+            chosen = next(
+                (o for o in result.options
+                 if [n.strip().upper() for n in (o.flight_numbers or [])] == wanted),
+                None,
+            )
+            if chosen is None:
+                return None
+        else:
+            chosen = min(result.options, key=lambda o: o.price_eur)
+        return flight_adapter.booking_url(chosen, outbound_date, return_date)
     except Exception:
         # Same "degrade visibly, never break" contract as
         # live_flight_cost_eur -- see that function's docstring.
@@ -556,6 +566,43 @@ def live_accommodation_property_name(resort: Resort, checkin_date, nights: int, 
         return cheapest.property_name if cheapest else None
     except Exception:
         return None
+
+
+def live_accommodation_options(
+    resort: Resort,
+    checkin_date,
+    nights: int,
+    rooms_needed: int,
+    limit: int = 4,
+):
+    """
+    The cheapest few real, named properties behind this result's
+    accommodation price -- AccommodationOptions sorted cheapest first,
+    at most `limit`.
+
+    COSTS NOTHING EXTRA: the exact same search_accommodation() call
+    live pricing already made moments ago (same resort/checkin/nights/
+    rooms), so this is a response-cache hit -- the same reasoning as
+    live_flight_options. The scrape always returned ~20 named, priced
+    properties and we were showing ONE name off it.
+
+    Cheapest-N and nothing cleverer, deliberately: unlike flights there
+    is no second honestly-known axis to trade against -- the provider's
+    rating and distance fields are not parsed (they come back None,
+    verified live 2026-08-28), so a "best" pick here would be built on
+    data we don't have. If those fields are ever parsed for real,
+    revisit with a flight_picks-style selection.
+
+    Returns [] rather than raising, matching every other live_* helper.
+    """
+    try:
+        from ..adapters import google_hotels_adapter
+        result = google_hotels_adapter.search_accommodation(resort, checkin_date, nights, rooms_needed)
+        by_price = sorted(result.options, key=lambda o: o.price_eur_per_night)
+        return by_price[: max(1, limit)]
+    except Exception:
+        logger.exception("live_accommodation_options failed for %s", resort.name)
+        return []
 
 
 def live_accommodation_booking_url(

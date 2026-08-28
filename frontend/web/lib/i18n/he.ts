@@ -197,6 +197,17 @@ const he: Record<keyof typeof en, string> = {
   flightOneStop: "עצירה אחת",
   flightStops: "{n} עצירות",
   flightCheapestIsSlow: "הטיסה הזולה ביותר נמשכת {cheapDuration}. תוספת של כ-€{extra} תביא אתכם תוך {fastDuration}.",
+  flightRoleCheapest: "הזולה ביותר",
+  flightRoleBest: "המומלצת",
+  flightRoleFastest: "המהירה ביותר",
+  flightBook: "להזמנה",
+  flightBookLoading: "פותח…",
+  flightBookNote: "כפתור ההזמנה פותח בדיוק את הטיסה הזו ב-Google Flights. המחיר הסופי מאושר שם ועשוי להיות שונה ממחיר החיפוש.",
+
+  accommodationOptionsTitle: "מקומות לינה ({count})",
+  accommodationPerNight: "€{price}/לילה",
+  accommodationPerPersonStay: "€{price} לאדם לכל השהות",
+  accommodationOptionsNote: "מקומות אמיתיים במחירים חיים, מהזול ליקר. המחיר הכולל של הטיול מבוסס על הזול ביותר.",
 
   // --- Weather (result card) ---
   weatherTitle: "מזג האוויר השבוע",

@@ -9,6 +9,7 @@ import { TerrainBar } from "./TerrainBar";
 import { WeatherWeek } from "./WeatherWeek";
 import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
+import { AccommodationOptions } from "./AccommodationOptions";
 import {
   FlightIcon,
   TransferIcon,
@@ -121,10 +122,28 @@ function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Di
   ];
 }
 
-export function ResultCard({ result }: { result: TripResult }) {
+export function ResultCard({ result, maxConnections = null }: {
+  result: TripResult;
+  // The max-connections preference the search ran with -- needed by
+  // the per-flight booking link, which re-runs the same query at
+  // click time (see FlightOptions' BookingContext). Absent for the
+  // landing-page preview, which has no flight options anyway.
+  maxConnections?: number | null;
+}) {
   const { t, locale } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const r = result;
+  // Dated results (the real search path) carry their own trip dates;
+  // without them the booking endpoint has nothing to re-search.
+  const booking = r.start_date && r.end_date
+    ? {
+        resortName: r.resort.name,
+        outboundDate: r.start_date,
+        returnDate: r.end_date,
+        maxConnections,
+        flightSearchUrl: r.flight_search_url,
+      }
+    : null;
   const scorePct = Math.round(r.score * 100);
   // Only a range when the two ends genuinely differ -- a range like
   // "EUR1322-EUR1322" is noise, and rounding can make a trivial
@@ -227,7 +246,9 @@ export function ResultCard({ result }: { result: TripResult }) {
         <span className="text-[11px] text-subtle">{t("searchLinkDisclaimer")}</span>
       </div>
 
-      <FlightOptions options={r.flight_options} />
+      <FlightOptions options={r.flight_options} booking={booking} />
+
+      <AccommodationOptions options={r.accommodation_options} />
 
       <WhatsIncluded />
 

@@ -34,9 +34,9 @@ from ...models import (
 from ...engine.cost_calculator import (
     live_flight_cost_eur, live_flight_booking_url,
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
-    live_accommodation_property_name,
+    live_accommodation_property_name, live_accommodation_options,
     live_flight_options,
-    apply_live_flight_price,
+    apply_live_flight_price, apply_live_accommodation_price,
     live_transfer_booking_url,
 )
 from ...engine.links import (
@@ -321,6 +321,11 @@ class FlightOptionOut(BaseModel):
     duration_minutes: int
     stops: int
     is_cheapest: bool
+    # Which of the three curated labels this itinerary won: any of
+    # "cheapest" / "best" / "fastest" (engine/flight_picks.py). One
+    # flight can hold several -- it is then shown ONCE with all of
+    # them, never listed twice under two labels.
+    roles: List[str] = []
     # Real designators per leg, e.g. ["LX 253", "LX 2802"]. Empty when
     # the provider didn't supply them -- never faked, since a wrong
     # flight number is worse than none to someone at a departure board.
@@ -328,6 +333,28 @@ class FlightOptionOut(BaseModel):
     # What the WHOLE trip costs if this flight is the one taken, not
     # just what the flight costs. The headline total assumes the
     # cheapest flight; this is what makes the alternatives comparable.
+    trip_total_eur: float
+
+
+class AccommodationOptionOut(BaseModel):
+    """
+    One real, named property behind a result's accommodation price --
+    same reasoning as FlightOptionOut: the scrape always returned ~20
+    named, priced properties and we showed ONE name off it. Cheapest
+    first, no "best" pick -- the provider's rating/distance fields are
+    not parsed, so there is no honest second axis to rank on (see
+    cost_calculator.live_accommodation_options).
+    """
+    property_name: str
+    price_eur_per_night: float
+    # What this property costs THIS traveller for the whole stay:
+    # per-night x nights x rooms / group size -- exactly the formula
+    # live_accommodation_cost_eur_per_person prices the trip with.
+    per_person_eur: float
+    is_cheapest: bool
+    # The whole trip's cost if this property is the one booked, via the
+    # same apply_live_accommodation_price the engine prices with -- so
+    # the misc buffer rescales identically, never a second formula.
     trip_total_eur: float
 
 
@@ -359,6 +386,11 @@ class TripResultOut(BaseModel):
     # otherwise) and only for results that were live-repriced. Costs no
     # extra requests -- see cost_calculator.live_flight_options.
     flight_options: List[FlightOptionOut] = []
+    # The real named properties behind accommodation_eur, cheapest
+    # first -- same contract as flight_options: only populated when the
+    # accommodation price is live, and a response-cache hit rather than
+    # a second scrape (cost_calculator.live_accommodation_options).
+    accommodation_options: List[AccommodationOptionOut] = []
     # The trip total spans a RANGE, because which flight you take
     # changes it. total_eur is the low end (cheapest flight); this is
     # the high end (typically the fastest or nonstop option). Equal to
@@ -568,6 +600,35 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
     return live_accommodation_property_name(resort, checkin_date, nights, rooms_needed)
 
 
+def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
+                               rooms_needed: int, group_size: int,
+                               accommodation_price_is_live: bool,
+                               cost) -> List["AccommodationOptionOut"]:
+    """
+    The named properties behind this result's accommodation price.
+    Empty unless the price is actually live -- with a static estimate
+    there are no real properties to list, and inventing some is exactly
+    the fabrication this project forbids. Same response-cache-hit
+    economics as _accommodation_property_name above.
+    """
+    if not accommodation_price_is_live or checkin_date is None:
+        return []
+    options = live_accommodation_options(resort, checkin_date, nights, rooms_needed)
+    out = []
+    for i, o in enumerate(options):
+        # The same per-person formula live_accommodation_cost_eur_per_
+        # person prices the trip with -- never a second one.
+        per_person = round((o.price_eur_per_night * nights * rooms_needed) / group_size, 2)
+        out.append(AccommodationOptionOut(
+            property_name=o.property_name,
+            price_eur_per_night=round(o.price_eur_per_night, 2),
+            per_person_eur=per_person,
+            is_cheapest=(i == 0),
+            trip_total_eur=round(apply_live_accommodation_price(cost, per_person).total_eur, 2),
+        ))
+    return out
+
+
 # How many top results may spend real weather requests on snow
 # re-ranking. Each lookup is several sequential live requests (one per
 # sampled historical year), so this is bounded for the same reason the
@@ -600,21 +661,22 @@ def _flight_options_out(resort: Resort, outbound_date, return_date,
     """
     if not flight_price_is_live or outbound_date is None or return_date is None:
         return []
-    options = live_flight_options(resort, outbound_date, return_date, origin_airport="TLV",
-                                  max_connections=max_connections)
+    picks = live_flight_options(resort, outbound_date, return_date, origin_airport="TLV",
+                                max_connections=max_connections)
     # What the WHOLE trip costs under each choice. Uses the same
     # apply_live_flight_price the engine uses, so the misc buffer is
     # rescaled exactly as it is everywhere else rather than a second,
     # subtly different sum living here.
     return [
         FlightOptionOut(
-            price_eur=o.price_eur, airline=o.airline,
-            duration_minutes=o.total_duration_minutes, stops=o.stops,
-            is_cheapest=(i == 0),
-            flight_numbers=list(o.flight_numbers or []),
-            trip_total_eur=round(apply_live_flight_price(cost, o.price_eur).total_eur, 2),
+            price_eur=p.option.price_eur, airline=p.option.airline,
+            duration_minutes=p.option.total_duration_minutes, stops=p.option.stops,
+            is_cheapest=("cheapest" in p.roles),
+            roles=list(p.roles),
+            flight_numbers=list(p.option.flight_numbers or []),
+            trip_total_eur=round(apply_live_flight_price(cost, p.option.price_eur).total_eur, 2),
         )
-        for i, o in enumerate(options)
+        for p in picks
     ]
 
 
@@ -864,6 +926,9 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             flight_options=(_fo := _flight_options_out(
                 t.resort, payload.outbound_date, return_date,
                 t.cost.flight_price_is_live, payload.max_connections, t.cost)),
+            accommodation_options=_accommodation_options_out(
+                t.resort, payload.outbound_date, prefs.nights, prefs.rooms_needed,
+                payload.group_size, t.cost.accommodation_price_is_live, t.cost),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0)),
@@ -918,6 +983,64 @@ def list_resort_names(current_user: Optional[User] = Depends(get_current_user_fo
 # Wraps engine/date_search.search_date_range, the same way search_trips()
 # above wraps rank_trips -- no scoring/funnel logic is reimplemented here.
 # ---------------------------------------------------------------------------
+
+class FlightBookingLinkRequest(BaseModel):
+    resort_name: str
+    outbound_date: datetime.date
+    return_date: datetime.date
+    # The itinerary's real designators, e.g. ["A3 927", "A3 982"] --
+    # the only stable identity a flight option has across fetches (see
+    # cost_calculator.live_flight_booking_url's docstring).
+    flight_numbers: List[str] = Field(min_length=1, max_length=8)
+    # Must match what the search that showed the option used, or the
+    # re-run is a different query and may not contain it.
+    max_connections: Optional[int] = Field(default=None, ge=0, le=2)
+
+
+class FlightBookingLinkResponse(BaseModel):
+    # None whenever the deep link can't be built (itinerary no longer
+    # offered, expired selection token, a failed return-leg fetch) --
+    # the client falls back to the result's own flight_search_url,
+    # never a broken link.
+    url: Optional[str]
+
+
+@router.post("/flight-booking-link", response_model=FlightBookingLinkResponse,
+             dependencies=[Depends(enforce_search_rate_limit)])
+def flight_booking_link(payload: FlightBookingLinkRequest,
+                        current_user: Optional[User] = Depends(get_current_user_for_search)):
+    """
+    A Google Flights booking-page deep link for ONE specific itinerary
+    a search already showed, built at CLICK time.
+
+    ON CLICK and not at search time, deliberately: each link costs one
+    EXTRA, uncacheable live request (booking_url's own "choose return"
+    fetch -- see adapters/google_flights_adapter.booking_url), so
+    building one per shown option per result would multiply live
+    traffic ~36x per search for links mostly nobody clicks. Built here,
+    it costs one request for exactly the flight the user wants -- and
+    is FRESHER than a link aged inside an old search response, since
+    the selection token's long-term validity is unverified.
+
+    NOT metered: the search that showed the option already paid its
+    credits, and charging again for clicking what we offered would be
+    punitive. Still behind the same per-IP rate limit as search.
+    """
+    _reject_past_date(payload.outbound_date, "outbound_date")
+    if payload.return_date <= payload.outbound_date:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "return_date must be after outbound_date.")
+    wanted = payload.resort_name.strip().lower()
+    resort = next((r for r in _resort_cache if r.name.strip().lower() == wanted), None)
+    if resort is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            f"Unknown resort: {payload.resort_name!r}")
+    url = live_flight_booking_url(
+        resort, payload.outbound_date, payload.return_date, origin_airport="TLV",
+        max_connections=payload.max_connections, flight_numbers=payload.flight_numbers,
+    )
+    return FlightBookingLinkResponse(url=url)
+
 
 class SearchDateRangeRequest(BaseModel):
     budget_eur_per_person: float = Field(gt=0)
@@ -1042,6 +1165,7 @@ class DatedTripResultOut(BaseModel):
     accommodation_search_url: str
     accommodation_property_name: Optional[str] = None
     flight_options: List[FlightOptionOut] = []
+    accommodation_options: List[AccommodationOptionOut] = []
     total_eur_with_fastest_flight: Optional[float] = None
     transfer_search_url: str
     equipment_search_url: str
@@ -1246,6 +1370,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             flight_options=(_fo := _flight_options_out(
                 t.resort, t.start_date, t.end_date,
                 t.cost.flight_price_is_live, payload.max_connections, t.cost)),
+            accommodation_options=_accommodation_options_out(
+                t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
+                payload.group_size, t.cost.accommodation_price_is_live, t.cost),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0)),

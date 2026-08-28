@@ -152,9 +152,32 @@ export interface FlightOption {
   duration_minutes: number;
   stops: number;
   is_cheapest: boolean;
+  /**
+   * The curated labels this itinerary won: "cheapest" / "best" /
+   * "fastest" -- the triad every flight product uses (Skyscanner's
+   * default sort is literally "Best"). One flight can hold several and
+   * is then shown once with all of them.
+   */
+  roles: string[];
   /** Real designators per leg, e.g. ["LX 253", "LX 2802"]. Empty when unknown. */
   flight_numbers: string[];
   /** What the WHOLE trip costs if this flight is the one taken. */
+  trip_total_eur: number;
+}
+
+/**
+ * One real, named property behind a result's accommodation price,
+ * cheapest first. No "best" pick, deliberately: the provider's
+ * rating/distance fields aren't parsed, so price is the only honest
+ * axis to rank on.
+ */
+export interface AccommodationOption {
+  property_name: string;
+  price_eur_per_night: number;
+  /** What this property costs this traveller for the whole stay. */
+  per_person_eur: number;
+  is_cheapest: boolean;
+  /** The whole trip's cost if this property is the one booked. */
   trip_total_eur: number;
 }
 
@@ -191,6 +214,9 @@ export interface TripResult {
   // the flight price isn't live -- with a static estimate there are no
   // real flights to list.
   flight_options: FlightOption[];
+  // The real named properties behind accommodation_eur, cheapest
+  // first. Same contract: empty unless the accommodation price is live.
+  accommodation_options: AccommodationOption[];
   // The trip total is a RANGE: total_eur is the low end (cheapest
   // flight) and this is the high end (typically the fastest/nonstop).
   // null when there is only one real flight choice.
@@ -298,6 +324,30 @@ export interface FlexibleWindowSearchParams extends CommonSearchFields {
   // people prefer a trip that starts on a Saturday, not mid-week).
   // null/omitted = every day in the window is a candidate.
   start_weekday?: WeekdayName | null;
+}
+
+/**
+ * A Google Flights booking-page deep link for ONE specific itinerary a
+ * search already showed, matched by its flight numbers. Built at CLICK
+ * time (each link costs the backend an extra live request, and a link
+ * built now is fresher than one aged inside the search response). url
+ * is null when the itinerary can no longer be matched -- the caller
+ * falls back to the result's plain flight_search_url, never a broken
+ * link.
+ */
+export async function fetchFlightBookingLink(
+  params: {
+    resort_name: string;
+    outbound_date: string; // YYYY-MM-DD
+    return_date: string; // YYYY-MM-DD
+    flight_numbers: string[];
+    max_connections: number | null;
+  },
+  accessToken: string
+): Promise<{ url: string | null }> {
+  return apiFetch<{ url: string | null }>("/trips/flight-booking-link", {
+    method: "POST", body: params, accessToken,
+  });
 }
 
 export async function searchFixedDates(

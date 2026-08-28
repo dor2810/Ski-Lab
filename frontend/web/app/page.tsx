@@ -156,7 +156,8 @@ export default function Home() {
             ) : (
               <div className="space-y-5">
                 {displayedResults.map((r, i) => (
-                  <ResultCard key={`${r.resort.name}-${r.start_date ?? i}`} result={r} />
+                  <ResultCard key={`${r.resort.name}-${r.start_date ?? i}`} result={r}
+                              maxConnections={showingRealSearch ? outcome!.maxConnections : null} />
                 ))}
               </div>
             )}
