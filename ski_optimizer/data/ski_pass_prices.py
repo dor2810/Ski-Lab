@@ -82,6 +82,15 @@ not have to re-derive the shape of the data:
 
   Both lists are regenerable in seconds -- filter SKI_PASS_PRICES on
   `season != "2026/27"` and on either band being None.
+
+  RE-CHECKED 2026-08-29: the stale entries are stale because the
+  OPERATORS have not published 26/27 yet, not because we are behind --
+  Ski Arlberg's own tickets page says rates are "currently being
+  finalized", Bansko traditionally announces mid-December, and
+  Dolomiti Superski's 26/27 table (covering Cortina, Val Gardena and
+  the Sella Ronda row) is not out. Re-run the refresh each autumn;
+  until then a 25/26 figure with its season stated beats a guess at
+  the unpublished one.
 """
 from dataclasses import dataclass
 from typing import Optional
