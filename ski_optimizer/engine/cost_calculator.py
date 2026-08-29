@@ -1100,8 +1100,10 @@ def cheapest_public_transport(resort: Resort, travel_date, group_size: int) -> O
         "price_eur_per_person": quote.price_eur_per_person,
         "mode": quote.mode,
         "options_count": quote.options_count,
-        "booking_url": omio_mcp_adapter.booking_url(
-            pos["from_id"], pos["to_id"], travel_date.isoformat(), group_size),
+        # The provider's OWN signed link, passed straight through --
+        # never a URL we assemble. See GroundQuote.booking_url.
+        "booking_url": quote.booking_url,
+        "carrier": quote.carrier,
     }
 
 

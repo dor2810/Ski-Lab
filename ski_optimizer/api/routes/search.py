@@ -402,6 +402,7 @@ class TransferInfoOut(BaseModel):
     public_mode: Optional[str] = None
     public_options_count: Optional[int] = None
     public_booking_url: Optional[str] = None
+    public_carrier: Optional[str] = None
 
 
 class AccommodationOptionOut(BaseModel):
@@ -989,7 +990,8 @@ def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
                         "public_price_eur_per_person": public["price_eur_per_person"],
                         "public_mode": public["mode"],
                         "public_options_count": public["options_count"],
-                        "public_booking_url": public["booking_url"]}
+                        "public_booking_url": public["booking_url"],
+                        "public_carrier": public.get("carrier")}
         return i, pickup, info
 
     with ThreadPoolExecutor(max_workers=min(4, len(rows))) as pool:

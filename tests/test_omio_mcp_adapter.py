@@ -26,14 +26,28 @@ import pytest
 from ski_optimizer.adapters import omio_mcp_adapter as omio
 from ski_optimizer.adapters.base import AdapterError
 
+SIGNED_LINK = "https://www.omio.com/links/eyJhbGciOiJIUzI1NiJ9.stub.sig"
+
+
+def _journey(mode, price, dep="2027-01-16T13:15:00+01:00", carrier="Alpine Fleet"):
+    return {"mode": mode, "price": {"value": price, "currency": "EUR"},
+            "dep": dep, "arr": "2027-01-16T16:30:00+01:00",
+            "carrier": {"name": carrier},
+            "link": "https://www.omio.com/links/per-journey"}
+
+
+# Shape of a real `results` response (captured live 2026-08-29).
 CHEAPEST_PAYLOAD = {
-    "endpoint": "/discovery/results/summary/cheapest",
-    "data": {"data": {"2027-01-16": {
-        "bus": {"priceCents": 11524, "numberOfResults": 9},
-        "train": {"priceCents": 0, "numberOfResults": 0},
-        "flight": {"priceCents": 0, "numberOfResults": 0},
-        "ferry": {"priceCents": 0, "numberOfResults": 0},
-    }}, "errors": None},
+    "endpoint": "/discovery/results",
+    "data": {
+        "from": "Genève airport", "to": "Gare Routiere - Val Thorens",
+        "link": SIGNED_LINK,
+        "outbound": [_journey("bus", 115.24), _journey("bus", 130.0),
+                     # A flight between airport and resort is never the
+                     # transfer a skier means -- must be ignored even
+                     # when it is the cheapest row.
+                     _journey("flight", 9.99)],
+    },
 }
 
 
@@ -46,24 +60,27 @@ def test_cheapest_ground_option_is_parsed_per_person(monkeypatch):
     # 11524 cents for the whole party of 2 -> 57.62 each.
     assert quote.price_eur_per_person == 57.62
     assert quote.mode == "bus"
-    assert quote.options_count == 9
+    assert quote.options_count == 2
+    # The link must be the PROVIDER's signed one -- a hand-built URL
+    # silently loaded Omio's generic landing page (owner-reported).
+    assert quote.booking_url == SIGNED_LINK
+    assert quote.carrier == "Alpine Fleet"
 
 
-def test_modes_with_no_service_are_ignored_not_priced_at_zero(monkeypatch):
-    # priceCents 0 with numberOfResults 0 means "no service", NOT "free"
-    # -- treating it as a price would invent a EUR0 transfer, the exact
-    # fabrication this project forbids.
+def test_a_flight_leg_is_never_offered_as_the_transfer(monkeypatch):
+    # The trip already HAS a flight; a second one from the arrival
+    # airport is never what "transfer" means -- even at EUR9.99.
     monkeypatch.setattr(omio, "_call_tool", lambda *a, **k: CHEAPEST_PAYLOAD)
     quote = omio.cheapest_ground_transport(
         from_id=1, to_id=2, outbound_date="2027-01-16", adults=2, use_cache=False)
-    assert quote.mode == "bus" and quote.price_eur_per_person > 0
+    assert quote.mode == "bus" and quote.price_eur_per_person == 57.62
 
 
 def test_no_service_at_all_returns_none(monkeypatch):
-    empty = {"data": {"data": {"2027-01-16": {
-        "bus": {"priceCents": 0, "numberOfResults": 0},
-        "train": {"priceCents": 0, "numberOfResults": 0},
-    }}}}
+    # Out-of-season Alpine coach routes genuinely return nothing --
+    # verified live (Val Thorens has no service on 2026-12-08 but does
+    # on 2027-01-16). Must never be priced as free.
+    empty = {"data": {"from": "x", "to": "y", "link": SIGNED_LINK, "outbound": []}}
     monkeypatch.setattr(omio, "_call_tool", lambda *a, **k: empty)
     assert omio.cheapest_ground_transport(
         from_id=1, to_id=2, outbound_date="2027-01-16", adults=2, use_cache=False) is None
@@ -78,10 +95,8 @@ def test_provider_failure_degrades_to_none_never_raises(monkeypatch):
 
 
 def test_cheapest_across_modes_wins(monkeypatch):
-    payload = {"data": {"data": {"2027-01-16": {
-        "bus": {"priceCents": 11524, "numberOfResults": 9},
-        "train": {"priceCents": 8000, "numberOfResults": 4},
-    }}}}
+    payload = {"data": {"link": SIGNED_LINK,
+                        "outbound": [_journey("bus", 115.24), _journey("train", 80.0)]}}
     monkeypatch.setattr(omio, "_call_tool", lambda *a, **k: payload)
     quote = omio.cheapest_ground_transport(
         from_id=1, to_id=2, outbound_date="2027-01-16", adults=2, use_cache=False)

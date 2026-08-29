@@ -247,6 +247,7 @@ export interface TransferInfo {
   public_mode?: string | null;
   public_options_count?: number | null;
   public_booking_url?: string | null;
+  public_carrier?: string | null;
 }
 
 export interface TripResult {

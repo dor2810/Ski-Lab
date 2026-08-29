@@ -65,6 +65,16 @@ class GroundQuote:
     price_eur_per_person: float
     mode: str            # "bus" | "train" | "ferry"
     options_count: int   # how many departures the provider had
+    # Omio's OWN signed deep link to this search's results page --
+    # taken from the provider, never constructed by us. An earlier
+    # hand-built URL (/search-frontend/results/<from>/<to>/<date>)
+    # looked plausible and silently loaded Omio's generic landing page
+    # with no route at all; the owner caught it in the live app. The
+    # signed link carries an X-b2b-expire ~30 days out and is minted
+    # fresh on every search, so it is always valid when clicked.
+    booking_url: Optional[str] = None
+    departure: Optional[str] = None   # ISO, provider's local time
+    carrier: Optional[str] = None
 
 
 def _parse_sse_json(body: str) -> dict:
@@ -160,9 +170,14 @@ def cheapest_ground_transport(from_id: int, to_id: int, outbound_date: str,
             return cached
 
     try:
-        payload = _call_tool("results_summary_cheapest", {
+        # `results`, not `results_summary_cheapest`: the summary tool
+        # returns prices per mode but NO link, and a transfer the user
+        # cannot open is half a feature. This one call yields the
+        # price, the departures, the carrier AND Omio's own signed
+        # deep link.
+        payload = _call_tool("results", {
             "fromId": from_id, "toId": to_id,
-            "outboundDateStart": outbound_date, "outboundDateEnd": outbound_date,
+            "outboundDate": outbound_date,
             "adults": adults, "currency": currency, "locale": "en",
         })
     except Exception:
@@ -170,36 +185,30 @@ def cheapest_ground_transport(from_id: int, to_id: int, outbound_date: str,
                     from_id, to_id, outbound_date, exc_info=True)
         return None
 
-    by_date = ((payload or {}).get("data") or {}).get("data") or {}
-    day = by_date.get(outbound_date) or {}
+    data = (payload or {}).get("data") or {}
+    journeys = [j for j in (data.get("outbound") or [])
+                if j.get("mode") in _GROUND_MODES
+                and (j.get("price") or {}).get("value")]
+    if not journeys:
+        # No scheduled service on this date. A real answer for an
+        # out-of-season Alpine coach route -- never priced as free.
+        return None
 
-    best: Optional[GroundQuote] = None
-    for mode in _GROUND_MODES:
-        entry = day.get(mode) or {}
-        cents = entry.get("priceCents") or 0
-        count = entry.get("numberOfResults") or 0
-        # priceCents 0 with no results means NO SERVICE, not "free" --
-        # pricing that as EUR0 would invent a free transfer, which is
-        # exactly the fabrication this project forbids.
-        if cents <= 0 or count <= 0:
-            continue
-        per_person = round(cents / 100 / adults, 2)
-        if best is None or per_person < best.price_eur_per_person:
-            best = GroundQuote(price_eur_per_person=per_person, mode=mode,
-                               options_count=int(count))
+    cheapest = min(journeys, key=lambda j: j["price"]["value"])
+    # Provider prices the WHOLE PARTY; the trip model is per person.
+    per_person = round(float(cheapest["price"]["value"]) / adults, 2)
+    same_mode = [j for j in journeys if j.get("mode") == cheapest.get("mode")]
+    best = GroundQuote(
+        price_eur_per_person=per_person,
+        mode=cheapest.get("mode"),
+        options_count=len(same_mode),
+        # Prefer the whole-search link (all departures) over the single
+        # journey's -- the user is choosing a time, not confirming one.
+        booking_url=data.get("link") or cheapest.get("link"),
+        departure=cheapest.get("dep"),
+        carrier=(cheapest.get("carrier") or {}).get("name"),
+    )
 
     if use_cache and best is not None:
         get_cache().set(key, best)
     return best
-
-
-def booking_url(from_id: int, to_id: int, outbound_date: str, adults: int) -> str:
-    """
-    Omio's own dated search page for this route -- a real, working link
-    for the journey we priced. Deliberately their normal search URL and
-    not the signed partner deep link the MCP returns: those carry an
-    embedded partner JWT with an expiry, and a link that dies silently
-    is worse than one that always works.
-    """
-    return (f"https://www.omio.com/search-frontend/results/"
-            f"{from_id}/{to_id}/{outbound_date}?adults={adults}")
