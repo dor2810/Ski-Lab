@@ -210,6 +210,11 @@ const he: Record<keyof typeof en, string> = {
   flightBookNote: "כפתור ההזמנה פותח בדיוק את הטיסה הזו ב-Google Flights. המחיר הסופי מאושר שם ועשוי להיות שונה ממחיר החיפוש.",
 
   transferRealQuote: "מחיר הסעה אמיתי: €{price} לכיוון (רכב לשניים) · נסיעה ~{dur}",
+  transferCheaperBadge: "אפשרות זולה יותר",
+  transferPublicOption: "{mode} מסודר מהשדה: €{price} לאדם ({n} יציאות) — לוח זמנים קבוע, מתחנה לתחנה.",
+  transferPublicLink: "לזמני האוטובוס והרכבת",
+  transferModeBus: "אוטובוס",
+  transferModeTrain: "רכבת",
   transferLiveQuote: "הצעה חיה: €{price} הלוך־חזור, {vehicle}, איסוף {pickup}",
   transferTimeAlignmentNote: "זמני ההסעה מבוססים על הטיסה שמוצגת כאן: איסוף {pickup} בהגעה. אם תזמינו טיסה אחרת — בדקו שוב את הזמנים לפני התשלום.",
   transferReturnPickupNote: "ביום החזרה האיסוף מהאתר בשעה {ret}.",

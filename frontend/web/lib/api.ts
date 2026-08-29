@@ -240,6 +240,13 @@ export interface TransferInfo {
   /** Every Alps2Alps API product is a private hire; their cheaper
    *  shared seats are not exposed by the public API. */
   is_private?: boolean | null;
+  /** Cheapest scheduled coach/train for the same airport->resort leg
+   *  (Omio), per person. A different product from the private quote:
+   *  fixed timetable, station to station. */
+  public_price_eur_per_person?: number | null;
+  public_mode?: string | null;
+  public_options_count?: number | null;
+  public_booking_url?: string | null;
 }
 
 export interface TripResult {

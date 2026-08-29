@@ -133,6 +133,25 @@ def _no_real_kiwi_mcp(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_omio_mcp(monkeypatch):
+    """
+    Same offline discipline as _no_real_kiwi_mcp, for the Omio ground-
+    transport lookup wired into the transfer prefetch: without this,
+    any API-level test that reaches _prefetch_live_transfers fires a
+    REAL request per row at llm-apps.omio.ai and turns a 12-second
+    suite into minutes of live traffic. Tests that want Omio behaviour
+    stub omio_mcp_adapter._call_tool inside the test body.
+    """
+    from ski_optimizer.adapters import omio_mcp_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _offline(*_a, **_kw):
+        raise AdapterError("network disabled in tests (see conftest._no_real_omio_mcp)")
+
+    monkeypatch.setattr(omio_mcp_adapter, "_call_tool", _offline)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_stays_or_overpass(monkeypatch):
     """
     Same offline discipline as _no_real_kiwi_mcp, for the accommodation

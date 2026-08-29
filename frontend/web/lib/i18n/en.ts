@@ -218,6 +218,11 @@ const en = {
   flightBookNote: "Book opens this exact flight on Google Flights. The final price is confirmed there and can differ from the search price.",
 
   transferRealQuote: "Real transfer quote: €{price} one-way (van for 2) · ~{dur} drive",
+  transferCheaperBadge: "Cheaper option",
+  transferPublicOption: "Scheduled {mode} from the airport: €{price} per person ({n} departures) — fixed timetable, station to station.",
+  transferPublicLink: "See coach & train times",
+  transferModeBus: "coach",
+  transferModeTrain: "train",
   transferLiveQuote: "Live quote: €{price} return, {vehicle}, pickup {pickup}",
   transferTimeAlignmentNote: "Transfer times are built around the flight shown here: pickup {pickup} on arrival. If you book a different flight, re-check the times before paying.",
   transferReturnPickupNote: "On departure day the operator collects you at {ret}.",

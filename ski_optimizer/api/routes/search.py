@@ -39,7 +39,7 @@ from ...engine.cost_calculator import (
     live_accommodation_property_name, live_accommodation_options,
     live_flight_options,
     apply_live_flight_price, apply_live_accommodation_price, apply_live_transfer_price,
-    live_transfer_cost_eur, live_transfer_info,
+    live_transfer_cost_eur, live_transfer_info, cheapest_public_transport,
     live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
@@ -394,6 +394,14 @@ class TransferInfoOut(BaseModel):
     # price is for a private vehicle rather than implying it is the
     # cheapest way to travel.
     is_private: Optional[bool] = None
+    # The CHEAP alternative: cheapest scheduled coach/train for the
+    # same airport->resort leg, per person, from Omio. A different
+    # product from the private quote above (fixed timetable, station to
+    # station), so it is offered alongside rather than swapped in.
+    public_price_eur_per_person: Optional[float] = None
+    public_mode: Optional[str] = None
+    public_options_count: Optional[int] = None
+    public_booking_url: Optional[str] = None
 
 
 class AccommodationOptionOut(BaseModel):
@@ -973,6 +981,15 @@ def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
                     return_date=row.end_date, return_time=return_time,
                     with_ski_bags=with_ski_bags)
                 info = {**info, "per_person_eur": per_person}
+            # The cheap scheduled alternative, for the same rows we
+            # already spend a live lookup on.
+            public = cheapest_public_transport(row.resort, row.start_date, group_size)
+            if public:
+                info = {**(info or {"source": "public_only"}),
+                        "public_price_eur_per_person": public["price_eur_per_person"],
+                        "public_mode": public["mode"],
+                        "public_options_count": public["options_count"],
+                        "public_booking_url": public["booking_url"]}
         return i, pickup, info
 
     with ThreadPoolExecutor(max_workers=min(4, len(rows))) as pool:

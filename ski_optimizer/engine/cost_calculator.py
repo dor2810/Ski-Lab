@@ -1064,6 +1064,47 @@ def live_transfer_info(resort: Resort, pickup_date, pickup_time: str,
     }
 
 
+def cheapest_public_transport(resort: Resort, travel_date, group_size: int) -> Optional[dict]:
+    """
+    The cheapest SCHEDULED coach/train to this resort from its arrival
+    airport, per person -- Omio (adapters/omio_mcp_adapter.py), or None
+    when they run no service or the lookup fails.
+
+    WHY THIS EXISTS BESIDE the Alps2Alps quote rather than replacing
+    it: they are different products. Alps2Alps is a private door-to-
+    door vehicle on your schedule; this is a scheduled service from
+    the airport coach bay to the resort bus station. On Geneva -> Val
+    Thorens the gap was EUR423.50 vs EUR57.62 per person (measured
+    2026-08-29), which is far too large to hide -- but the coach is
+    not strictly better, so the user gets both and picks.
+
+    Position ids come from the frozen table, so this is ONE provider
+    call. Never raises.
+    """
+    if travel_date is None:
+        return None
+    try:
+        from ..data.omio_positions import OMIO_POSITIONS
+        from ..adapters import omio_mcp_adapter
+    except ImportError:
+        return None
+    pos = OMIO_POSITIONS.get(resort.name)
+    if not pos:
+        return None
+    quote = omio_mcp_adapter.cheapest_ground_transport(
+        from_id=pos["from_id"], to_id=pos["to_id"],
+        outbound_date=travel_date.isoformat(), adults=group_size)
+    if quote is None:
+        return None
+    return {
+        "price_eur_per_person": quote.price_eur_per_person,
+        "mode": quote.mode,
+        "options_count": quote.options_count,
+        "booking_url": omio_mcp_adapter.booking_url(
+            pos["from_id"], pos["to_id"], travel_date.isoformat(), group_size),
+    }
+
+
 def apply_live_transfer_price(cost: CostBreakdown, live_price: float) -> CostBreakdown:
     """
     Swaps the curated transfer figure for a real per-person quote,
