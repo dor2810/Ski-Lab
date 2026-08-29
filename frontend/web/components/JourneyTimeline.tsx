@@ -52,15 +52,24 @@ function TransferGlyph({ mode, size }: { mode: string | null; size: number }) {
 }
 
 function Leg({
-  icon, label, sub,
-}: { icon: React.ReactNode; label: string | null; sub: string }) {
+  icon, label, sub, unknownReason,
+}: {
+  icon: React.ReactNode; label: string | null; sub: string;
+  // Why this leg has no figure. A bare dash reads as a bug; the
+  // reason turns it into information (this provider publishes
+  // outbound legs only -- see the component docstring).
+  unknownReason?: string;
+}) {
   const { t } = useTranslation();
   return (
     <li className="flex min-w-0 flex-col items-center gap-1 text-center">
       <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-sky">
         {icon}
       </span>
-      <span className="text-xs font-semibold tabular-nums text-ink">
+      <span
+        className={`text-xs font-semibold tabular-nums ${label ? "text-ink" : "cursor-help text-subtle"}`}
+        title={label ? undefined : unknownReason}
+      >
         {label ?? t("timelineUnknownDuration")}
       </span>
       <span className="text-[10px] leading-tight text-subtle">{sub}</span>
@@ -135,7 +144,12 @@ export function JourneyTimeline({ result }: { result: TripResult }) {
           sub={transferLabel}
         />
         <Connector />
-        <Leg icon={<FlightIcon size={16} />} label={back} sub={t("timelineFlightBack")} />
+        <Leg
+          icon={<FlightIcon size={16} />}
+          label={back}
+          sub={t("timelineFlightBack")}
+          unknownReason={t("timelineReturnUnknown")}
+        />
       </ol>
     </section>
   );

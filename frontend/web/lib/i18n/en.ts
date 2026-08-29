@@ -221,6 +221,7 @@ const en = {
   timelineTitle: "Your journey, door to door",
   timelineFlightOut: "Flight out",
   timelineFlightBack: "Flight home",
+  timelineReturnUnknown: "This flight provider lists outbound legs only, so the return length is not published. Open the flight options to see the full itinerary.",
   timelineNights: "{n} nights",
   timelineUnknownDuration: "—",
   transferIndicative: "typical price, no date",

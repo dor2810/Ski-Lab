@@ -213,6 +213,7 @@ const he: Record<keyof typeof en, string> = {
   timelineTitle: "המסע שלכם, מדלת לדלת",
   timelineFlightOut: "טיסה הלוך",
   timelineFlightBack: "טיסה חזור",
+  timelineReturnUnknown: "ספק הטיסות הזה מציג רק את הכיוון הלוך, ולכן משך טיסת החזור אינו מפורסם. פתחו את אפשרויות הטיסה למסלול המלא.",
   timelineNights: "{n} לילות",
   timelineUnknownDuration: "—",
   transferIndicative: "מחיר אופייני, ללא תאריך",
