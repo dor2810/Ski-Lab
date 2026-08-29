@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from ski_optimizer.api.main import app
 from ski_optimizer.api import security, rate_limit
 from ski_optimizer.db.database import Base, get_db
+from ski_optimizer.data.resort_repository import load_resorts
 
 engine = create_engine(
     "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool,
@@ -114,7 +115,7 @@ def test_search_returns_ranked_results_within_budget(authed_client):
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["query_resort_count"] == 39
+    assert body["query_resort_count"] == len(load_resorts())
     assert len(body["results"]) > 0
     for result in body["results"]:
         assert result["cost"]["total_eur"] <= 1500
@@ -562,7 +563,7 @@ def test_list_resort_names_returns_all_resorts(authed_client):
     resp = authed_client.get("/trips/resorts")
     assert resp.status_code == 200
     names = resp.json()
-    assert len(names) == 39
+    assert len(names) == len(load_resorts())
     assert names == sorted(names)
 
 
@@ -845,11 +846,12 @@ def test_mainstream_and_hidden_sets_partition_the_database_exactly():
 
 
 def test_resorts_endpoint_defaults_to_every_resort(authed_client):
-    # Nothing is deleted: the default contract is unchanged, so any
-    # client that wants all 37 still gets all 37.
+    # The mainstream shortlist hides resorts from the DEFAULT view only;
+    # it never removes them from the endpoint's full response. Any client
+    # asking for everything still gets everything.
     resp = authed_client.get("/trips/resorts")
     assert resp.status_code == 200
-    assert len(resp.json()) == 39
+    assert len(resp.json()) == len(load_resorts())
 
 
 def test_resorts_endpoint_can_return_just_the_shortlist(authed_client):
@@ -859,9 +861,12 @@ def test_resorts_endpoint_can_return_just_the_shortlist(authed_client):
     assert resp.status_code == 200
     names = resp.json()
     assert set(names) == set(MAINSTREAM_RESORTS)
-    assert len(names) < 37, "the shortlist must actually be shorter"
-    # The resorts that prompted the complaint must be the ones excluded.
-    for obscure in ("Krvavec", "Astún-Candanchú", "Poiana Brasov"):
+    assert len(names) < len(load_resorts()), "the shortlist must actually be shorter"
+    # The obscure resorts must be the ones excluded. The original three
+    # probes (Krvavec, Astún-Candanchú, Poiana Brasov) were themselves
+    # dropped by the 2026-08-29 review, which is why these are the
+    # survivors of that category rather than the names first written here.
+    for obscure in ("Bardonecchia", "Kranjska Gora"):
         assert obscure not in names
     # ...and the famous ones must survive, even though no studied
     # operator packages them.

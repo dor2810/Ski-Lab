@@ -163,10 +163,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "Ski ALPIN CARD. Winter start (27.11-18.12.26) and bonus (13.03-04.04.27) EUR396; peak "
         "(19.12.26-12.03.27) EUR440. Same pass as Zell am See by design -- identical figures there "
         "are correct, not duplication."),
-    "Obergurgl-Hochgurgl": SkiPassPrice(
-        450.00, 478.50, "2026/27", "local", "sourced",
-        "Oetztal Super Ski Pass -- identical to Soelden by design (same pass). Counter rates, for "
-        "the same reason given in Soelden's note."),
     "Mayrhofen": SkiPassPrice(
         399.00, 399.00, "2026/27", "local", "sourced",
         "Zillertal Superskipass. FLAT RATE 05.12-12.04, no season bands published -- identical "
@@ -205,10 +201,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "Courchevel valley local pass, peak figure. A low-season column exists on the page but does "
         "not render to text. A +EUR49.50 add-on extends this to all of Les 3 Vallees (EUR421 "
         "direct) -- deliberately NOT used, per the local-pass convention."),
-    "Méribel": SkiPassPrice(
-        None, 356.00, "2026/27", "local", "sourced",
-        "Meribel valley local pass, peak figure; low-season column exists but does not render. "
-        "+EUR51 extends to Les 3 Vallees."),
     "Val Thorens": SkiPassPrice(
         None, 421.00, "2026/27", "area", "sourced",
         "SCOPE=AREA, the one French exception: the Val Thorens/Orelle LOCAL 6-day product exists "
@@ -227,11 +219,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "gudauri.com official ski-pass page, researched 2026-08-28: 6-day adult 340 GEL, "
         "converted at ~2.93 GEL/EUR. Single-band tariff (no published season split); the "
         "engine scales peak via the global season multiplier."),
-    "Sella Ronda (Dolomiti)": SkiPassPrice(
-        None, 357.00, "2025/26", "area", "sourced",
-        "SCOPE=AREA by definition: the Sella Ronda circuit is skied on the Dolomiti Superski "
-        "pass (450 lifts / 1,200km) -- EUR357 6-day adult, the operator's published 25/26 "
-        "figure (26/27 not yet out at research time, dolomitisuperski.com)."),
     "Les Menuires": SkiPassPrice(
         315.00, None, "2026/27", "local", "sourced",
         "Official lesmenuires.com ski-passes page, researched 2026-08-28: 6-day pass EUR315 for "
@@ -249,12 +236,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         368.00, 368.00, "2026/27", "local", "sourced",
         "CLASSIC = Les Arcs/Peisey-Vallandry local, page states '6 DAYS EUR368', no season bands. "
         "Paradiski (ESSENTIAL) EUR412 and PREMIUM EUR491 deliberately not used."),
-    "Avoriaz": SkiPassPrice(
-        299.00, 352.00, "2026/27", "area", "sourced",
-        "SCOPE=AREA: Portes du Soleil INTERNET rates (cash EUR317/EUR373). The Avoriaz-only figure "
-        "(~EUR199 internet) was found but in tables whose scope labels are interleaved in embedded "
-        "JSON, and EUR33/day is low enough to distrust -- the researcher explicitly flagged it as "
-        "needing human confirmation, so the solid area figure is used instead."),
 
     # --- Italy ---
     "Livigno": SkiPassPrice(
@@ -290,10 +271,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "6-day spread across all bands: 155/245/255/268/315/325."),
 
     # --- Romania ---
-    "Poiana Brasov": SkiPassPrice(
-        171.21, 171.21, "not stated", "local", "sourced",
-        "RON900 flat, converted at ECB 2026-08-26 RON->EUR 0.19023. Operator publishes no season "
-        "bands for multi-day passes and its page does not state a season year."),
 
     # --- Slovenia ---
     "Kranjska Gora": SkiPassPrice(
@@ -301,11 +278,6 @@ SKI_PASS_PRICES: dict[str, SkiPassPrice] = {
         "'6 days (with photo - consecutive days) ADULTS 233,00' under a 'WINTER SEASON 2025/26' "
         "header. Contradicts a search snippet claiming EUR162; the operator page was used. NOTE the "
         "price lives on ski-kranjska-gora.com, not the axess.shop buy-link in ski_pass_links.py."),
-    "Krvavec": SkiPassPrice(
-        198.00, 198.00, "2026/27", "local", "sourced",
-        "'6 DNI zaporedni dnevi koriscenja, Odrasli 198,00 EUR' under 'ZIMSKA SEZONA 2026/27'. "
-        "TRAP: the same page also carries a stale 2024/25 table (EUR194/EUR190) -- do not re-scrape "
-        "this page naively. Price lives on rtc-krvavec.si, not the skipass.krvavec.eu buy-link."),
 
     # --- Switzerland ---
     "Zermatt": SkiPassPrice(
@@ -333,20 +305,6 @@ UNPRICED_RESORTS: dict[str, str] = {
         "DYNAMIC PRICING, no published tariff. The operator's own page states 'ski pass prices are "
         "dynamic and may vary throughout the season'; the booking assistant is JS-only. No fixed "
         "6-day price exists to source.",
-    "Vallnord (Pal-Arinsal)":
-        "DYNAMIC PRICING, same operator group and same model as Grandvalira ('price varies "
-        "depending on the purchase date'). No multi-day tariff table exists on the site.",
-    "Pamporovo":
-        "NO 6-DAY PRODUCT EXISTS. The official Axess webshop's full catalogue is half-day, 1, 2, 3, "
-        "4 days, and season. Also a scraping trap for anyone revisiting this: the shop's 'From EUR' "
-        "figures are the CHILD price, matching the child column of the operator's own PDF exactly.",
-    "Formigal":
-        "NO FIXED 6-DAY PRODUCT. Dynamic daily pricing (adult from EUR51.50 counter / EUR43.80 "
-        "web) plus a duration discount of 5% rest-of-season and 0% at Christmas. Separate 'Dias "
-        "Libres' packs exist for 5d (EUR324.50), 10d and 20d -- but not 6d, and multiplying out a "
-        "6-day figure would be invention.",
-    "Astún-Candanchú":
-        "NO 6-DAY PRODUCT. Multi-day passes are sold only as 3, 5 or 7 consecutive days.",
     "Chamonix":
         "The Mont Blanc Unlimited page is a React app using div-based pseudo-tables. Flattening it "
         "yields six price triplets for six duration headers, but two consecutive triplets are "

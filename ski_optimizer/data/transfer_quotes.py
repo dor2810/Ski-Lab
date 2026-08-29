@@ -20,12 +20,6 @@ TRANSFER_QUOTES: dict[str, dict] = {
         "vehicle": None,
         "vehicles_offered": 3,
     },
-    'Avoriaz': {
-        "price_eur": 302.5,
-        "duration_minutes": 130.0,
-        "vehicle": None,
-        "vehicles_offered": 3,
-    },
     'Bansko': {
         "price_eur": 222.0,
         "duration_minutes": 180.0,
@@ -116,18 +110,6 @@ TRANSFER_QUOTES: dict[str, dict] = {
         "vehicle": None,
         "vehicles_offered": 3,
     },
-    'Méribel': {
-        "price_eur": 363.0,
-        "duration_minutes": 110.0,
-        "vehicle": None,
-        "vehicles_offered": 3,
-    },
-    'Pamporovo': {
-        "price_eur": 252.0,
-        "duration_minutes": 130.0,
-        "vehicle": None,
-        "vehicles_offered": 2,
-    },
     'Passo Tonale': {
         "price_eur": 456.0,
         "duration_minutes": 210.0,
@@ -198,13 +180,6 @@ TRANSFER_QUOTES: dict[str, dict] = {
 
 #: resort -> the precise reason Alps2Alps cannot quote it.
 UNQUOTED_ROUTES: dict[str, str] = {
-    'Astún-Candanchú': "Alps2Alps recognises no destination among ['Astún-Candanchú', 'Astún Candanchú']",
-    'Formigal': "Alps2Alps recognises no destination among ['Formigal']",
     'Gudauri': "Alps2Alps recognises no airport among ['Tbilisi']",
     'Kranjska Gora': "Alps2Alps recognises no airport among ['Ljubljana']",
-    'Krvavec': "Alps2Alps recognises no airport among ['Ljubljana']",
-    'Obergurgl-Hochgurgl': "Alps2Alps recognises no destination among ['Obergurgl-Hochgurgl', 'Obergurgl Hochgurgl']",
-    'Poiana Brasov': "Alps2Alps recognises no airport among ['Bucharest']",
-    'Sella Ronda (Dolomiti)': "Alps2Alps recognises no airport among ['Verona']",
-    'Vallnord (Pal-Arinsal)': "Alps2Alps recognises no destination among ['Vallnord (Pal-Arinsal)', 'Pal-Arinsal', 'Vallnord', '(Pal-Arinsal)', 'Vallnord (Pal Arinsal)']",
 }

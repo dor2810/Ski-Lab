@@ -77,13 +77,51 @@ BGY 1698.
    than they are. BZO and CMF are the main offenders. Airport ranking should weigh real
    door-to-door time, not transfer time alone.
 
+## APPLIED (2026-08-29)
+
+- [x] 10 drops applied -- `data/migrations/004_resort_airport_review.py`
+- [x] Airport re-pointings applied (same migration)
+- [x] BZO removed from Val Gardena and Passo Tonale; BGY demoted on Livigno.
+      CMF kept but ranked below GVA on the Trois Vallees resorts.
+- [x] Cortina's stale Olympics note rewritten; Zermatt's car-free/Tasch caveat added
+- [x] Drive times re-measured against Google Maps for all 55 surviving routes
+      (`scripts/build_transfer_drive_times.py`), then written back into the seed
+      by `data/migrations/005_sync_measured_transfers.py`
+- [x] Dropped resorts pruned from the 8 name-keyed data modules
+      (`scripts/prune_dropped_resorts.py`) -- pass prices, pass links, rental links,
+      mainstream lists, transfer quotes, Alps2Alps, Omio, lift coordinates
+- [x] Test suite updated and green: 643 passed
+
+### What the measurements revealed AFTER the decisions
+
+Two promoted gateways are a LONGER drive than the ones they replaced. Both were
+chosen for flight availability and that trade is real, but it should be visible:
+
+| Resort | New primary | Measured | Previous option |
+|---|---|---|---|
+| Serre Chevalier | Lyon | **3h26** / 211.9km | Turin 2h22 |
+| Livigno | Milan Malpensa | **3h34** / 225.2km | Innsbruck 2h44 |
+| St. Anton | Innsbruck (kept) | 1h13 | Munich fallback 3h07 |
+
+Serre Chevalier is worth revisiting: Turin is an hour closer, and Neos' direct
+TLV-TRN route launched Aug 2026 -- which was the very uncertainty that pushed the
+choice to Lyon. Livigno's Innsbruck leg is 50 minutes shorter than Malpensa's,
+though Innsbruck flies Fridays only.
+
+Cross-check result: after the drops, NO surviving resort's seed transfer time
+disagrees with its measured time by more than 10 minutes. Meribel was the only
+corrupted entry and it is gone.
+
 ## OPEN ACTIONS
 
-- [ ] Apply the 10 drops to `data/ski_resort_database_seed.xlsx`
-- [ ] Apply the airport re-pointings listed under "Kept"
-- [ ] Fix or remove BZO where it is not a viable gateway; rank CMF below GVA
-- [ ] Model Zermatt's Tasch shuttle-train final leg
+- [ ] Model Zermatt's Tasch shuttle-train final leg (now documented in the seed, not yet costed)
 - [ ] Source a Georgian transfer provider for Gudauri (Alps2Alps is Alps-only — structural gap)
 - [ ] Source Omio routes: Saalbach (from SZG), Flaine (from GVA), Val d'Isere (from GVA), Grandvalira
+- [ ] Get Alps2Alps PRICES for the three new gateway pairs -- St. Anton|MUC,
+      Serre Chevalier|LYS, Livigno|MXP. Drive times are measured; transfer COSTS
+      for those specific routes are not, so they carry distance but no quote.
+- [ ] Reconsider Serre Chevalier's Lyon-over-Turin choice now TLV-TRN is flying
 - [ ] Verify Bardonecchia's Turin gateway once Neos' Aug-2026 route has a track record
-- [ ] Re-check the geocoding path that produced Meribel's wrong coordinates
+- [ ] Re-check the geocoding path that produced Meribel's wrong coordinates. Note the
+      existing cross-check could NOT have caught it: the seed distance and the measured
+      distance agreed, both wrong, because one bad coordinate fed both.

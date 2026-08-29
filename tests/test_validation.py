@@ -434,9 +434,14 @@ def test_multi_airport_resorts_have_per_airport_times():
 
 
 def test_distance_and_time_imply_a_plausible_road_speed():
-    # Catches transposed digits and mismatched distance/time pairs.
-    # Krvavec (10km/20min = 30km/h) is a genuine short mountain hop, so
-    # the lower bound accommodates it.
+    # Catches transposed digits and mismatched distance/time pairs -- the
+    # class of error that let Méribel claim Geneva was 55min/77.9km away
+    # while sitting between Courchevel (128min) and Les Menuires (139min).
+    # Note that speed alone would NOT have caught Méribel: 85km/h is
+    # perfectly plausible, and both its distance and time were wrong
+    # together. This guards physical nonsense; it is not a geocode check.
+    # Measured range across the current 29 resorts is 53-87 km/h; the
+    # bounds stay wider to allow a genuinely winding mountain road.
     for r in load_resorts():
         hours = r.transfer_time_minutes / 60
         speed = r.airport_distance_km / hours
@@ -481,17 +486,20 @@ def test_unparseable_transfer_time_warns_rather_than_failing_silently():
         assert any("Could not parse" in str(x.message) for x in caught)
 
 
-def test_krvavec_transfer_is_the_measured_mountain_road_time():
-    # HISTORY: this guarded "~20min", the spreadsheet's estimate, after a
-    # parser bug once read it as 120. The estimate itself turned out to
-    # be wrong: Google Directions measures the real Ljubljana-to-Krvavec
-    # drive at 42 minutes (2026-08-29) -- the resort sits at the top of a
-    # winding mountain road, and 10km straight-line is not 10km of road.
-    # The guard now protects the MEASURED value, and the wider
-    # road-speed test below protects it from ever going physically
-    # nonsensical again.
-    krvavec = next(r for r in load_resorts() if r.name == "Krvavec")
-    assert 30 <= krvavec.transfer_time_minutes <= 60
+def test_shortest_transfer_is_the_measured_road_time_not_the_fallback():
+    # HISTORY: this guarded Krvavec, whose "~20min" spreadsheet estimate a
+    # parser bug once read as 120 -- a 6x error on the resort that was
+    # then best at exactly the dimension it corrupted. Krvavec was dropped
+    # by the 2026-08-29 review, so the guard moved to the resort that
+    # inherited the shortest transfer.
+    #
+    # The point is unchanged and is NOT "50 is a nice number": the
+    # unparseable-input fallback is 120 minutes, so a resort whose real
+    # drive is well under an hour silently becoming ~120 is the failure
+    # this catches. Google Directions measures Ljubljana->Kranjska Gora
+    # at 50 minutes (2026-08-29).
+    kranjska = next(r for r in load_resorts() if r.name == "Kranjska Gora")
+    assert 40 <= kranjska.transfer_time_minutes <= 65
 
 
 def test_shortest_transfer_resort_wins_a_pure_convenience_search():
@@ -507,7 +515,7 @@ def test_shortest_transfer_resort_wins_a_pure_convenience_search():
 
 def test_target_resort_matching_is_case_insensitive():
     resorts = load_resorts()
-    for probe in ("Krvavec", "krvavec", "KRVAVEC"):
+    for probe in ("Kranjska Gora", "kranjska gora", "KRANJSKA GORA"):
         results = rank_trips(resorts, _valid(budget_eur_per_person=3000,
                                              target_resort=probe), top_n=1)
         assert len(results) == 1, f"{probe!r} failed to match"
@@ -518,7 +526,7 @@ def test_target_resort_matching_tolerates_surrounding_whitespace():
     # space (copy-paste, mobile autocomplete) silently returned zero
     # results as if the resort didn't exist.
     resorts = load_resorts()
-    for probe in ("Krvavec ", " Krvavec", "  krvavec  "):
+    for probe in ("Kranjska Gora ", " Kranjska Gora", "  kranjska gora  "):
         results = rank_trips(resorts, _valid(budget_eur_per_person=3000,
                                              target_resort=probe), top_n=1)
         assert len(results) == 1, f"{probe!r} failed to match"

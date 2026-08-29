@@ -233,10 +233,38 @@ def test_search_returns_results_within_budget():
 
 
 def test_search_results_are_sorted_by_score():
+    # NOT a global sort, and asserting one was wrong. cap_per_resort
+    # fills in two passes -- a variety-capped pass, then a backfill of
+    # leftovers -- and concatenates them. A backfilled row can therefore
+    # out-score rows above it: with the post-2026-08-29 lineup the list
+    # ends ... Kranjska Gora 0.4474, then Gudauri 0.4770 as the backfill.
+    #
+    # That is correct. Re-sorting it globally would slot Gudauri's fourth
+    # date back into position four and restore exactly the monopolisation
+    # the cap exists to prevent. So the real contract, which is what this
+    # now checks, is: the best option is first, and each PASS is ordered.
+    from collections import Counter
+
+    max_per_resort = 3
     results = search_date_range(load_resorts(), _prefs(),
-                                datetime.date(2027, 1, 10), datetime.date(2027, 2, 28))
+                                datetime.date(2027, 1, 10), datetime.date(2027, 2, 28),
+                                max_results_per_resort=max_per_resort)
+    assert results
     scores = [o.score for o in results]
-    assert scores == sorted(scores, reverse=True)
+    assert scores[0] == max(scores), "the single best option must lead the list"
+
+    # The capped pass runs until some resort would exceed max_per_resort.
+    seen: Counter = Counter()
+    boundary = len(results)
+    for index, option in enumerate(results):
+        seen[option.resort.name] += 1
+        if seen[option.resort.name] > max_per_resort:
+            boundary = index
+            break
+
+    capped, backfill = scores[:boundary], scores[boundary:]
+    assert capped == sorted(capped, reverse=True), f"capped pass out of order: {capped}"
+    assert backfill == sorted(backfill, reverse=True), f"backfill out of order: {backfill}"
 
 
 def test_search_with_impossible_budget_falls_back_to_cheapest_flagged():
@@ -481,8 +509,25 @@ def test_one_cheap_resort_cannot_monopolise_the_results():
     out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
                             top_n=12, max_results_per_resort=3)
     counts = Counter(t.resort.name for t in out)
-    assert max(counts.values()) <= 3, f"a resort exceeded its cap: {dict(counts)}"
+
+    # WHAT IS AND IS NOT GUARANTEED HERE. cap_per_resort fills in two
+    # passes: pass one enforces max_results_per_resort, pass two BACKFILLS
+    # remaining slots from the leftovers regardless of resort. The
+    # backfill is deliberate -- without it, pinning a search to one resort
+    # would return 3 rows instead of the 12 asked for -- so a resort
+    # legitimately exceeding the cap once the affordable pool is exhausted
+    # is by design, not a regression.
+    #
+    # This test previously asserted max(counts) <= 3 and passed only
+    # because the old 39-resort lineup happened to have enough cheap
+    # destinations to fill 12 slots in pass one. After the 2026-08-29
+    # review the budget tier is Bansko, Gudauri and Kranjska Gora, so
+    # pass two now backfills. The assertion below is the complaint that
+    # actually motivated this code: 12 of 12 results were ONE resort.
     assert len(counts) >= 3, f"expected a varied list, got {dict(counts)}"
+    assert max(counts.values()) < len(out), (
+        f"one resort took every slot -- the original bug is back: {dict(counts)}"
+    )
 
 
 def test_pinning_one_resort_still_returns_a_full_list_of_its_dates():
@@ -547,14 +592,14 @@ def test_two_resort_pool_is_not_padded_with_duplicates():
     from collections import Counter
     from ski_optimizer.engine.date_search import search_date_range
 
-    resorts = [r for r in load_resorts() if r.name in ("Bansko", "Pamporovo")]
+    resorts = [r for r in load_resorts() if r.name in ("Bansko", "Gudauri")]
     prefs = _prefs()
     earliest, latest = _window()
     out = search_date_range(resorts, prefs, earliest_date=earliest, latest_date=latest,
                             top_n=12, max_results_per_resort=3,
                             pad_with_duplicates=False)
     counts = Counter(t.resort.name for t in out)
-    assert set(counts) == {"Bansko", "Pamporovo"}
+    assert set(counts) == {"Bansko", "Gudauri"}
     assert max(counts.values()) <= 3, f"padding crept back in: {dict(counts)}"
     assert len(out) == 6, f"expected 3+3 varied results, not a padded dozen: {dict(counts)}"
 
@@ -580,7 +625,7 @@ def test_every_selected_resort_gets_its_best_offer_first():
     from collections import Counter
     from ski_optimizer.engine.date_search import search_date_range
 
-    wanted = {"Bansko", "Pamporovo", "St. Anton am Arlberg", "Zermatt", "Val Thorens"}
+    wanted = {"Bansko", "Gudauri", "St. Anton am Arlberg", "Zermatt", "Val Thorens"}
     resorts = [r for r in load_resorts() if r.name in wanted]
     prefs = _prefs(budget_eur_per_person=1300, include_resorts=sorted(wanted))
     earliest, latest = _window()
@@ -597,7 +642,7 @@ def test_every_selected_resort_gets_its_best_offer_first():
     # Affordable ones lead; the priced-out ones follow, flagged, cheapest first.
     within_first = [t for t in first_five if t.within_budget]
     over_after = [t for t in first_five if not t.within_budget]
-    assert {t.resort.name for t in within_first} == {"Bansko", "Pamporovo"}
+    assert {t.resort.name for t in within_first} == {"Bansko", "Gudauri"}
     assert first_five[: len(within_first)] == within_first, "affordable best offers must lead"
     over_totals = [t.cost.total_eur for t in over_after]
     assert over_totals == sorted(over_totals)

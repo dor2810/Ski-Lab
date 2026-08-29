@@ -8,29 +8,22 @@ lookup starts failing.
 #: resort name -> {'from_id': airport, 'to_id': resort}
 OMIO_POSITIONS = {
     "Alpe d'Huez": {'from_id': 314525, 'to_id': 16805053, 'from_term': 'Lyon Airport'},
-    'Avoriaz': {'from_id': 314520, 'to_id': 16812261, 'from_term': 'Geneva Airport'},
     'Bansko': {'from_id': 314067, 'to_id': 369707, 'from_term': 'Sofia Airport'},
     'Bardonecchia': {'from_id': 314521, 'to_id': 448170, 'from_term': 'Turin Airport'},
     'Cervinia (Breuil-Cervinia)': {'from_id': 314522, 'to_id': 8205869, 'from_term': 'Milan Malpensa Airport'},
     'Chamonix': {'from_id': 314520, 'to_id': 379309, 'from_term': 'Geneva Airport'},
     "Cortina d'Ampezzo": {'from_id': 313885, 'to_id': 447099, 'from_term': 'Venice Marco Polo Airport'},
     'Courchevel': {'from_id': 314520, 'to_id': 16836584, 'from_term': 'Geneva Airport'},
-    'Formigal': {'from_id': 313711, 'to_id': 2095438, 'from_term': 'Barcelona Airport'},
     'Gudauri': {'from_id': 313772, 'to_id': 16920066, 'from_term': 'Tbilisi Airport'},
     'Ischgl': {'from_id': 313871, 'to_id': 414769, 'from_term': 'Innsbruck Airport'},
     'Kitzbühel': {'from_id': 313871, 'to_id': 368467, 'from_term': 'Innsbruck Airport'},
     'Kranjska Gora': {'from_id': 313875, 'to_id': 406111, 'from_term': 'Ljubljana Airport'},
-    'Krvavec': {'from_id': 313875, 'to_id': 16893674, 'from_term': 'Ljubljana Airport'},
     'Les Arcs': {'from_id': 314520, 'to_id': 436858, 'from_term': 'Geneva Airport'},
     'Les Deux Alpes': {'from_id': 314525, 'to_id': 440468, 'from_term': 'Lyon Airport'},
     'Les Menuires': {'from_id': 314520, 'to_id': 16841455, 'from_term': 'Geneva Airport'},
     'Livigno': {'from_id': 314523, 'to_id': 446460, 'from_term': 'Milan Airport'},
     'Mayrhofen': {'from_id': 313871, 'to_id': 414566, 'from_term': 'Innsbruck Airport'},
-    'Méribel': {'from_id': 314520, 'to_id': 16841297, 'from_term': 'Geneva Airport'},
-    'Obergurgl-Hochgurgl': {'from_id': 313871, 'to_id': 16813337, 'from_term': 'Innsbruck Airport'},
-    'Pamporovo': {'from_id': 314067, 'to_id': 17332993, 'from_term': 'Sofia Airport'},
     'Passo Tonale': {'from_id': 313890, 'to_id': 4906793, 'from_term': 'Milan Bergamo Airport'},
-    'Poiana Brasov': {'from_id': 17249503, 'to_id': 400881, 'from_term': 'Bucharest Airport'},
     'Serre Chevalier': {'from_id': 314521, 'to_id': 16813340, 'from_term': 'Turin Airport'},
     'St. Anton am Arlberg': {'from_id': 313871, 'to_id': 336531, 'from_term': 'Innsbruck Airport'},
     'Sölden': {'from_id': 313871, 'to_id': 414114, 'from_term': 'Innsbruck Airport'},
@@ -43,11 +36,8 @@ OMIO_POSITIONS = {
 
 #: resorts Omio could not route to, with the exact reason.
 UNRESOLVED = {
-    'Astún-Candanchú': "Omio matched no route for 'Barcelona Airport' -> 'Astún-Candanchú'",
     'Grand Massif (Flaine)': "Omio matched no route for 'Geneva Airport' -> 'Grand Massif (Flaine)'",
     'Grandvalira (Andorra)': "Omio matched no route for 'Barcelona Airport' -> 'Grandvalira (Andorra)'",
     'Saalbach-Hinterglemm': "Omio matched no route for 'Salzburg Airport' -> 'Saalbach-Hinterglemm'",
-    'Sella Ronda (Dolomiti)': "Omio matched no route for 'Verona Airport' -> 'Sella Ronda (Dolomiti)'",
     "Val d'Isère / Tignes": 'Omio matched no route for \'Geneva Airport\' -> "Val d\'Isère / Tignes"',
-    'Vallnord (Pal-Arinsal)': "Omio matched no route for 'Barcelona Airport' -> 'Vallnord (Pal-Arinsal)'",
 }

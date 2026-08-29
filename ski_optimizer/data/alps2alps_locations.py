@@ -9,7 +9,6 @@ a link starts 404ing.
 #: resort name -> codes for the booking deep link.
 ALPS2ALPS_LOCATIONS = {
     "Alpe d'Huez": {'airport_code': 'airport-4', 'airport_name': 'Lyon St Exupery Airport', 'resort_code': 'resort-21', 'resort_name': "Alpe d'Huez"},
-    'Avoriaz': {'airport_code': 'airport-1', 'airport_name': 'Geneva Airport', 'resort_code': 'resort-3', 'resort_name': 'Avoriaz 1800 Portes du Soleil'},
     'Bansko': {'airport_code': 'airport-44', 'airport_name': 'Sofia airport', 'resort_code': 'resort-632', 'resort_name': 'Bansko'},
     'Bardonecchia': {'airport_code': 'airport-25', 'airport_name': 'Turin Caselle Airport', 'resort_code': 'resort-143', 'resort_name': 'Bardonecchia'},
     'Cervinia (Breuil-Cervinia)': {'airport_code': 'airport-24', 'airport_name': 'Milano Malpensa Airport', 'resort_code': 'resort-247', 'resort_name': 'Breuil-Cervinia'},
@@ -25,8 +24,6 @@ ALPS2ALPS_LOCATIONS = {
     'Les Menuires': {'airport_code': 'airport-1', 'airport_name': 'Geneva Airport', 'resort_code': 'resort-77', 'resort_name': 'Les Menuires 3 Valleys'},
     'Livigno': {'airport_code': 'airport-24', 'airport_name': 'Milano Malpensa Airport', 'resort_code': 'resort-240', 'resort_name': 'Livigno – Carosello/Mottolino'},
     'Mayrhofen': {'airport_code': 'airport-19', 'airport_name': 'Innsbruck Airport', 'resort_code': 'resort-165', 'resort_name': 'Mayrhofen'},
-    'Méribel': {'airport_code': 'airport-1', 'airport_name': 'Geneva Airport', 'resort_code': 'resort-78', 'resort_name': 'Meribel'},
-    'Pamporovo': {'airport_code': 'airport-44', 'airport_name': 'Sofia airport', 'resort_code': 'resort-634', 'resort_name': 'Pamporovo'},
     'Passo Tonale': {'airport_code': 'airport-38', 'airport_name': 'Bergamo airport (Milan Orio)', 'resort_code': 'resort-334', 'resort_name': 'Passo del Tonale'},
     'Saalbach-Hinterglemm': {'airport_code': 'airport-20', 'airport_name': 'Salzburg Airport', 'resort_code': 'resort-172', 'resort_name': 'Saalbach-Hinterglemm'},
     'Serre Chevalier': {'airport_code': 'airport-25', 'airport_name': 'Turin Caselle Airport', 'resort_code': 'resort-28', 'resort_name': 'Serre Chevalier'},
@@ -43,13 +40,6 @@ ALPS2ALPS_LOCATIONS = {
 #: resorts with no usable code pair, with the exact reason --
 #: these fall back to the generic booking form.
 UNRESOLVED = {
-    'Astún-Candanchú': "resort 'Astún-Candanchú' unmatched",
-    'Formigal': "resort 'Formigal' unmatched",
     'Gudauri': "airport 'Tbilisi' unmatched; resort 'Gudauri' unmatched",
     'Kranjska Gora': "airport 'Ljubljana' unmatched",
-    'Krvavec': "airport 'Ljubljana' unmatched; resort 'Krvavec' unmatched",
-    'Obergurgl-Hochgurgl': "resort 'Obergurgl-Hochgurgl' unmatched",
-    'Poiana Brasov': "airport 'Bucharest' unmatched; resort 'Poiana Brasov' unmatched",
-    'Sella Ronda (Dolomiti)': "airport 'Verona' unmatched; resort 'Sella Ronda (Dolomiti)' unmatched",
-    'Vallnord (Pal-Arinsal)': "resort 'Vallnord (Pal-Arinsal)' unmatched",
 }

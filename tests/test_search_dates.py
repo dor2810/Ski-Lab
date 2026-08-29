@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 from ski_optimizer.api.main import app
 from ski_optimizer.api import security, rate_limit
 from ski_optimizer.db.database import Base, get_db
+from ski_optimizer.data.resort_repository import load_resorts
 
 engine = create_engine(
     "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool,
@@ -211,7 +212,7 @@ def test_search_dates_with_valid_target_resort_returns_only_that_one(authed_clie
     # query_resort_count reports the full dataset size, matching
     # /trips/search's convention -- the narrowing itself is proven by
     # the results, not this count (see engine.scoring.narrow_resort_pool).
-    assert body["query_resort_count"] == 39
+    assert body["query_resort_count"] == len(load_resorts())
     for result in body["results"]:
         assert result["resort"]["name"] == "Livigno"
 
@@ -363,7 +364,7 @@ def test_a_two_resort_pool_is_not_padded_with_the_cheapest_resort(authed_client)
     resp = authed_client.post("/trips/search-dates", json={
         "budget_eur_per_person": 1500, "ski_days": 5, "group_size": 2,
         "earliest_date": "2027-01-05", "latest_date": "2027-02-05",
-        "top_n": 12, "include_resorts": ["Bansko", "Pamporovo"],
+        "top_n": 12, "include_resorts": ["Bansko", "Gudauri"],
     }, headers=CSRF_HEADERS)
     assert resp.status_code == 200
     counts = Counter(r["resort"]["name"] for r in resp.json()["results"])

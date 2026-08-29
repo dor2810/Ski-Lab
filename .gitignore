@@ -10,3 +10,4 @@ __pycache__/
 # to commit (see firebase.json/.firebaserc, which ARE committed).
 .firebase/
 .coverage
+data/ski_resort_database_seed.pre_*.xlsx

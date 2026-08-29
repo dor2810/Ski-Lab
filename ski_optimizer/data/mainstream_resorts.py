@@ -60,23 +60,19 @@ MAINSTREAM_RESORTS: dict[str, str] = {
     "Les Arcs": "skideal + Penguin + Club Med (Les Arcs Panorama and Peisey-Vallandry, the resort's own linked domain)",
 
     # --- Sold by both Israeli operators ---
-    "Vallnord (Pal-Arinsal)": "skideal /winter/ + Penguin",
     "St. Anton am Arlberg": "skideal /winter/ + Penguin",
     "Ischgl": "skideal /winter/ + Penguin",
     "Mayrhofen": "skideal /winter/ + Penguin",
     "Zell am See": "skideal /winter/ + Penguin",
     "Bansko": "skideal /winter/ + Penguin",
-    "Avoriaz": "skideal /winter/ + Penguin",
     "Les Menuires": "skideal /winter/ + Penguin",
 
     # --- Sold by one operator ---
-    "Pamporovo": "skideal /winter/",
     "Cervinia (Breuil-Cervinia)": "skideal /winter/",
     "Passo Tonale": "skideal /winter/",
     "Grandvalira (Andorra)": "Penguin (Grand Valira + Pas de la Casa)",
     "Sölden": "Penguin",
     "Saalbach-Hinterglemm": "Penguin",
-    "Méribel": "Penguin",
     "Les Deux Alpes": "Penguin",
     "Grand Massif (Flaine)": "Penguin (names Flaine exactly; Club Med's village is Samoens/Morillon, same domain but a different village)",
     "Serre Chevalier": "Club Med",
@@ -85,7 +81,6 @@ MAINSTREAM_RESORTS: dict[str, str] = {
 
     # --- Added 2026-08-28 at the owner's request, research pass ---
     "Gudauri": "one of the largest Israeli ski markets outside Europe; direct TLV-TBS scheduled service (probed live)",
-    "Sella Ronda (Dolomiti)": "the circuit both Israeli operators actually SELL (recorded on the Val Gardena entry since the original study); now a first-class destination row",
 
     # --- Marquee: no operator in the study, kept anyway. See docstring. ---
     "Zermatt": "MARQUEE -- world-famous; no Club Med village and outside the Israeli charter market",
@@ -94,7 +89,6 @@ MAINSTREAM_RESORTS: dict[str, str] = {
     "Kitzbühel": "MARQUEE -- world-famous",
     "Cortina d'Ampezzo": "MARQUEE -- world-famous, 2026 Winter Olympics host",
     "Verbier": "MARQUEE -- world-famous",
-    "Obergurgl-Hochgurgl": "MARQUEE -- major Otztal destination, shares the Otztal pass with Solden, which IS sold",
 }
 
 
@@ -103,11 +97,7 @@ MAINSTREAM_RESORTS: dict[str, str] = {
 # database exactly, the same way ski_pass_prices.UNPRICED_RESORTS does.
 NON_MAINSTREAM_RESORTS: dict[str, str] = {
     "Bardonecchia": "no operator evidence; small Italian resort",
-    "Poiana Brasov": "no operator evidence; Romania is outside all three lineups",
     "Kranjska Gora": "no operator evidence; small Slovenian resort",
-    "Krvavec": "no operator evidence; small Slovenian resort",
-    "Formigal": "no operator evidence; Spanish Pyrenees, outside all three lineups",
-    "Astún-Candanchú": "no operator evidence; small Spanish Pyrenees pair",
 }
 
 

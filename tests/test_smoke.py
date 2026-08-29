@@ -15,8 +15,13 @@ from ski_optimizer.engine.terrain import parse_terrain_mix
 
 
 def test_load_resorts_returns_all_resorts():
+    # The canary for accidental data loss, so this count is deliberately
+    # hardcoded rather than derived: 29 after the 2026-08-29 resort/airport
+    # review dropped 10 (see setup_context_for_claude/RESORT_AIRPORT_REVIEW.md).
+    # Every OTHER count assertion compares against len(load_resorts()) so a
+    # future, intentional change to the lineup only has to be acknowledged here.
     resorts = load_resorts()
-    assert len(resorts) == 39
+    assert len(resorts) == 29
 
 
 def test_all_resorts_have_positive_core_fields():
