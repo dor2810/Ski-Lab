@@ -28,18 +28,18 @@ export function AccommodationOptions({ options }: { options: AccommodationOption
   if (!options || options.length === 0) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-line bg-sunken/60 p-3">
+    <div className="mt-2 rounded-lg border border-line bg-surface px-3 py-2.5">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-sky hover:text-sky/80"
+        className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-ink hover:text-signal"
       >
         <span className="flex min-w-0 items-center gap-1.5">
           <StayIcon size={14} className="flex-none" />
           <span className="truncate">{t("accommodationOptionsTitle", { count: String(options.length) })}</span>
         </span>
-        <span aria-hidden="true" className="text-xs text-subtle">{open ? "−" : "+"}</span>
+        <span aria-hidden="true" className="text-base leading-none text-subtle">{open ? "\u2212" : "+"}</span>
       </button>
 
       {open && (

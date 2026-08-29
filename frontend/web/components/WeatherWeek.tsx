@@ -92,7 +92,7 @@ export function WeatherWeek({ weather }: { weather: TripWeather | null }) {
   const weekMax = Math.max(...weather.days.map((d) => d.temp_max_c));
 
   return (
-    <div className="mt-4 rounded-xl border border-line bg-sunken p-4">
+    <div className="mt-2 rounded-lg border border-line bg-surface px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <WeatherIcon size={16} className="text-sky" />

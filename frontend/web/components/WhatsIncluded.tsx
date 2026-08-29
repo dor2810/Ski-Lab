@@ -53,12 +53,12 @@ export function WhatsIncluded() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mt-4 rounded-xl border border-line bg-sunken/60 p-3">
+    <div className="mt-2 rounded-lg border border-line bg-surface px-3 py-2.5">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between text-sm font-semibold text-sky hover:text-sky/80"
+        className="flex w-full items-center justify-between text-sm font-semibold text-ink hover:text-signal"
       >
         <span>{t("whatsIncludedTitle")}</span>
         <span aria-hidden="true" className="text-xs text-subtle">
