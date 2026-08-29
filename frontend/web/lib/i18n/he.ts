@@ -220,6 +220,7 @@ const he: Record<keyof typeof en, string> = {
   transferReturnIncluded: "כולל חזור",
   transferOneWayOnly: "כיוון אחד",
   transferBook: "להזמנה",
+  transferSeeRoutes: "למסלולים",
   transferOptionsNote: "המחירים לאדם וכוללים חזור היכן שמצוין. שירותים מסודרים פועלים בלוח זמנים קבוע — בדקו שהזמנים מתאימים לטיסות שלכם.",
   transferCheaperBadge: "אפשרות זולה יותר",
   transferPublicOption: "{mode} מסודר מהשדה: €{price} לאדם ({n} יציאות) — לוח זמנים קבוע, מתחנה לתחנה.",

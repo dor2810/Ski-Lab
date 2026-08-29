@@ -1517,7 +1517,9 @@ def all_transfer_options(resort: Resort, start_date, end_date, group_size: int,
                     duration_minutes=route.duration_minutes,
                     carrier=route.name,
                     is_indicative=True,
-                    booking_url=None,
+                    # The provider's own results page for this pair --
+                    # verified to load, never hand-built.
+                    booking_url=route.booking_url,
                 ))
         except Exception:
             logger.warning("rome2rio route discovery failed for %s", resort.name,

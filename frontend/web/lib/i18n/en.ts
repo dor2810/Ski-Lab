@@ -228,6 +228,7 @@ const en = {
   transferReturnIncluded: "return included",
   transferOneWayOnly: "one way",
   transferBook: "Book",
+  transferSeeRoutes: "See routes",
   transferOptionsNote: "Prices are per person and include the return leg where shown. Scheduled services run to a fixed timetable — check the times against your flights.",
   transferCheaperBadge: "Cheaper option",
   transferPublicOption: "Scheduled {mode} from the airport: €{price} per person ({n} departures) — fixed timetable, station to station.",

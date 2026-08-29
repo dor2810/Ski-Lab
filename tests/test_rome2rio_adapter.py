@@ -88,3 +88,36 @@ def test_no_routes_is_empty_not_an_error(monkeypatch):
 def test_blank_places_are_rejected():
     with pytest.raises(AdapterError):
         r2r.search_routes("", "Val Thorens")
+
+
+PAYLOAD_WITH_PLACES = {
+    "places": [
+        {"shortName": "Innsbruck Airport", "canonicalName": "Innsbruck-Airport"},
+        {"shortName": "St Anton am Arlberg", "canonicalName": "St-Anton-am-Arlberg"},
+        {"shortName": "somewhere else", "canonicalName": "Ignore-Me"},
+    ],
+    "routes": [
+        {"name": "Train", "duration": 6420,
+         "indicativePrices": [{"priceLow": 12, "priceHigh": 80, "currency": "EUR"}]},
+    ],
+}
+
+
+def test_every_route_carries_a_real_results_link(monkeypatch):
+    # Owner: "i want real links for all the options." Built from the
+    # provider's OWN canonical slugs (places[0]/[1]) -- slugifying our
+    # spelling would give "St.-Anton-am-Arlberg", which their router
+    # rejects.
+    monkeypatch.setattr(r2r, "_fetch", lambda **_kw: PAYLOAD_WITH_PLACES)
+    route = r2r.search_routes("Innsbruck Airport", "St. Anton am Arlberg",
+                              use_cache=False)[0]
+    assert route.booking_url == (
+        "https://www.rome2rio.com/map/Innsbruck-Airport/St-Anton-am-Arlberg")
+
+
+def test_no_link_is_invented_when_the_provider_gives_no_slugs(monkeypatch):
+    # Better no link than one that lands on an empty map -- a
+    # hand-built URL did exactly that once already.
+    monkeypatch.setattr(r2r, "_fetch", lambda **_kw: {
+        "places": [], "routes": PAYLOAD_WITH_PLACES["routes"]})
+    assert r2r.search_routes("A", "B", use_cache=False)[0].booking_url is None

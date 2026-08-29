@@ -156,7 +156,7 @@ export function TransferOptions({ options }: { options: TransferOption[] }) {
                       rel="noopener noreferrer"
                       className="flex flex-none items-center gap-1 rounded-md bg-signal-soft px-2 py-0.5 font-semibold text-signal hover:bg-signal hover:text-white"
                     >
-                      {t("transferBook")}
+                      {o.is_indicative ? t("transferSeeRoutes") : t("transferBook")}
                       <ExternalLinkIcon size={10} className="opacity-70" />
                     </a>
                   )}

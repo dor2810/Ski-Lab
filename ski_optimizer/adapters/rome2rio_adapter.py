@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import requests
+from urllib.parse import quote
 
 from .base import AdapterError
 from .response_cache import get_cache
@@ -56,6 +57,30 @@ _HEADERS = {
 #: transfer a skier means (same exclusion as the Omio adapter).
 _FLIGHT_MARKERS = ("fly", "flight")
 
+MAP_BASE = "https://www.rome2rio.com/map"
+
+
+def _pair_url(payload: dict) -> Optional[str]:
+    """
+    Rome2Rio's results page for the searched pair, built from the
+    canonical slugs the response itself supplies (places[0] is the
+    origin, places[1] the destination). Built from THEIR slugs rather
+    than by slugifying our own place names -- "St. Anton am Arlberg"
+    would become St.-Anton-am-Arlberg, which their router rejects.
+    """
+    places = (payload or {}).get("places") or []
+    if len(places) < 2:
+        return None
+    origin = places[0].get("canonicalName")
+    destination = places[1].get("canonicalName")
+    if not origin or not destination:
+        return None
+    # Percent-encode the slugs: several resorts carry non-ASCII
+    # (Kitzbühel, Sölden). A browser encodes these itself -- verified
+    # live, the umlaut URL loads -- but anything else consuming this
+    # link would not, so it leaves here already safe.
+    return f"{MAP_BASE}/{quote(origin)}/{quote(destination)}"
+
 
 @dataclass(frozen=True)
 class Rome2RioRoute:
@@ -67,6 +92,17 @@ class Rome2RioRoute:
     #: Always True here -- a reminder at every use site that this is a
     #: range for the journey, not a fare for a date.
     is_indicative: bool = True
+    #: Rome2Rio's own results page for this origin/destination pair,
+    #: listing every route. VERIFIED in a real browser: it renders
+    #: "3 ways to travel from Innsbruck Airport to St Anton am
+    #: Arlberg". Deliberately the PAIR-level page, not a per-route URL:
+    #: /map/<o>/<d>/<route-canonical> was tested and redirects to an
+    #: empty map ("Please enter an origin"), and their results panel is
+    #: a SPA that does not change the URL when a route is selected. A
+    #: link landing on the right journey list beats a fabricated deep
+    #: link landing nowhere -- a mistake already made once here with a
+    #: hand-built Omio URL.
+    booking_url: Optional[str] = None
 
 
 def _fetch(origin: str, destination: str, currency: str = "EUR") -> dict:
@@ -108,6 +144,7 @@ def search_routes(origin: str, destination: str, currency: str = "EUR",
                     exc_info=True)
         return []
 
+    pair_url = _pair_url(payload)
     routes: List[Rome2RioRoute] = []
     for raw in (payload or {}).get("routes") or []:
         name = (raw.get("name") or "").strip()
@@ -126,6 +163,7 @@ def search_routes(origin: str, destination: str, currency: str = "EUR",
             # The provider reports SECONDS; a 24000 "minute" bus would
             # be sixteen days.
             duration_minutes=int(round(seconds / 60)) if seconds else None,
+            booking_url=pair_url,
         ))
 
     routes.sort(key=lambda r: r.price_low_eur)
