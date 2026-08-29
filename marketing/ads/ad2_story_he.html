@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Ski Lab — ad 2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Rubik:wght@400;500;600;700;800&display=swap">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1080px; height:1920px; overflow:hidden; }
+  body { background:#f4f7fb; color:#0b1526; font-family:'Rubik',system-ui,sans-serif; position:relative; }
+  .frame { position:relative; z-index:2; height:100%; padding:110px 90px; display:flex; flex-direction:column; }
+  .brand { font-family:'Montserrat',sans-serif; font-weight:800; font-size:44px; }
+  .brand span { color:#2563eb; }
+  /* the "40 tabs" mess */
+  .tabs { margin-top:90px; display:flex; flex-wrap:wrap; gap:14px; }
+  .tab {
+    background:#ffffff; border:2px solid #dde5ef; border-radius:14px;
+    padding:16px 22px; font-size:24px; color:#56657c; display:flex; align-items:center; gap:12px;
+  }
+  .tab .x { color:#c3d0e0; font-weight:700; }
+  .tab.dead { opacity:.55; transform:rotate(-1.2deg); }
+  .tab.dead2 { opacity:.4; transform:rotate(1.5deg); }
+  h1 { margin-top:110px; font-weight:800; font-size:118px; line-height:1.1; }
+  h1 em { font-style:normal; color:#2563eb; }
+  .sub { margin-top:36px; font-size:36px; line-height:1.5; color:#56657c; max-width:820px; }
+  .one {
+    margin-top:96px; background:#0b1526; color:#fff; border-radius:28px; padding:52px 58px;
+    display:flex; align-items:center; justify-content:space-between;
+    box-shadow:0 30px 70px rgba(11,21,38,.25);
+  }
+  .one .q { font-size:34px; color:#b9c5d6; }
+  .one .q b { color:#fff; font-weight:700; }
+  .one .go { background:#2563eb; border-radius:999px; padding:22px 46px; font-weight:700; font-size:30px; }
+  .foot { margin-top:auto; display:flex; justify-content:space-between; align-items:baseline; }
+  .url { font-family:'Montserrat',sans-serif; font-weight:700; font-size:34px; color:#0b1526; }
+  .note { font-size:24px; color:#8593a8; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="brand">Ski <span>Lab</span></div>
+
+  <div class="tabs">
+    <div class="tab">✈️ טיסות לז'נבה <span class="x">✕</span></div>
+    <div class="tab dead">🏨 מלון ואל טורנס <span class="x">✕</span></div>
+    <div class="tab">🚐 העברה משדה <span class="x">✕</span></div>
+    <div class="tab dead2">🎿 סקיפס מחירון <span class="x">✕</span></div>
+    <div class="tab">✈️ טיסות למינכן <span class="x">✕</span></div>
+    <div class="tab dead">🏨 בנסקו בוקינג <span class="x">✕</span></div>
+    <div class="tab dead2">📊 אקסל השוואה <span class="x">✕</span></div>
+    <div class="tab">🚐 כמה עולה מונית <span class="x">✕</span></div>
+    <div class="tab dead">🎿 השכרת ציוד <span class="x">✕</span></div>
+    <div class="tab dead2">✈️ אולי גאורגיה? <span class="x">✕</span></div>
+  </div>
+
+  <h1>40 טאבים.<br>או <em>חיפוש אחד.</em></h1>
+  <p class="sub">Ski Lab משווה 39 אתרי סקי — טיסה מנתב״ג, העברה, לינה ליד הרכבל, סקיפס, ציוד ואוכל — ומחזיר מחיר סופי אמיתי לכל אתר. כולל התאריך הזול באמת.</p>
+
+  <div class="one">
+    <div class="q">תקציב, תאריכים, רמה — <b>וזהו.</b></div>
+    <div class="go">חפשו עכשיו</div>
+  </div>
+
+  <div class="foot">
+    <div class="url">ski-lab-app.web.app</div>
+    <div class="note">מחירים חיים · ללא עמלות</div>
+  </div>
+</div>
+</body>
+</html>

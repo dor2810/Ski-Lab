@@ -163,6 +163,13 @@ export interface FlightOption {
   flight_numbers: string[];
   /** What the WHOLE trip costs if this flight is the one taken. */
   trip_total_eur: number;
+  /**
+   * A real booking deep link shipped with the option (Kiwi-sourced
+   * itineraries carry one in the search response). Null for
+   * Google-sourced options, whose link is built at click time via
+   * /flight-booking-link.
+   */
+  booking_url?: string | null;
 }
 
 /**

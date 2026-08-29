@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Ski Lab — ad 1</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Rubik:wght@400;500;600;700;800&display=swap">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1080px; height:1080px; overflow:hidden; }
+  body {
+    background:#0b1526; color:#f4f7fb;
+    font-family:'Rubik', system-ui, sans-serif;
+    position:relative;
+  }
+  /* contour-line motif — the "perfect line" down the slope */
+  svg.topo { position:absolute; inset:0; opacity:.5; }
+  .frame { position:relative; z-index:2; height:100%; padding:72px 80px; display:flex; flex-direction:column; }
+  .brand { display:flex; align-items:baseline; gap:16px; }
+  .brand .logo { font-family:'Montserrat',sans-serif; font-weight:800; font-size:40px; letter-spacing:.02em; color:#fff; }
+  .brand .logo span { color:#60a5fa; }
+  .brand .tag { font-size:20px; color:#8593a8; font-weight:500; }
+  h1 { font-weight:800; font-size:88px; line-height:1.12; margin-top:64px; }
+  h1 em { font-style:normal; color:#60a5fa; }
+  .sub { margin-top:20px; font-size:28px; color:#b9c5d6; font-weight:400; }
+  .card {
+    margin-top:52px; background:#ffffff; color:#0b1526; border-radius:24px;
+    padding:36px 44px; box-shadow:0 24px 60px rgba(0,0,0,.45);
+  }
+  .card .where { display:flex; justify-content:space-between; align-items:baseline; }
+  .card .resort { font-weight:700; font-size:34px; }
+  .card .dates { font-size:22px; color:#56657c; }
+  .rows { margin-top:22px; display:grid; grid-template-columns:1fr 1fr; gap:10px 48px; }
+  .row { display:flex; justify-content:space-between; font-size:22px; color:#56657c; }
+  .row b { color:#0b1526; font-weight:600; font-variant-numeric:tabular-nums; }
+  .total { margin-top:24px; padding-top:22px; border-top:2px solid #dde5ef;
+           display:flex; justify-content:space-between; align-items:baseline; }
+  .total .lbl { font-size:24px; font-weight:600; }
+  .total .val { font-family:'Montserrat',sans-serif; font-weight:800; font-size:56px; color:#2563eb; font-variant-numeric:tabular-nums; }
+  .total .per { font-size:20px; color:#8593a8; font-weight:400; }
+  .cta { margin-top:auto; display:flex; justify-content:space-between; align-items:center; }
+  .cta .url { font-family:'Montserrat',sans-serif; font-weight:700; font-size:28px; color:#fff; }
+  .cta .btn { background:#2563eb; color:#fff; font-weight:700; font-size:26px;
+              padding:18px 40px; border-radius:999px; }
+</style>
+</head>
+<body>
+<svg class="topo" width="1080" height="1080" viewBox="0 0 1080 1080" fill="none">
+  <path d="M-40 300 C 220 260, 420 380, 660 330 S 1000 240, 1160 300" stroke="#1d2f4d" stroke-width="2"/>
+  <path d="M-40 380 C 220 340, 430 470, 670 415 S 1010 320, 1160 385" stroke="#1d2f4d" stroke-width="2"/>
+  <path d="M-40 460 C 220 420, 440 560, 680 500 S 1020 400, 1160 470" stroke="#1d2f4d" stroke-width="2"/>
+  <path d="M-40 540 C 220 500, 450 650, 690 585 S 1030 480, 1160 555" stroke="#1d2f4d" stroke-width="2"/>
+  <path d="M-40 620 C 220 580, 460 740, 700 670 S 1040 560, 1160 640" stroke="#1d2f4d" stroke-width="2"/>
+  <!-- the plotted line -->
+  <path d="M 950 150 C 800 320, 860 420, 700 520 S 420 650, 360 820 S 250 980, 140 1060"
+        stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 22"/>
+  <circle cx="950" cy="150" r="10" fill="#60a5fa"/>
+</svg>
+<div class="frame">
+  <div class="brand">
+    <div class="logo">Ski <span>Lab</span></div>
+    <div class="tag">מנוע אופטימיזציה לחופשות סקי</div>
+  </div>
+  <h1>החופשה כולה.<br><em>מחיר אחד. אמיתי.</em></h1>
+  <p class="sub">טיסה, העברות, לינה ליד הרכבל, סקיפס, ציוד ואוכל — חישוב אחד.</p>
+  <div class="card">
+    <div class="where">
+      <div class="resort">גודאורי, גאורגיה</div>
+      <div class="dates">7 לילות · דצמבר</div>
+    </div>
+    <div class="rows">
+      <div class="row"><span>טיסה מנתב״ג</span><b>כלול</b></div>
+      <div class="row"><span>העברה מהשדה</span><b>כלול</b></div>
+      <div class="row"><span>לינה ליד הרכבל</span><b>כלול</b></div>
+      <div class="row"><span>סקיפס 6 ימים</span><b>כלול</b></div>
+      <div class="row"><span>השכרת ציוד</span><b>כלול</b></div>
+      <div class="row"><span>אוכל</span><b>כלול</b></div>
+    </div>
+    <div class="total">
+      <span class="lbl">סה״כ לאדם <span class="per">· מחיר חי שנמצא בחיפוש אמיתי</span></span>
+      <span class="val">€992</span>
+    </div>
+  </div>
+  <div class="cta">
+    <div class="url">ski-lab-app.web.app</div>
+    <div class="btn">מצאו את הדיל שלכם ←</div>
+  </div>
+</div>
+</body>
+</html>

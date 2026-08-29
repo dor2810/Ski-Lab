@@ -419,6 +419,29 @@ def _serpapi_flight_fallback(resort, codes, outbound_date, return_date,
         return None
 
 
+def _kiwi_flight_result(resort, codes, outbound_date, return_date,
+                        origin_airport, adults, max_connections):
+    """
+    The FULL Kiwi search result (not just a price), or None on any
+    failure. Shares the response cache with _kiwi_flight_fallback --
+    when that already rescued this trip's PRICE moments ago, this is a
+    cache hit, not a second network call.
+    """
+    try:
+        from ..adapters import kiwi_mcp_adapter
+        return kiwi_mcp_adapter.search_flights(
+            origin_airport=origin_airport,
+            destination_airports=codes,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            max_connections=max_connections,
+        )
+    except Exception:
+        logger.warning("Kiwi MCP result fetch failed for %s", resort.name, exc_info=True)
+        return None
+
+
 def live_flight_options(
     resort: Resort,
     outbound_date,
@@ -452,6 +475,7 @@ def live_flight_options(
     codes = airport_codes_for(resort)
     if not codes:
         return []
+    options = []
     try:
         from ..adapters import google_flights_adapter as flight_adapter
         result = flight_adapter.search_flights(
@@ -462,17 +486,29 @@ def live_flight_options(
             adults=adults,
             max_connections=max_connections,
         )
-        # Selection lives in engine/flight_picks.py -- pure, offline-
-        # tested maths. The earlier inline version here ("cheapest N-1
-        # plus the fastest") still made the user read a list and do the
-        # trade-off themselves; the picks module returns the three
-        # answers every flight product already gives (Cheapest / Best /
-        # Fastest), merged onto fewer options when one wins several.
-        from .flight_picks import pick_flights
-        return pick_flights(result.options)
+        options = result.options
     except Exception:
         logger.exception("live_flight_options failed for %s", resort.name)
-        return []
+
+    # Google empty or dead -> same Kiwi fallback the PRICE already
+    # takes (live_flight_cost_eur), so the user never sees a live
+    # number with no itineraries behind it. Kiwi options additionally
+    # carry a real booking deep link each (booking_token holds the
+    # itinerary's bookingUrl -- see kiwi_mcp_adapter._parse_itinerary).
+    if not options:
+        kiwi = _kiwi_flight_result(resort, codes, outbound_date, return_date,
+                                   origin_airport, adults, max_connections)
+        if kiwi is not None:
+            options = kiwi.options
+
+    # Selection lives in engine/flight_picks.py -- pure, offline-
+    # tested maths. The earlier inline version here ("cheapest N-1
+    # plus the fastest") still made the user read a list and do the
+    # trade-off themselves; the picks module returns the three
+    # answers every flight product already gives (Cheapest / Best /
+    # Fastest), merged onto fewer options when one wins several.
+    from .flight_picks import pick_flights
+    return pick_flights(options)
 
 
 def live_flight_booking_url(
@@ -522,24 +558,52 @@ def live_flight_booking_url(
             adults=adults,
             max_connections=max_connections,
         )
-        if not result.options:
-            return None
-        if flight_numbers:
-            wanted = [n.strip().upper() for n in flight_numbers]
-            chosen = next(
-                (o for o in result.options
-                 if [n.strip().upper() for n in (o.flight_numbers or [])] == wanted),
-                None,
-            )
+        if result.options:
+            chosen = _match_flight_option(result.options, flight_numbers)
             if chosen is None:
                 return None
-        else:
-            chosen = min(result.options, key=lambda o: o.price_eur)
-        return flight_adapter.booking_url(chosen, outbound_date, return_date)
+            return flight_adapter.booking_url(chosen, outbound_date, return_date)
     except Exception:
         # Same "degrade visibly, never break" contract as
-        # live_flight_cost_eur -- see that function's docstring.
+        # live_flight_cost_eur -- see that function's docstring. The
+        # Kiwi fallback below still gets its chance.
+        logger.warning("google booking-url path failed for %s", resort.name, exc_info=True)
+
+    # Google had nothing (or died): the option shown to the user most
+    # likely CAME from Kiwi (live_flight_options' own fallback), and
+    # Kiwi itineraries carry their booking deep link right in the
+    # search response -- no second fetch, no selection token.
+    kiwi = _kiwi_flight_result(resort, codes, outbound_date, return_date,
+                               origin_airport, adults, max_connections)
+    if kiwi is None or not kiwi.options:
         return None
+    chosen = _match_flight_option(kiwi.options, flight_numbers)
+    if chosen is None:
+        return None
+    return _http_booking_link(chosen)
+
+
+def _match_flight_option(options, flight_numbers):
+    """The option these designators identify -- or the cheapest when
+    none were given. No match -> None, never 'the closest one' (a
+    booking page for a different flight than the one clicked is worse
+    than no link at all)."""
+    if not flight_numbers:
+        return min(options, key=lambda o: o.price_eur)
+    wanted = [n.strip().upper() for n in flight_numbers]
+    return next(
+        (o for o in options
+         if [n.strip().upper() for n in (o.flight_numbers or [])] == wanted),
+        None,
+    )
+
+
+def _http_booking_link(option) -> Optional[str]:
+    """booking_token IF it already is a real link (Kiwi stores its
+    bookingUrl there); None for opaque provider tokens (Google's
+    protobuf selection token), which would render as a dead href."""
+    token = option.booking_token or ""
+    return token if token.startswith(("https://", "http://")) else None
 
 
 def live_accommodation_cost_eur_per_person(

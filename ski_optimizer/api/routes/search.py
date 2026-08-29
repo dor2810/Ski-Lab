@@ -334,6 +334,13 @@ class FlightOptionOut(BaseModel):
     # just what the flight costs. The headline total assumes the
     # cheapest flight; this is what makes the alternatives comparable.
     trip_total_eur: float
+    # A real booking deep link shipped WITH the option, when the
+    # provider hands one over in the search response (Kiwi does; its
+    # bookingUrl rides in FlightOption.booking_token). None for
+    # Google-sourced options, whose link is built at click time via
+    # /flight-booking-link -- the frontend uses this when present and
+    # falls back to that endpoint otherwise.
+    booking_url: Optional[str] = None
 
 
 class TransferInfoOut(BaseModel):
@@ -753,6 +760,11 @@ def _flight_options_out(resort: Resort, outbound_date, return_date,
             roles=list(p.roles),
             flight_numbers=list(p.option.flight_numbers or []),
             trip_total_eur=round(apply_live_flight_price(cost, p.option.price_eur).total_eur, 2),
+            # Kiwi keeps its bookingUrl in booking_token; Google's
+            # token there is opaque protobuf. Only a real link ships.
+            booking_url=(p.option.booking_token
+                         if (p.option.booking_token or "").startswith(("https://", "http://"))
+                         else None),
         )
         for p in picks
     ]

@@ -73,6 +73,21 @@ function BookFlightButton({ option, booking }: { option: FlightOption; booking: 
   const { runAuthed } = useAuth();
   const [busy, setBusy] = useState(false);
 
+  // A Kiwi-sourced option ships its booking deep link right in the
+  // search response -- no click-time fetch, just a plain link.
+  if (option.booking_url) {
+    return (
+      <a
+        href={option.booking_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-none rounded-md bg-signal-soft px-2 py-0.5 text-[11px] font-semibold text-signal hover:bg-signal hover:text-white"
+      >
+        {t("flightBook")}
+      </a>
+    );
+  }
+
   // Only offered when the itinerary is identifiable: without flight
   // numbers the endpoint has nothing stable to match, and the row's
   // generic search link already exists one level up on the card.
