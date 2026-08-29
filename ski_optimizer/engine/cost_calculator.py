@@ -1497,4 +1497,43 @@ def all_transfer_options(resort: Resort, start_date, end_date, group_size: int,
         logger.warning("scheduled transfer options failed for %s", resort.name,
                        exc_info=True)
 
+    # --- indicative route discovery (covers EVERY resort) ---
+    # Runs only when the dated providers found nothing bookable: it is
+    # a price RANGE with no date, so it answers "how would I even get
+    # there" rather than "what will I pay on the 16th". Without it,
+    # 30 of 39 resorts showed no ground option at all.
+    if not any(o.kind == "scheduled" for o in options):
+        try:
+            from ..adapters import rome2rio_adapter
+            from ..adapters.transfer_adapter import _airport_city_name
+            airport = _airport_city_name(resort.nearest_airport)
+            origin = (f"{airport} Airport" if "airport" not in airport.lower() else airport)
+            for route in rome2rio_adapter.search_routes(origin, resort.name)[:3]:
+                options.append(TransferOption(
+                    resort_name=resort.name,
+                    kind="scheduled", mode=_mode_from_route_name(route.name),
+                    price_eur_per_person=route.price_low_eur,
+                    price_high_eur_per_person=route.price_high_eur,
+                    duration_minutes=route.duration_minutes,
+                    carrier=route.name,
+                    is_indicative=True,
+                    booking_url=None,
+                ))
+        except Exception:
+            logger.warning("rome2rio route discovery failed for %s", resort.name,
+                           exc_info=True)
+
     return rank_transfer_options(options)
+
+
+def _mode_from_route_name(name: str) -> str:
+    """Rome2Rio names a route by its legs ("Bus, train", "Shuttle").
+    Map to the mode the UI shows an icon and label for; the full name
+    is kept as the carrier line so nothing is lost."""
+    lowered = (name or "").lower()
+    for needle, mode in (("train", "train"), ("tram", "train"), ("ferry", "ferry"),
+                         ("shuttle", "bus"), ("bus", "bus"), ("taxi", "minivan"),
+                         ("transfer", "minivan")):
+        if needle in lowered:
+            return mode
+    return "bus"

@@ -237,6 +237,10 @@ export interface TransferOption {
   booking_url: string | null;
   is_round_trip: boolean;
   roles: string[];              // "cheapest" | "fastest"
+  /** True = a price RANGE for the journey with no date (route
+   *  discovery), not a bookable quote. */
+  is_indicative?: boolean;
+  price_high_eur_per_person?: number | null;
 }
 
 export interface TransferInfo {

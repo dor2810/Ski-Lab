@@ -119,8 +119,13 @@ export function TransferOptions({ options }: { options: TransferOption[] }) {
                     costs, what it is, then the detail and the action --
                     six data points in one row overflowed a 390px phone. */}
                 <div className="flex min-w-0 items-baseline gap-2 text-xs">
-                  <span className="w-12 flex-none font-semibold tabular-nums text-ink">
+                  {/* A range for indicative routes, a single figure
+                      for a real quote -- the difference between "buses
+                      cost roughly this" and "this is your price". */}
+                  <span className="flex-none font-semibold tabular-nums text-ink">
                     €{Math.round(o.price_eur_per_person)}
+                    {o.is_indicative && o.price_high_eur_per_person != null
+                      ? `–${Math.round(o.price_high_eur_per_person)}` : ""}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-muted">
                     {t(MODE_LABEL_KEYS[o.mode] ?? "transferModePrivate")}
@@ -140,7 +145,9 @@ export function TransferOptions({ options }: { options: TransferOption[] }) {
                       one-way seat against a return van would flatter
                       the seat by half. */}
                   <span className="flex-none">
-                    {o.is_round_trip ? t("transferReturnIncluded") : t("transferOneWayOnly")}
+                    {o.is_indicative
+                      ? t("transferIndicative")
+                      : o.is_round_trip ? t("transferReturnIncluded") : t("transferOneWayOnly")}
                   </span>
                   {o.booking_url && (
                     <a

@@ -382,6 +382,12 @@ class TransferOptionOut(BaseModel):
     # difference between an honest comparison and a flattering one.
     is_round_trip: bool = False
     roles: List[str] = []
+    # INDICATIVE = a price RANGE for the journey with no date attached
+    # (Rome2Rio route discovery), not a bookable quote. Shown for the
+    # many resorts no dated provider covers; the UI labels it so it is
+    # never mistaken for a fare you can pay today.
+    is_indicative: bool = False
+    price_high_eur_per_person: Optional[float] = None
 
 
 class TransferInfoOut(BaseModel):
@@ -1817,6 +1823,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 duration_minutes=o.duration_minutes, carrier=o.carrier,
                 departure=o.departure, booking_url=o.booking_url,
                 is_round_trip=o.is_round_trip, roles=list(o.roles),
+                is_indicative=o.is_indicative,
+                price_high_eur_per_person=o.price_high_eur_per_person,
             ) for o in transfer_options],
             transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),

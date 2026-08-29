@@ -69,6 +69,12 @@ class TransferOption:
     # mode impossible to DISPLAY rather than merely unlikely, which is
     # this project's rule about wrong numbers.
     resort_name: Optional[str] = None
+    # INDICATIVE options (Rome2Rio) are a price RANGE for the journey
+    # with no date attached -- route discovery, not a quote. They exist
+    # because they are the only thing that covers every resort, and
+    # they must never be mistaken for the dated, bookable quotes.
+    is_indicative: bool = False
+    price_high_eur_per_person: Optional[float] = None
 
 
 def _dedupe_key(option: TransferOption):
@@ -119,7 +125,10 @@ def rank_transfer_options(options: Sequence[TransferOption]) -> List[TransferOpt
             seen[key] = option
     unique = list(seen.values())
 
-    cheapest = min(unique, key=lambda o: (o.price_eur_per_person,
+    # A bookable quote outranks an indicative range at equal price:
+    # the range is the low end of a guess, and letting it take the
+    # Cheapest badge would advertise a number nobody can actually pay.
+    cheapest = min(unique, key=lambda o: (o.price_eur_per_person, o.is_indicative,
                                           o.duration_minutes or 10**6))
     timed = [o for o in unique if o.duration_minutes is not None]
     fastest = (min(timed, key=lambda o: (o.duration_minutes, o.price_eur_per_person))

@@ -152,6 +152,22 @@ def _no_real_omio_mcp(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_rome2rio(monkeypatch):
+    """
+    Same offline discipline as _no_real_kiwi_mcp: Rome2Rio now backs
+    the transfer list's coverage layer, so any test reaching
+    all_transfer_options would otherwise fire a real request per row.
+    """
+    from ski_optimizer.adapters import rome2rio_adapter
+    from ski_optimizer.adapters.base import AdapterError
+
+    def _offline(**_kw):
+        raise AdapterError("network disabled in tests (see conftest._no_real_rome2rio)")
+
+    monkeypatch.setattr(rome2rio_adapter, "_fetch", _offline)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_stays_or_overpass(monkeypatch):
     """
     Same offline discipline as _no_real_kiwi_mcp, for the accommodation

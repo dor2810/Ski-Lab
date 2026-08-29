@@ -218,6 +218,7 @@ const en = {
   flightBookNote: "Book opens this exact flight on Google Flights. The final price is confirmed there and can differ from the search price.",
 
   transferRealQuote: "Real transfer quote: €{price} one-way (van for 2) · ~{dur} drive",
+  transferIndicative: "typical price, no date",
   transferOptionsTitle: "{count} ways to reach the resort",
   transferCheapestSummary: "Cheapest: €{price} per person by {kind}.",
   transferPrivateOnlyNote: "Only private transfers are bookable on this route.",

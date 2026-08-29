@@ -210,6 +210,7 @@ const he: Record<keyof typeof en, string> = {
   flightBookNote: "כפתור ההזמנה פותח בדיוק את הטיסה הזו ב-Google Flights. המחיר הסופי מאושר שם ועשוי להיות שונה ממחיר החיפוש.",
 
   transferRealQuote: "מחיר הסעה אמיתי: €{price} לכיוון (רכב לשניים) · נסיעה ~{dur}",
+  transferIndicative: "מחיר אופייני, ללא תאריך",
   transferOptionsTitle: "{count} דרכים להגיע לאתר",
   transferCheapestSummary: "הזול ביותר: €{price} לאדם ב{kind}.",
   transferPrivateOnlyNote: "במסלול הזה ניתן להזמין רק הסעות פרטיות.",
