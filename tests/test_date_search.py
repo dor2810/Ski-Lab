@@ -320,8 +320,12 @@ def test_live_reprice_n_caps_the_number_of_live_calls():
                       datetime.date(2027, 3, 1), top_n=500,
                       flight_cost_fn=flight_fn, accommodation_cost_fn=accom_fn,
                       live_reprice_n=5)
-    assert call_count["flight"] == 5
-    assert call_count["accom"] == 5
+    # TWO bounded passes since the display-repricing fix (2026-08-29):
+    # the candidate pass spends exactly the cap, and finalize() may
+    # spend at most the cap again on displayed-but-unpriced rows -- so
+    # the hard ceiling is 2x the cap, never the whole grid.
+    assert 5 <= call_count["flight"] <= 10
+    assert 5 <= call_count["accom"] <= 10
 
 
 def test_live_reprice_n_none_preserves_unbounded_behavior():

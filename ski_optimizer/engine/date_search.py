@@ -35,7 +35,7 @@ import datetime
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dc_replace
 from typing import Callable, List, Optional
 
 from ..models import Resort, UserPreferences, CostBreakdown
@@ -244,6 +244,113 @@ def shortlist_resorts(resorts: List[Resort], prefs: UserPreferences,
     return [r for _, r in scored[:top_n]]
 
 
+def _live_reprice_pairs(to_reprice, prefs, flight_cost_fn, accommodation_cost_fn, score_it):
+    """
+    Concurrently live-price these (resort, date) pairs and return them
+    RESCORED, aligned with the input. Extracted verbatim from
+    search_date_range's stage 2 so the same machinery can run twice:
+    once over the score-selected candidate set, and once (finalize())
+    over the rows actually displayed. Every adapter behind the cost
+    fns is response-cached, so overlapping pairs between the two
+    passes cost no extra network calls.
+    """
+    # Fetch every live price CONCURRENTLY before applying any of
+    # them.
+    #
+    # WHY THIS MATTERS MORE THAN IT LOOKS: this loop used to be
+    # sequential, and each live lookup is a real 1-2s scrape. That
+    # made latency scale linearly with how many results got real
+    # prices, which is why live_reprice_n had to be small -- and a
+    # small cap is exactly why most rows a user saw were labelled
+    # "EST." even with live pricing switched on. The work is pure
+    # network I/O, so threads genuinely overlap it: the same 24
+    # lookups that took ~35s in sequence finish in a few seconds.
+    #
+    # Ordering is preserved by mapping futures back to their index,
+    # never by completion order -- results must stay deterministic.
+    live_flights: dict = {}
+    live_accoms: dict = {}
+    if to_reprice:
+        with ThreadPoolExecutor(max_workers=_LIVE_PRICING_WORKERS) as pool:
+            # DEDUPLICATE flight lookups. A flight price depends on
+            # the route and the dates, NOT on which resort you're
+            # heading to afterwards -- and resorts share airports
+            # heavily (INN serves 9 of the mainstream resorts, GVA
+            # another 9). Submitting one task per (resort, date)
+            # meant several threads racing to fetch the IDENTICAL
+            # route: the response cache couldn't help, because they
+            # all missed it simultaneously and only populated it
+            # after the fact. That is wasted latency AND extra load
+            # on a provider that rate-limits, which then costs live
+            # prices. Measured on a real 24-pair set: 17 distinct
+            # routes, so a quarter of the requests were redundant.
+            flight_groups: dict = {}
+            if flight_cost_fn is not None:
+                for i, opt in enumerate(to_reprice):
+                    key = (tuple(airport_codes_for(opt.resort)), opt.start_date, opt.end_date)
+                    flight_groups.setdefault(key, []).append(i)
+            staggered_flight = _staggered(flight_cost_fn) if flight_cost_fn else None
+            staggered_accom = _staggered(accommodation_cost_fn) if accommodation_cost_fn else None
+            flight_futures = {
+                pool.submit(staggered_flight, to_reprice[idxs[0]].resort,
+                            to_reprice[idxs[0]].start_date, to_reprice[idxs[0]].end_date, prefs): idxs
+                for idxs in flight_groups.values()
+            }
+            accom_futures = {
+                pool.submit(staggered_accom, opt.resort, opt.start_date, opt.end_date, prefs): i
+                for i, opt in enumerate(to_reprice)
+            } if accommodation_cost_fn is not None else {}
+
+            for future, idxs in flight_futures.items():
+                try:
+                    value = future.result()
+                except Exception:
+                    # Same contract as the sequential version: a
+                    # failed lookup keeps the static estimate rather
+                    # than dropping the date or failing the search.
+                    value = None
+                # One fetch answers every pair sharing that route.
+                for i in idxs:
+                    live_flights[i] = value
+            for future, i in accom_futures.items():
+                try:
+                    live_accoms[i] = future.result()
+                except Exception:
+                    live_accoms[i] = None
+
+    repriced = []
+    for i, opt in enumerate(to_reprice):
+        cost = opt.cost
+        if flight_cost_fn is not None:
+            live_flight = live_flights.get(i)
+            # None here keeps the static estimate rather than dropping
+            # the date -- SAME contract as the accommodation branch
+            # below, and for the same reason: a failed live lookup
+            # (provider outage, scrape blocked, transient network
+            # error -- adapters/google_flights_adapter.py's own
+            # docstring warns this provider can get rate-limited/
+            # banned, a real and now much more likely failure mode
+            # than the old paid API's) is NOT the same fact as "no
+            # flight exists for this date," and treating it as one
+            # silently emptied the WHOLE result set on any hiccup --
+            # discovered exactly that way while building this swap.
+            # The static estimate is still honestly labeled
+            # (flight_price_is_live stays False), matching this
+            # project's degrade-visibly-not-silently rule everywhere
+            # else it applies.
+            if live_flight is not None and live_flight != cost.flight_eur:
+                cost = apply_live_flight_price(cost, live_flight)
+        if accommodation_cost_fn is not None:
+            live_accom = live_accoms.get(i)
+            # None here just keeps the static estimate -- see this
+            # function's docstring on why accommodation degrades
+            # differently than flight.
+            if live_accom is not None and live_accom != cost.accommodation_eur:
+                cost = apply_live_accommodation_price(cost, live_accom)
+        repriced.append(score_it(opt.resort, opt.start_date, opt.end_date, cost))
+    return repriced
+
+
 def search_date_range(
     resorts: List[Resort],
     prefs: UserPreferences,
@@ -431,103 +538,60 @@ def search_date_range(
         reprice_ids = {id(opt) for opt in to_reprice}
         rest = [opt for opt in all_static if id(opt) not in reprice_ids]
 
-        # Fetch every live price CONCURRENTLY before applying any of
-        # them.
-        #
-        # WHY THIS MATTERS MORE THAN IT LOOKS: this loop used to be
-        # sequential, and each live lookup is a real 1-2s scrape. That
-        # made latency scale linearly with how many results got real
-        # prices, which is why live_reprice_n had to be small -- and a
-        # small cap is exactly why most rows a user saw were labelled
-        # "EST." even with live pricing switched on. The work is pure
-        # network I/O, so threads genuinely overlap it: the same 24
-        # lookups that took ~35s in sequence finish in a few seconds.
-        #
-        # Ordering is preserved by mapping futures back to their index,
-        # never by completion order -- results must stay deterministic.
-        live_flights: dict = {}
-        live_accoms: dict = {}
-        if to_reprice:
-            with ThreadPoolExecutor(max_workers=_LIVE_PRICING_WORKERS) as pool:
-                # DEDUPLICATE flight lookups. A flight price depends on
-                # the route and the dates, NOT on which resort you're
-                # heading to afterwards -- and resorts share airports
-                # heavily (INN serves 9 of the mainstream resorts, GVA
-                # another 9). Submitting one task per (resort, date)
-                # meant several threads racing to fetch the IDENTICAL
-                # route: the response cache couldn't help, because they
-                # all missed it simultaneously and only populated it
-                # after the fact. That is wasted latency AND extra load
-                # on a provider that rate-limits, which then costs live
-                # prices. Measured on a real 24-pair set: 17 distinct
-                # routes, so a quarter of the requests were redundant.
-                flight_groups: dict = {}
-                if flight_cost_fn is not None:
-                    for i, opt in enumerate(to_reprice):
-                        key = (tuple(airport_codes_for(opt.resort)), opt.start_date, opt.end_date)
-                        flight_groups.setdefault(key, []).append(i)
-                staggered_flight = _staggered(flight_cost_fn) if flight_cost_fn else None
-                staggered_accom = _staggered(accommodation_cost_fn) if accommodation_cost_fn else None
-                flight_futures = {
-                    pool.submit(staggered_flight, to_reprice[idxs[0]].resort,
-                                to_reprice[idxs[0]].start_date, to_reprice[idxs[0]].end_date, prefs): idxs
-                    for idxs in flight_groups.values()
-                }
-                accom_futures = {
-                    pool.submit(staggered_accom, opt.resort, opt.start_date, opt.end_date, prefs): i
-                    for i, opt in enumerate(to_reprice)
-                } if accommodation_cost_fn is not None else {}
-
-                for future, idxs in flight_futures.items():
-                    try:
-                        value = future.result()
-                    except Exception:
-                        # Same contract as the sequential version: a
-                        # failed lookup keeps the static estimate rather
-                        # than dropping the date or failing the search.
-                        value = None
-                    # One fetch answers every pair sharing that route.
-                    for i in idxs:
-                        live_flights[i] = value
-                for future, i in accom_futures.items():
-                    try:
-                        live_accoms[i] = future.result()
-                    except Exception:
-                        live_accoms[i] = None
-
-        repriced = []
-        for i, opt in enumerate(to_reprice):
-            cost = opt.cost
-            if flight_cost_fn is not None:
-                live_flight = live_flights.get(i)
-                # None here keeps the static estimate rather than dropping
-                # the date -- SAME contract as the accommodation branch
-                # below, and for the same reason: a failed live lookup
-                # (provider outage, scrape blocked, transient network
-                # error -- adapters/google_flights_adapter.py's own
-                # docstring warns this provider can get rate-limited/
-                # banned, a real and now much more likely failure mode
-                # than the old paid API's) is NOT the same fact as "no
-                # flight exists for this date," and treating it as one
-                # silently emptied the WHOLE result set on any hiccup --
-                # discovered exactly that way while building this swap.
-                # The static estimate is still honestly labeled
-                # (flight_price_is_live stays False), matching this
-                # project's degrade-visibly-not-silently rule everywhere
-                # else it applies.
-                if live_flight is not None and live_flight != cost.flight_eur:
-                    cost = apply_live_flight_price(cost, live_flight)
-            if accommodation_cost_fn is not None:
-                live_accom = live_accoms.get(i)
-                # None here just keeps the static estimate -- see this
-                # function's docstring on why accommodation degrades
-                # differently than flight.
-                if live_accom is not None and live_accom != cost.accommodation_eur:
-                    cost = apply_live_accommodation_price(cost, live_accom)
-            repriced.append(score_it(opt.resort, opt.start_date, opt.end_date, cost))
+        repriced = _live_reprice_pairs(to_reprice, prefs, flight_cost_fn,
+                                       accommodation_cost_fn, score_it)
         all_evaluated = repriced + rest
     else:
         all_evaluated = all_static
+
+    def finalize(rows):
+        """
+        SECOND repricing pass over exactly the rows being RETURNED.
+
+        WHY (the Bansko bug, owner report 2026-08-29): pass 1 prices
+        the top pairs by STATIC score, but live prices usually come
+        back HIGHER than the static estimates -- so an un-repriced
+        row's optimistic estimate outranks its own resort's freshly
+        live-priced dates and wins the display slot. The user then
+        sees "EST." on the very rows shown, while live pricing worked
+        perfectly (measured live: Bardonecchia Dec 12/19 live, Dec 1
+        estimated). Pricing what we display, after deciding what to
+        display, is the only assignment that cannot drift. Bounded by
+        the returned row count (<= top_n); response caching makes
+        pairs already tried in pass 1 free to re-check.
+
+        within_budget is recomputed from the LIVE total, both ways.
+        Row ORDER is preserved: re-sorting on the new prices would
+        re-introduce the drift this pass exists to close.
+        """
+        if not live_active:
+            return rows
+        needs = [t for t in rows
+                 if (flight_cost_fn is not None and not t.cost.flight_price_is_live)
+                 or (accommodation_cost_fn is not None
+                     and not t.cost.accommodation_price_is_live)]
+        if not needs:
+            return rows
+        # An explicit cap is a hard cost bound the caller set: this
+        # pass may spend at most that many pairs again (display order
+        # decides who gets priced first). The frontend's real shape --
+        # top_n=12 under a cap of 24 -- never hits this ceiling.
+        if live_reprice_n is not None:
+            needs = needs[:live_reprice_n]
+        fresh = _live_reprice_pairs(needs, prefs, flight_cost_fn,
+                                    accommodation_cost_fn, score_it)
+        by_pair = {(t.resort.name, t.start_date): t for t in fresh}
+        out = []
+        for t in rows:
+            f = by_pair.get((t.resort.name, t.start_date))
+            if f is None:
+                out.append(t)
+                continue
+            out.append(dc_replace(
+                t, cost=f.cost, score=f.score,
+                score_components=f.score_components,
+                within_budget=f.cost.total_eur <= prefs.budget_eur_per_person))
+        return out
 
     results = [t for t in all_evaluated if t.cost.total_eur <= prefs.budget_eur_per_person]
 
@@ -539,11 +603,11 @@ def search_date_range(
         # keeps the original score-ranked capped list.
         distinct_evaluated = {t.resort.name for t in all_evaluated}
         if not pad_with_duplicates and len(distinct_evaluated) >= 2:
-            return assemble_coverage_first(
+            return finalize(assemble_coverage_first(
                 results, all_evaluated, prefs.budget_eur_per_person,
-                top_n, max_results_per_resort, allow_over_budget_fallback)
-        return cap_per_resort(results, top_n, max_results_per_resort,
-                              pad_with_duplicates=pad_with_duplicates)
+                top_n, max_results_per_resort, allow_over_budget_fallback))
+        return finalize(cap_per_resort(results, top_n, max_results_per_resort,
+                                       pad_with_duplicates=pad_with_duplicates))
 
     if not all_evaluated:
         return []  # genuinely nothing could be priced at all -- not a budget question
@@ -560,7 +624,7 @@ def search_date_range(
         score=t.score, score_components=t.score_components, season=t.season,
         within_budget=False,
     ) for t in fallback]
-    return fallback[:top_n]
+    return finalize(fallback[:top_n])
 
 
 def spread_alternative_dates(resort_pool: List[DatedTripOption],

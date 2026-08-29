@@ -215,3 +215,62 @@ def test_flight_price_reaches_serpapi_when_google_raises(resort, monkeypatch):
 
     from ski_optimizer.engine.cost_calculator import live_flight_cost_eur
     assert live_flight_cost_eur(resort, OUT, BACK) == 345.0
+
+
+def test_every_displayed_row_is_live_priced_when_the_provider_works():
+    # The Bansko bug (owner report, 2026-08-29): live prices run HIGHER
+    # than static estimates, so un-repriced rows with optimistic
+    # estimates outranked their own resort's live-priced dates and won
+    # the display slot -- users saw EST rows while live pricing was
+    # working perfectly. When the provider can price every pair, every
+    # DISPLAYED row must be live, whatever the ranking dance did.
+    from ski_optimizer.engine.date_search import search_date_range
+    from ski_optimizer.models import UserPreferences
+
+    resorts = load_resorts()
+    prefs = UserPreferences(budget_eur_per_person=2500, ski_days=5)
+
+    def pricier_live_flight(resort, s, e, _prefs):
+        return 400.0  # deliberately above every static estimate
+
+    options = search_date_range(
+        resorts, prefs,
+        earliest_date=datetime.date(2027, 1, 4),
+        latest_date=datetime.date(2027, 1, 31),
+        top_n=12, pad_with_duplicates=False,
+        live_reprice_n=24, max_results_per_resort=3,
+        flight_cost_fn=pricier_live_flight,
+    )
+    assert options, "search must return rows"
+    est_rows = [(t.resort.name, t.start_date) for t in options
+                if not t.cost.flight_price_is_live]
+    assert est_rows == [], f"displayed rows left estimated: {est_rows}"
+
+
+def test_second_pass_repricing_reflags_rows_pushed_over_budget():
+    # A row selected as within-budget on its static estimate may price
+    # over budget once its LIVE cost arrives -- the flag must follow
+    # the real number, never the stale estimate.
+    from ski_optimizer.engine.date_search import search_date_range
+    from ski_optimizer.models import UserPreferences
+
+    resorts = load_resorts()
+    prefs = UserPreferences(budget_eur_per_person=1500, ski_days=5,
+                            target_resort=resorts[0].name)
+
+    def exploding_flight(resort, s, e, _prefs):
+        return 5000.0  # every live-priced row is far over budget
+
+    options = search_date_range(
+        resorts, prefs,
+        earliest_date=datetime.date(2027, 1, 4),
+        latest_date=datetime.date(2027, 1, 31),
+        top_n=6, pad_with_duplicates=False,
+        live_reprice_n=24, max_results_per_resort=3,
+        flight_cost_fn=exploding_flight,
+    )
+    for t in options:
+        if t.cost.flight_price_is_live:
+            assert not t.within_budget, (
+                f"{t.resort.name} {t.start_date}: live total "
+                f"{t.cost.total_eur} exceeds budget but is flagged within budget")
