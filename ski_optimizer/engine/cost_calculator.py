@@ -310,20 +310,28 @@ def live_flight_cost_eur(
                 resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
             if price is not None:
                 return price
-        if not result.options and getattr(result, "fares_suppressed", False):
-            # Google LISTED flights but stripped every fare -- seen live
-            # from the Cloud Run egress IP while the same query priced
-            # fine from a residential one. From the user's seat this is
-            # indistinguishable from a hard block (a wall of EST.), and
-            # it means the same thing: the data exists and we were
-            # refused it. Report it and spend the paid fallback exactly
-            # as the ProviderBlockedError branch below does.
-            note_provider_blocked()
+            if getattr(result, "fares_suppressed", False):
+                # Google LISTED flights but stripped every fare -- seen
+                # live from the Cloud Run egress IP while the same query
+                # priced fine from a residential one. Indistinguishable
+                # from a hard block from the user's seat; record it so
+                # the UI can explain the wall of EST.
+                note_provider_blocked()
+            # Paid fallback on EVERY empty outcome, not only the two
+            # explicit block signals. Production evidence 2026-08-29
+            # (St. Anton / Ischgl fully estimated while every provider
+            # worked from a residential IP): from a datacenter egress,
+            # "empty" and "blocked" are the same event wearing
+            # different headers -- Kiwi's MCP refused the same IP too.
+            # SerpApi calls from ITS OWN infrastructure, immune to our
+            # IP's reputation, and is the whole reason the key exists.
+            # Still None without a key -- the caller reports EST
+            # honestly rather than inventing a number.
             price = _serpapi_flight_fallback(
                 resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
             if price is None:
-                logger.warning("fares suppressed for %s and no SerpApi fallback available",
-                               resort.name)
+                logger.warning("no flight price from ANY provider for %s (%s %s)",
+                               resort.name, codes, outbound_date)
             return price
         return flight_adapter.cheapest_price_eur(result)
     except ProviderBlockedError:
@@ -352,7 +360,15 @@ def live_flight_cost_eur(
         # actual reason is diagnosable server-side without changing
         # that user-facing contract.
         logger.exception("live_flight_cost_eur failed for %s", resort.name)
-        return _kiwi_flight_fallback(
+        price = _kiwi_flight_fallback(
+            resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
+        if price is not None:
+            return price
+        # Same full depth as the empty branch above: a scraper CRASH
+        # from a datacenter IP is the same event as an empty page --
+        # the paid API must get its chance here too (found because
+        # this was the one branch that stopped at Kiwi).
+        return _serpapi_flight_fallback(
             resort, codes, outbound_date, return_date, origin_airport, adults, max_connections)
 
 
@@ -500,6 +516,23 @@ def live_flight_options(
                                    origin_airport, adults, max_connections)
         if kiwi is not None:
             options = kiwi.options
+
+    # Third stage mirrors the price path exactly: SerpApi when both
+    # free providers came back empty (see live_flight_cost_eur's
+    # matching comment for the production evidence). Response-cached,
+    # so when the price path already spent this lookup it's free here.
+    if not options and os.environ.get("SERPAPI_API_KEY"):
+        try:
+            from ..adapters import flight_adapter as serpapi_adapter
+            serp = serpapi_adapter.search_flights(
+                origin_airport=origin_airport, destination_airports=codes,
+                outbound_date=outbound_date, return_date=return_date,
+                adults=adults, max_connections=max_connections,
+            )
+            options = serp.options
+        except Exception:
+            logger.warning("serpapi flight options fallback failed for %s",
+                           resort.name, exc_info=True)
 
     # Selection lives in engine/flight_picks.py -- pure, offline-
     # tested maths. The earlier inline version here ("cheapest N-1
@@ -700,11 +733,33 @@ def _live_accommodation_search(resort: Resort, checkin_date, nights: int, rooms_
         if backup.options:
             logger.info("stays fallback rescued accommodation for %s (%d options)",
                         resort.name, len(backup.options))
-        return backup
+            return backup
     except Exception:
         logger.warning("stays accommodation fallback failed for %s", resort.name, exc_info=True)
-        from ..models import AccommodationSearchResult
-        return AccommodationSearchResult(options=[])
+
+    # THIRD stage: SerpApi. The two scrapers above are both
+    # reverse-engineerings of the SAME Google endpoint family, so from
+    # a blocked datacenter IP they fail TOGETHER (measured 2026-08-29:
+    # St. Anton and Ischgl estimated in production, both scrapers fine
+    # from a residential IP). SerpApi is a real API calling from its
+    # own infrastructure -- the one backup our egress reputation can't
+    # touch. Key-gated: without SERPAPI_API_KEY this stage is silent
+    # and the search degrades to the labeled estimate as before.
+    if os.environ.get("SERPAPI_API_KEY"):
+        try:
+            from ..adapters import serpapi_hotel_adapter
+            third = serpapi_hotel_adapter.search_accommodation(
+                resort, checkin_date, nights, rooms_needed)
+            if third.options:
+                logger.info("serpapi fallback rescued accommodation for %s (%d options)",
+                            resort.name, len(third.options))
+                return third
+        except Exception:
+            logger.warning("serpapi accommodation fallback failed for %s",
+                           resort.name, exc_info=True)
+
+    from ..models import AccommodationSearchResult
+    return AccommodationSearchResult(options=[])
 
 
 def live_accommodation_property_name(resort: Resort, checkin_date, nights: int, rooms_needed: int) -> Optional[str]:

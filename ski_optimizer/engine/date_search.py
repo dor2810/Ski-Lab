@@ -666,6 +666,32 @@ def assemble_coverage_first(within_budget_sorted: List[DatedTripOption],
         per_resort[t.resort.name] = per_resort.get(t.resort.name, 0) + 1
         out.append(t)
 
+    # SECTION 3 (owner's ask, 2026-08-29: "Even if it's over the budget
+    # you can show some options with the arrows"): slots STILL left
+    # after every affordable offer is in means the priced-out resorts'
+    # single teaser rows can grow variants -- more dates, cheapest
+    # first, every one flagged within_budget=False so the card's
+    # warning banner shows on each. Same per-resort cap as everything
+    # else; affordable offers always take priority for slots.
+    if allow_over_budget and len(out) < top_n:
+        shown_pairs = {(t.resort.name, t.start_date) for t in out}
+        extra_over = sorted(
+            (t for t in all_evaluated
+             if t.cost.total_eur > budget_eur
+             and (t.resort.name, t.start_date) not in shown_pairs),
+            key=lambda t: t.cost.total_eur)
+        for t in extra_over:
+            if len(out) >= top_n:
+                break
+            if max_per_resort > 0 and per_resort.get(t.resort.name, 0) >= max_per_resort:
+                continue
+            per_resort[t.resort.name] = per_resort.get(t.resort.name, 0) + 1
+            out.append(DatedTripOption(
+                resort=t.resort, start_date=t.start_date, end_date=t.end_date,
+                cost=t.cost, score=t.score, score_components=t.score_components,
+                season=t.season, within_budget=False,
+            ))
+
     # Attach the "More dates" alternatives to each resort's FIRST row.
     # dataclasses.replace, not mutation: the rows are shared with the
     # caller's own evaluated pool.

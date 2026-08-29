@@ -603,8 +603,15 @@ def test_every_selected_resort_gets_its_best_offer_first():
     assert len(out) > 5, "leftover slots should be filled with more best offers"
     counts = Counter(t.resort.name for t in out)
     assert max(counts.values()) <= 3, f"per-resort cap must hold overall: {dict(counts)}"
-    assert all(t.within_budget for t in out[5:]), (
-        "section 2 is extra AFFORDABLE dates; over-budget rows appear once each in section 1"
+    # Sections 2+3: affordable extra dates first, then over-budget
+    # variant dates filling leftover slots (owner's 2026-08-29 ask:
+    # "Even if it's over the budget you can show some options with the
+    # arrows"). Over-budget rows must be flagged and never precede an
+    # affordable row -- tested via the flag sequence: once the tail
+    # goes over-budget it stays over-budget.
+    tail_flags = [t.within_budget for t in out[5:]]
+    assert tail_flags == sorted(tail_flags, reverse=True), (
+        "affordable extra dates must come before over-budget variant dates"
     )
 
 
