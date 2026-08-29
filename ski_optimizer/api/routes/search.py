@@ -158,6 +158,13 @@ class SearchRequest(BaseModel):
     # or "any"; see flight_adapter._stops_param). Has no effect unless
     # outbound_date is also set and a SerpApi key is configured.
     max_connections: Optional[int] = Field(default=None, ge=0, le=2)
+    # Whether the party is bringing skis/boards. NOT cosmetic: it
+    # changes which vehicles the transfer operator offers at all
+    # (measured -- with bags only minivans are available; without, a
+    # cheaper 3-seat car appears), so it changes the real price. True
+    # by default: this is a ski product, and assuming gear is the safe
+    # error (quoting a car that can't fit skis would strand people).
+    with_ski_bags: bool = True
     # See rank_trips' over-budget-fallback docstring. True (default): if
     # NOTHING fits budget_eur_per_person, return the cheapest option(s)
     # found instead of an empty list, flagged within_budget=False. False
@@ -920,7 +927,7 @@ _LIVE_TRANSFER_N = int(os.environ.get("LIVE_TRANSFER_N", "3"))
 
 
 def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
-                             max_connections) -> dict:
+                             max_connections, with_ski_bags: bool = True) -> dict:
     """
     {index: (pickup_time, live_info_or_None)} for the first
     _LIVE_TRANSFER_N rows, fetched CONCURRENTLY.
@@ -958,11 +965,13 @@ def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
         info = None
         if i < _LIVE_TRANSFER_N:
             info = live_transfer_info(row.resort, row.start_date, pickup, group_size,
-                                      return_date=row.end_date, return_time=return_time)
+                                      return_date=row.end_date, return_time=return_time,
+                                      with_ski_bags=with_ski_bags)
             if info is not None:
                 per_person = live_transfer_cost_eur(
                     row.resort, row.start_date, pickup, group_size,
-                    return_date=row.end_date, return_time=return_time)
+                    return_date=row.end_date, return_time=return_time,
+                    with_ski_bags=with_ski_bags)
                 info = {**info, "per_person_eur": per_person}
         return i, pickup, info
 
@@ -1001,7 +1010,8 @@ def _return_departure_of(flight_picks) -> Optional[datetime.datetime]:
 
 
 def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: bool,
-                         return_date=None, pickup_time: str = None) -> str:
+                         return_date=None, pickup_time: str = None,
+                         ski_bags: Optional[int] = None) -> str:
     """
     A booking link for the cheapest real transfer quote found
     (adapters/transfer_adapter.py, Alps2Alps) when available -- falling
@@ -1043,7 +1053,8 @@ def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: 
     # generic form remains only for undated previews and the few
     # resorts Alps2Alps doesn't serve.
     deeplink = alps2alps_deeplink(resort.name, pickup_date, pickup_time,
-                                  group_size, return_date=return_date)
+                                  group_size, return_date=return_date,
+                                  ski_bags=ski_bags)
     if deeplink:
         return deeplink
     return alps2alps_search_url()
@@ -1357,6 +1368,13 @@ class SearchDateRangeRequest(BaseModel):
     # by score, so pinning the search to one resort still returns a full
     # list of that resort's best dates. 0 disables the cap.
     max_results_per_resort: int = Field(default=3, ge=0, le=100)
+    # Whether the party is bringing skis/boards. NOT cosmetic: it
+    # changes which vehicles the transfer operator offers at all
+    # (measured -- with bags only minivans are available; without, a
+    # cheaper 3-seat car appears), so it changes the real price. True
+    # by default: this is a ski product, and assuming gear is the safe
+    # error (quoting a car that can't fit skis would strand people).
+    with_ski_bags: bool = True
     # See SearchRequest.preferred_transfer_modes -- same contract.
     preferred_transfer_modes: Optional[List[str]] = None
     weights: Dict[str, float] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
@@ -1649,7 +1667,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     })
     transfers_by_index = _prefetch_live_transfers(
         dated_options, payload.group_size, live_reprice_allowed,
-        payload.max_connections)
+        payload.max_connections, payload.with_ski_bags)
 
     results = []
     for i, t in enumerate(dated_options):
@@ -1705,7 +1723,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0),
                                                      return_date=t.end_date,
-                                                     pickup_time=pickup_time),
+                                                     pickup_time=pickup_time,
+                                                     ski_bags=(payload.group_size
+                                                               if payload.with_ski_bags else 0)),
             # A LIVE quote when we have one (owner: "show the live label
             # so people know it is fine"), the frozen real quote
             # otherwise -- never the live label on a figure that isn't.

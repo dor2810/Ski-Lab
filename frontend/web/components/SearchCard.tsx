@@ -148,6 +148,12 @@ export function SearchCard({
   const [foodProfile, setFoodProfile] = useState<FoodProfile>("normal");
   const [transferModes, setTransferModes] = useState<Set<TransferMode>>(new Set());
   const [maxConnections, setMaxConnections] = useState<string>(""); // "" = no preference
+  // Bringing your own skis/board changes which transfer VEHICLES the
+  // operator offers at all (with bags: minivans only; without: a
+  // cheaper small car), so it changes the real transfer price -- not a
+  // cosmetic preference. Defaults to true: this is a ski product, and
+  // assuming gear is the safe error.
+  const [withSkiBags, setWithSkiBags] = useState(true);
 
   const [credits, setCredits] = useState<Credits | null>(null);
   const [loading, setLoading] = useState(false);
@@ -298,6 +304,7 @@ export function SearchCard({
           food_profile: foodProfile,
           equipment_tier: "standard",
           max_connections: maxConnections === "" ? null : Number(maxConnections),
+          with_ski_bags: withSkiBags,
           preferred_transfer_modes: transferModes.size > 0 ? [...transferModes] : null,
           include_resorts: effectiveMode === "include" ? resortList : null,
           exclude_resorts: effectiveMode === "exclude" ? resortList : null,
@@ -532,6 +539,20 @@ export function SearchCard({
                     <option value="1" className="bg-canvas">{t("connectionsUpTo1")}</option>
                     <option value="2" className="bg-canvas">{t("connectionsUpTo2")}</option>
                   </select>
+                </div>
+
+                <div>
+                  <span className={labelClass()}>{t("skiBagsLabel")}</span>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={withSkiBags}
+                      onChange={(e) => setWithSkiBags(e.target.checked)}
+                      className="h-4 w-4 accent-signal"
+                    />
+                    {t("skiBagsBringing")}
+                  </label>
+                  <p className="mt-1 text-[11px] text-subtle">{t("skiBagsHint")}</p>
                 </div>
               </div>
             )}

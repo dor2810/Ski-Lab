@@ -940,7 +940,7 @@ def apply_live_accommodation_price(cost: CostBreakdown, live_price_per_person: f
 
 
 def _live_transfer_result(resort: Resort, pickup_date, pickup_time: str, group_size: int,
-                          return_date=None, return_time=None):
+                          return_date=None, return_time=None, with_ski_bags: bool = True):
     """
     One live Alps2Alps quote for this route/date/party, or None.
 
@@ -975,6 +975,10 @@ def _live_transfer_result(resort: Resort, pickup_date, pickup_time: str, group_s
             adults=group_size,
             return_date=return_date if return_time else None,
             return_time=return_time,
+            # One bag per traveller when they're bringing gear; zero
+            # when they'll rent at the resort, which unlocks the
+            # provider's cheaper small vehicles.
+            ski_bags=group_size if with_ski_bags else 0,
         )
     except Exception:
         logger.info("live transfer quote unavailable for %s", resort.name, exc_info=True)
@@ -983,7 +987,7 @@ def _live_transfer_result(resort: Resort, pickup_date, pickup_time: str, group_s
 
 def live_transfer_cost_eur(resort: Resort, pickup_date, pickup_time: str,
                            group_size: int, return_date=None,
-                           return_time=None) -> Optional[float]:
+                           return_time=None, with_ski_bags: bool = True) -> Optional[float]:
     """
     Real per-PERSON airport transfer cost for this trip, or None.
 
@@ -994,7 +998,7 @@ def live_transfer_cost_eur(resort: Resort, pickup_date, pickup_time: str,
     seat the whole party is excluded rather than quoted as if it could.
     """
     legs = _live_transfer_result(resort, pickup_date, pickup_time, group_size,
-                                 return_date, return_time)
+                                 return_date, return_time, with_ski_bags)
     if legs is None:
         return None
     from ..adapters import transfer_adapter
@@ -1012,7 +1016,7 @@ def live_transfer_cost_eur(resort: Resort, pickup_date, pickup_time: str,
 
 def live_transfer_info(resort: Resort, pickup_date, pickup_time: str,
                        group_size: int, return_date=None,
-                       return_time=None) -> Optional[dict]:
+                       return_time=None, with_ski_bags: bool = True) -> Optional[dict]:
     """
     Provenance for a LIVE transfer quote, shaped like
     transfer_source_for() so the API can substitute one for the other.
@@ -1026,7 +1030,7 @@ def live_transfer_info(resort: Resort, pickup_date, pickup_time: str,
     live_transfer_cost_eur's job.
     """
     legs = _live_transfer_result(resort, pickup_date, pickup_time, group_size,
-                                 return_date, return_time)
+                                 return_date, return_time, with_ski_bags)
     if legs is None:
         return None
     from ..adapters import transfer_adapter

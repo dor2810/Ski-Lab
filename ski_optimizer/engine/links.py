@@ -110,7 +110,8 @@ ALPS2ALPS_QUICK_CHECKOUT_URL = "https://booking.alps2alps.com/booking/quick-chec
 
 def alps2alps_deeplink(resort_name: str, pickup_date, pickup_time: str,
                        adults: int, return_date=None,
-                       return_time: str = None) -> Optional[str]:
+                       return_time: str = None,
+                       ski_bags: Optional[int] = None) -> Optional[str]:
     """
     A REAL, prefilled Alps2Alps booking page for this exact transfer --
     route, date, party size, return leg -- built OFFLINE from the
@@ -151,6 +152,12 @@ def alps2alps_deeplink(resort_name: str, pickup_date, pickup_time: str,
     if return_date is not None:
         params["return_date"] = return_date.isoformat()
         params["return_time"] = return_time or pickup_time
+    if ski_bags is not None:
+        # The booking page must open on the SAME basket we priced --
+        # otherwise the funnel re-applies its seasonal default and the
+        # user meets a different price than the card showed.
+        params["ski_bags"] = ski_bags
+        params["ski"] = 1 if ski_bags > 0 else 0
     return f"{ALPS2ALPS_QUICK_CHECKOUT_URL}?{urlencode(params)}"
 
 

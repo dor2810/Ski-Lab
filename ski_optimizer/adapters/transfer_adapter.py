@@ -232,6 +232,7 @@ def search_transfer_options(
     adults: int,
     return_date: Optional[datetime.date] = None,
     return_time: Optional[str] = None,
+    ski_bags: Optional[int] = None,
     currency: str = "EUR",
     use_cache: bool = True,
 ) -> TransferSearchResult:
@@ -286,7 +287,7 @@ def search_transfer_options(
             f"Alps2Alps recognises no destination among {name_variants(resort.name)!r}")
 
     key = _cache_key("quote", origin_code, dest_code, pickup_date, pickup_time,
-                     adults, return_date, return_time, currency)
+                     adults, return_date, return_time, ski_bags, currency)
     if use_cache:
         cached = get_cache().get(key)
         if cached is not None:
@@ -299,6 +300,15 @@ def search_transfer_options(
         # The provider's spec asks AI agents to identify themselves.
         "source": _AI_SOURCE,
     }
+    if ski_bags is not None:
+        # EXPLICIT beats the provider's seasonal guess (winter: 2 bags
+        # regardless of party size). Measured 2026-08-29: ski_bags>0
+        # restricts the offer to minivans, ski_bags=0 surfaces a
+        # cheaper 3-seat car -- so this is the difference between two
+        # genuinely different products, not a formality. `ski` mirrors
+        # it, per their spec ("> 0 also sets ski equipment").
+        params["ski_bags"] = ski_bags
+        params["ski"] = 1 if ski_bags > 0 else 0
     if return_date is not None:
         params["return_date"] = return_date.isoformat()
         params["return_time"] = return_time or pickup_time
@@ -334,6 +344,7 @@ def search_transfer_round_trip(
     adults: int,
     return_date: Optional[datetime.date] = None,
     return_time: Optional[str] = None,
+    ski_bags: Optional[int] = None,
     currency: str = "EUR",
     use_cache: bool = True,
 ) -> dict:
@@ -366,7 +377,8 @@ def search_transfer_round_trip(
     outbound = search_transfer_options(
         resort=resort, pickup_date=pickup_date, pickup_time=pickup_time,
         adults=adults, return_date=return_date if return_time else None,
-        return_time=return_time, currency=currency, use_cache=use_cache,
+        return_time=return_time, ski_bags=ski_bags,
+        currency=currency, use_cache=use_cache,
     )
     return {
         "outbound": outbound,

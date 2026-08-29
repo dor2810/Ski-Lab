@@ -364,6 +364,12 @@ export interface CommonSearchFields {
   // "Everywhere except these".
   exclude_resorts?: string[] | null;
   max_connections?: number | null; // 0 nonstop / 1 / 2 / null = no preference
+  /**
+   * Bringing skis/board. Changes which transfer vehicles the operator
+   * offers (with bags: vans only; without: cheaper small cars), so it
+   * changes the real transfer price. Defaults true server-side.
+   */
+  with_ski_bags?: boolean;
   preferred_transfer_modes?: TransferMode[] | null;
   weights: Weights;
 }

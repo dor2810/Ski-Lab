@@ -195,3 +195,42 @@ def test_transfer_info_reports_both_pickups_and_the_vehicle(resort, monkeypatch)
     assert info["vehicle_name"] == "Standard minivan"
     assert info["return_pickup_time"] == "11:10"
     assert info["is_private"] is True   # the API sells no shared seats
+
+
+# --- ski bags are a user choice (2026-08-29) --------------------------
+# Owner: "let's add for the search the option to choose if we want to
+# come with ski bags or not". This is not cosmetic: measured against
+# the live API, the winter default (2 ski bags) restricts the offer to
+# minivans, while ski_bags=0 surfaces a 3-seat economy car -- a real
+# and cheaper option for someone renting gear at the resort.
+
+def test_ski_bags_choice_reaches_the_provider(resort, monkeypatch):
+    from ski_optimizer.adapters import transfer_adapter
+    from ski_optimizer.engine.cost_calculator import live_transfer_cost_eur
+    seen = {}
+
+    def fake(**kw):
+        seen.update(kw)
+        return {"outbound": TransferSearchResult(options=[_quote(price=200.0)]),
+                "return": None}
+    monkeypatch.setattr(transfer_adapter, "search_transfer_round_trip", fake)
+
+    live_transfer_cost_eur(resort, OUT, "13:00", group_size=2, with_ski_bags=False)
+    assert seen["ski_bags"] == 0
+    seen.clear()
+    live_transfer_cost_eur(resort, OUT, "13:00", group_size=3, with_ski_bags=True)
+    # One bag per traveller -- what the party actually carries, not the
+    # provider's flat seasonal guess of 2.
+    assert seen["ski_bags"] == 3
+
+
+def test_ski_bags_ride_on_the_booking_deeplink(resort):
+    from urllib.parse import parse_qs, urlparse
+    from ski_optimizer.engine.links import alps2alps_deeplink
+    with_bags = alps2alps_deeplink(resort.name, OUT, "13:00", 2, ski_bags=2)
+    without = alps2alps_deeplink(resort.name, OUT, "13:00", 2, ski_bags=0)
+    # The booking page must open on the SAME basket we priced,
+    # otherwise the funnel quietly re-adds the seasonal default and the
+    # user sees a different price than the card promised.
+    assert parse_qs(urlparse(with_bags).query)["ski_bags"] == ["2"]
+    assert parse_qs(urlparse(without).query)["ski_bags"] == ["0"]
