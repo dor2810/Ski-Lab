@@ -9,6 +9,7 @@ import { TerrainBar } from "./TerrainBar";
 import { WeatherWeek } from "./WeatherWeek";
 import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
+import { TransferOptions } from "./TransferOptions";
 import { AccommodationOptions } from "./AccommodationOptions";
 import { MoreDates } from "./MoreDates";
 import {
@@ -361,36 +362,11 @@ export function ResultCard({ result, variants, maxConnections = null }: {
         </p>
       )}
 
-      {/* THE CHEAP ALTERNATIVE (owner: "i am not satisfied with the
-          alps2alps"). Alps2Alps' API sells private vehicles only; a
-          scheduled coach on the same leg has run ~7x cheaper on
-          measured routes. Shown as a real, separate choice with its
-          own booking link -- not swapped in silently, because a fixed
-          timetable is a genuine trade-off against a door-to-door car. */}
-      {r.transfer_info?.public_price_eur_per_person != null && (
-        <p className="mt-2 flex flex-wrap items-baseline gap-x-2 text-[11px] leading-snug text-muted">
-          <span className="rounded-full bg-signal-soft px-2 py-0.5 font-bold uppercase tracking-wide text-signal">
-            {t("transferCheaperBadge")}
-          </span>
-          <span>
-            {t("transferPublicOption", {
-              price: String(Math.round(r.transfer_info.public_price_eur_per_person)),
-              mode: t(r.transfer_info.public_mode === "train" ? "transferModeTrain" : "transferModeBus"),
-              n: String(r.transfer_info.public_options_count ?? 0),
-            })}
-          </span>
-          {r.transfer_info.public_booking_url && (
-            <a href={r.transfer_info.public_booking_url} target="_blank" rel="noopener noreferrer"
-               className="font-semibold text-sky hover:underline">
-              {t("transferPublicLink")}
-            </a>
-          )}
-        </p>
-      )}
-
       <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
 
       <FlightOptions options={r.flight_options} booking={booking} />
+
+      <TransferOptions options={r.transfer_options ?? []} />
 
       <AccommodationOptions options={r.accommodation_options} />
 

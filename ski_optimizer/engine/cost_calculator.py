@@ -1400,3 +1400,101 @@ def compute_trip_cost(resort: Resort, prefs: UserPreferences, start_date=None) -
         misc_eur=misc,
         ski_pass_price_is_researched=ski_pass_price_is_researched(resort),
     )
+
+
+def all_transfer_options(resort: Resort, start_date, end_date, group_size: int,
+                         pickup_time: str, return_time=None,
+                         with_ski_bags: bool = True,
+                         include_private: bool = True) -> list:
+    """
+    Every real airport-to-resort option we can price, as ONE ranked
+    list (engine/transfer_options.TransferOption) -- private hire and
+    scheduled coach/train together, all per person.
+
+    This is the transfer equivalent of live_flight_options(): the card
+    shows a list the traveller chooses from, and the CHEAPEST entry
+    drives cost.transfer_eur. Previously the private quote drove the
+    price and the cheap coach was a footnote, which the owner rightly
+    called out.
+
+    Never raises. Each provider degrades independently: a resort Omio
+    does not route (their discovery index genuinely lacks many Alpine
+    routes -- measured: 9 of 32 covered) still gets its private
+    options, and vice versa.
+    """
+    from .transfer_options import TransferOption, rank_transfer_options
+
+    options: list = []
+
+    # --- private hire (round trip, whole vehicle) ---
+    # GATED, unlike the scheduled half: Alps2Alps' quote endpoint 429s
+    # after ~14 rapid calls with a >10 minute cooldown that would hit
+    # every user, so only the top rows get private quotes. Omio has no
+    # such limit, which is why it runs for EVERY row -- see the caller.
+    legs = (_live_transfer_result(resort, start_date, pickup_time, group_size,
+                                  end_date, return_time, with_ski_bags)
+            if include_private else None)
+    if legs and include_private:
+        try:
+            from ..adapters import transfer_adapter
+            outbound = legs["outbound"]
+            back = legs.get("return")
+            for quote in outbound.options:
+                if quote.max_passengers < group_size:
+                    continue
+                # Both real legs when the provider gave us one,
+                # otherwise the outbound doubled -- the documented
+                # approximation, same as live_transfer_cost_eur.
+                cheapest_back = (transfer_adapter.cheapest_price_eur(back, group_size)
+                                 if back else None)
+                vehicle_total = (quote.price_eur + cheapest_back
+                                 if cheapest_back is not None else quote.price_eur * 2)
+                options.append(TransferOption(
+                    resort_name=resort.name,
+                    kind="private", mode="minivan",
+                    price_eur_per_person=round(vehicle_total / group_size, 2),
+                    duration_minutes=int(quote.duration_minutes) if quote.duration_minutes else None,
+                    carrier=quote.vehicle_name,
+                    booking_url=quote.booking_url,
+                    is_round_trip=True,
+                ))
+        except Exception:
+            logger.warning("private transfer options failed for %s", resort.name,
+                           exc_info=True)
+
+    # --- scheduled coach / train (seats) ---
+    try:
+        from ..data.omio_positions import OMIO_POSITIONS
+        from ..adapters import omio_mcp_adapter
+        pos = OMIO_POSITIONS.get(resort.name)
+        if pos:
+            found = omio_mcp_adapter.search_ground_transport(
+                from_id=pos["from_id"], to_id=pos["to_id"],
+                outbound_date=start_date.isoformat(), adults=group_size,
+                inbound_date=end_date.isoformat() if end_date else None)
+            if found:
+                # Pair each outbound with the cheapest return of the
+                # same mode so the quoted price is a WHOLE trip, like
+                # the private option -- comparing a one-way seat with a
+                # round-trip van would flatter the seat.
+                inbound = found.get("inbound") or []
+                for j in found.get("outbound") or []:
+                    same_mode_back = [b for b in inbound if b.mode == j.mode]
+                    back_price = (min(b.price_eur_per_person for b in same_mode_back)
+                                  if same_mode_back else None)
+                    total = (j.price_eur_per_person + back_price
+                             if back_price is not None else j.price_eur_per_person)
+                    options.append(TransferOption(
+                        resort_name=resort.name,
+                        kind="scheduled", mode=j.mode,
+                        price_eur_per_person=round(total, 2),
+                        duration_minutes=j.duration_minutes,
+                        carrier=j.carrier, departure=j.departure,
+                        booking_url=j.booking_url or found.get("link"),
+                        is_round_trip=back_price is not None,
+                    ))
+    except Exception:
+        logger.warning("scheduled transfer options failed for %s", resort.name,
+                       exc_info=True)
+
+    return rank_transfer_options(options)

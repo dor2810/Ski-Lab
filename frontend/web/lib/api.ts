@@ -222,6 +222,23 @@ export interface AlternativeDate {
 
 /** Provenance of the transfer line: a real Alps2Alps quote, or real
  * drive figures plus the exact reason no quote exists. */
+/**
+ * One real airport->resort option. kind "private" is a whole vehicle
+ * on your own schedule; "scheduled" is a seat on a timetabled service.
+ * Prices are PER PERSON so the two are directly comparable.
+ */
+export interface TransferOption {
+  kind: "private" | "scheduled";
+  mode: string;                 // minivan | bus | train | ferry
+  price_eur_per_person: number;
+  duration_minutes: number | null;
+  carrier: string | null;
+  departure: string | null;     // ISO, provider-local
+  booking_url: string | null;
+  is_round_trip: boolean;
+  roles: string[];              // "cheapest" | "fastest"
+}
+
 export interface TransferInfo {
   /** "alps2alps_live" = quoted just now for THIS date, party and
    *  pickup time; "alps2alps" = a real but frozen quote. */
@@ -300,6 +317,8 @@ export interface TripResult {
   // api/routes/search.py's _transfer_search_url docstring on the
   // backend.
   transfer_search_url: string;
+  /** Every priced way to reach the resort, cheapest first. */
+  transfer_options?: TransferOption[];
   transfer_info?: TransferInfo | null;
   // Real, working links for equipment rental and lift-pass purchase --
   // see engine/links.py's equipment_search_url()/ski_pass_search_url()

@@ -20,6 +20,7 @@ without a full restart (useful during a verification pass).
 """
 import datetime
 import dataclasses
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Dict, List, Optional
@@ -39,7 +40,10 @@ from ...engine.cost_calculator import (
     live_accommodation_property_name, live_accommodation_options,
     live_flight_options,
     apply_live_flight_price, apply_live_accommodation_price, apply_live_transfer_price,
-    live_transfer_cost_eur, live_transfer_info, cheapest_public_transport,
+    live_transfer_cost_eur, live_transfer_info, all_transfer_options,
+)
+from ...engine.transfer_options import cheapest_price_eur_per_person
+from ...engine.cost_calculator import (  # noqa: E402  (grouped continuation)
     live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
@@ -60,6 +64,8 @@ from ..rate_limit import enforce_search_rate_limit, enforce_booking_link_rate_li
 from .. import credits as credits_module
 from ...db.database import get_db
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -358,6 +364,26 @@ class FlightOptionOut(BaseModel):
     booking_url: Optional[str] = None
 
 
+class TransferOptionOut(BaseModel):
+    """
+    One real way from the arrival airport to the resort -- the transfer
+    twin of FlightOptionOut. kind "private" is a whole vehicle on your
+    own schedule; "scheduled" is a seat on a timetabled coach/train.
+    Every price is PER PERSON so the two are honestly comparable.
+    """
+    kind: str
+    mode: str
+    price_eur_per_person: float
+    duration_minutes: Optional[int] = None
+    carrier: Optional[str] = None
+    departure: Optional[str] = None
+    booking_url: Optional[str] = None
+    # False for a one-way seat we could not pair with a return -- the
+    # difference between an honest comparison and a flattering one.
+    is_round_trip: bool = False
+    roles: List[str] = []
+
+
 class TransferInfoOut(BaseModel):
     """
     Provenance of the transfer line -- the owner's ask, verbatim: "Make
@@ -491,6 +517,10 @@ class TripResultOut(BaseModel):
     # feed into cost.transfer_eur or the score, which both still use
     # the static/curated estimate.
     transfer_search_url: str
+    # Every priced way to reach the resort, cheapest first (see
+    # TransferOptionOut). Empty when no provider could price this
+    # route -- never a fabricated row.
+    transfer_options: List[TransferOptionOut] = []
     # Real, working links for the two cost lines that never had any
     # link before -- see engine/links.py's equipment_search_url()/
     # ski_pass_search_url() docstrings for exactly what each is (a
@@ -938,7 +968,7 @@ _LIVE_TRANSFER_N = int(os.environ.get("LIVE_TRANSFER_N", "3"))
 def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
                              max_connections, with_ski_bags: bool = True) -> dict:
     """
-    {index: (pickup_time, live_info_or_None)} for the first
+    {index: (pickup_time, [TransferOption])} for the first
     _LIVE_TRANSFER_N rows, fetched CONCURRENTLY.
 
     Two things happen per row, in this order:
@@ -955,15 +985,27 @@ def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
     if not rows:
         return out
     for i in range(len(rows)):
-        out[i] = (_ASSUMED_PICKUP_TIME, None)
+        out[i] = (_ASSUMED_PICKUP_TIME, [])
     if not live_allowed:
         return out
 
     def work(i):
         row = rows[i]
-        picks = live_flight_options(row.resort, row.start_date, row.end_date,
-                                    origin_airport="TLV",
-                                    max_connections=max_connections)
+        # The flight lookup only supplies TIMING here. It must never
+        # decide whether transfers exist: for a row that was not
+        # live-repriced nothing is cached, so this can run the whole
+        # google -> kiwi -> serpapi chain and be slow or fail -- and
+        # before this guard, that silently emptied the row's transfer
+        # list (reproduced in production: rows whose transfers worked
+        # perfectly on their own came back with zero options).
+        try:
+            picks = live_flight_options(row.resort, row.start_date, row.end_date,
+                                        origin_airport="TLV",
+                                        max_connections=max_connections)
+        except Exception:
+            logger.warning("flight timing lookup failed for %s; falling back to the "
+                           "assumed pickup time", row.resort.name, exc_info=True)
+            picks = []
         pickup = _pickup_time_for(_arrival_of(picks))
         # The RETURN flight's departure, passed straight through: the
         # operator computes the resort pickup from it. Only sent when
@@ -971,37 +1013,34 @@ def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
         # vehicles from this provider (measured 2026-08-29).
         home = _return_departure_of(picks)
         return_time = f"{home.hour:02d}:{home.minute:02d}" if home else None
-        info = None
-        if i < _LIVE_TRANSFER_N:
-            info = live_transfer_info(row.resort, row.start_date, pickup, group_size,
-                                      return_date=row.end_date, return_time=return_time,
-                                      with_ski_bags=with_ski_bags)
-            if info is not None:
-                per_person = live_transfer_cost_eur(
-                    row.resort, row.start_date, pickup, group_size,
-                    return_date=row.end_date, return_time=return_time,
-                    with_ski_bags=with_ski_bags)
-                info = {**info, "per_person_eur": per_person}
-            # The cheap scheduled alternative, for the same rows we
-            # already spend a live lookup on.
-            public = cheapest_public_transport(row.resort, row.start_date, group_size)
-            if public:
-                info = {**(info or {"source": "public_only"}),
-                        "public_price_eur_per_person": public["price_eur_per_person"],
-                        "public_mode": public["mode"],
-                        "public_options_count": public["options_count"],
-                        "public_booking_url": public["booking_url"],
-                        "public_carrier": public.get("carrier")}
-        return i, pickup, info
+        # Scheduled coach/train for EVERY displayed row; private
+        # quotes only for the first _LIVE_TRANSFER_N (their provider
+        # rate-limits hard). Before this split, rows beyond the cap
+        # showed NO transfer options at all -- which is exactly the
+        # "it only works for one resort" the owner reported: the deal
+        # chips switch to a row past the cap and the list empties.
+        options = []
+        if True:
+            # ONE ranked list across both providers (private hire and
+            # scheduled coach/train), priced per person -- the transfer
+            # equivalent of live_flight_options.
+            options = all_transfer_options(
+                row.resort, row.start_date, row.end_date, group_size,
+                pickup_time=pickup, return_time=return_time,
+                with_ski_bags=with_ski_bags,
+                include_private=i < _LIVE_TRANSFER_N)
+        return i, pickup, options
 
-    with ThreadPoolExecutor(max_workers=min(4, len(rows))) as pool:
+    # Wider pool than before: every row now makes a scheduled-transport
+    # lookup, and these are pure network waits that genuinely overlap.
+    with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
         for future in [pool.submit(work, i) for i in range(len(rows))]:
             try:
-                i, pickup, info = future.result()
+                i, pickup, options = future.result()
             except Exception:
                 logger.warning("live transfer prefetch failed", exc_info=True)
                 continue
-            out[i] = (pickup, info)
+            out[i] = (pickup, options)
     return out
 
 
@@ -1487,6 +1526,12 @@ class DatedTripResultOut(BaseModel):
     end_date: datetime.date
     season: str
     cost: CostBreakdownOut
+    # Every priced way to reach the resort, cheapest first. Declared
+    # HERE as well as on TripResultOut because these two response
+    # models are siblings, not parent/child -- a field added to one is
+    # silently dropped by the other (which is exactly what happened:
+    # the cost line went live while the list arrived empty).
+    transfer_options: List[TransferOptionOut] = []
     score: float
     score_components: Dict[str, float]
     explanation: str
@@ -1690,11 +1735,29 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
 
     results = []
     for i, t in enumerate(dated_options):
-        pickup_time, live_transfer = transfers_by_index.get(
-            i, (_ASSUMED_PICKUP_TIME, None))
-        if live_transfer and live_transfer.get("per_person_eur") is not None:
+        pickup_time, transfer_options = transfers_by_index.get(
+            i, (_ASSUMED_PICKUP_TIME, []))
+        # INTEGRITY GUARD: only show options fetched for THIS resort.
+        # Production served Zermatt's SBB train on Val Thorens rows
+        # (carrier proved it; Val Thorens has only buses). The cause is
+        # not yet isolated -- correct ids, a correctly-keyed cache, and
+        # no local repro -- so rather than ship a guess, a mismatched
+        # option is dropped and logged. Showing nothing is recoverable;
+        # showing another resort's transfer is not.
+        mismatched = [o for o in transfer_options
+                      if o.resort_name and o.resort_name != t.resort.name]
+        if mismatched:
+            logger.error("transfer options for %r leaked onto %r -- dropped %d",
+                         mismatched[0].resort_name, t.resort.name, len(mismatched))
+            transfer_options = [o for o in transfer_options
+                                if o.resort_name == t.resort.name]
+        # THE CHEAPEST REAL OPTION drives the cost line -- the owner's
+        # correction: "you didnt update the transfer price, you just
+        # added a tag that says there is a cheeper option."
+        cheapest_transfer = cheapest_price_eur_per_person(transfer_options)
+        if cheapest_transfer is not None:
             t = dataclasses.replace(t, cost=apply_live_transfer_price(
-                t.cost, live_transfer["per_person_eur"]))
+                t.cost, cheapest_transfer))
         property_name = _accommodation_property_name(
             t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
             t.cost.accommodation_price_is_live)
@@ -1748,9 +1811,14 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             # A LIVE quote when we have one (owner: "show the live label
             # so people know it is fine"), the frozen real quote
             # otherwise -- never the live label on a figure that isn't.
-            transfer_info=TransferInfoOut(**(
-                {k: v for k, v in live_transfer.items() if k in TransferInfoOut.model_fields}
-                if live_transfer else transfer_source_for(t.resort))),
+            transfer_options=[TransferOptionOut(
+                kind=o.kind, mode=o.mode,
+                price_eur_per_person=o.price_eur_per_person,
+                duration_minutes=o.duration_minutes, carrier=o.carrier,
+                departure=o.departure, booking_url=o.booking_url,
+                is_round_trip=o.is_round_trip, roles=list(o.roles),
+            ) for o in transfer_options],
+            transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=weather_by_index.get(i),

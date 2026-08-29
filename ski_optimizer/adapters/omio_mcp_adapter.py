@@ -60,6 +60,19 @@ _GROUND_MODES = ("bus", "train", "ferry")
 
 
 @dataclass(frozen=True)
+class GroundJourney:
+    """One scheduled departure on one leg."""
+    mode: str                     # "bus" | "train" | "ferry"
+    price_eur_per_person: float
+    departure: Optional[str] = None      # ISO, provider-local
+    arrival: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    carrier: Optional[str] = None
+    booking_url: Optional[str] = None
+    leg: str = "outbound"                # "outbound" | "inbound"
+
+
+@dataclass(frozen=True)
 class GroundQuote:
     """Cheapest scheduled service for one route/date, per person."""
     price_eur_per_person: float
@@ -121,10 +134,22 @@ def _call_tool(tool: str, arguments: dict) -> dict:
     rpc("notifications/initialized", notification=True)
     result = rpc("tools/call", {"name": tool, "arguments": arguments}, msg_id=2)
 
-    for item in result.get("content", []):
-        if item.get("type") == "text":
-            return json.loads(item["text"])
-    raise AdapterError(f"Omio MCP: {tool} returned no text content")
+    text = next((i.get("text") for i in result.get("content", [])
+                 if i.get("type") == "text"), None)
+    if text is None:
+        raise AdapterError(f"Omio MCP: {tool} returned no text content")
+    # A tool-level failure comes back as isError with a PLAIN-TEXT body,
+    # not JSON. Parsing it blindly raised JSONDecodeError, which the
+    # caller swallowed as "no service" -- so a real, diagnosable answer
+    # ("DISCOVERY_ROUTE_NOT_FOUND": Omio's discovery index simply does
+    # not carry this route) was being reported as an empty timetable.
+    # Found while investigating why 23 of 32 resorts looked serviceless.
+    if result.get("isError"):
+        raise AdapterError(f"Omio MCP {tool}: {text[:200]}")
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise AdapterError(f"Omio MCP {tool}: non-JSON reply: {text[:200]}") from exc
 
 
 def resolve_positions(from_term: str, to_term: str, locale: str = "en") -> Optional[dict]:
@@ -212,3 +237,94 @@ def cheapest_ground_transport(from_id: int, to_id: int, outbound_date: str,
     if use_cache and best is not None:
         get_cache().set(key, best)
     return best
+
+
+def _parse_minutes(dep: Optional[str], arr: Optional[str]) -> Optional[int]:
+    """Journey length from the provider's own timestamps -- timezone
+    aware, so a leg crossing an offset is not silently mis-measured."""
+    if not dep or not arr:
+        return None
+    try:
+        import datetime as _dt
+        start = _dt.datetime.fromisoformat(dep)
+        end = _dt.datetime.fromisoformat(arr)
+        minutes = int((end - start).total_seconds() // 60)
+        return minutes if minutes > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _journeys_from(block, adults: int, leg: str, fallback_link: Optional[str]):
+    out = []
+    for j in block or []:
+        price = (j.get("price") or {}).get("value")
+        mode = j.get("mode")
+        if not price or mode not in _GROUND_MODES:
+            continue
+        out.append(GroundJourney(
+            mode=mode,
+            # Provider prices the WHOLE PARTY; the trip model is per person.
+            price_eur_per_person=round(float(price) / adults, 2),
+            departure=j.get("dep"), arrival=j.get("arr"),
+            duration_minutes=_parse_minutes(j.get("dep"), j.get("arr")),
+            carrier=(j.get("carrier") or {}).get("name"),
+            booking_url=j.get("link") or fallback_link,
+            leg=leg,
+        ))
+    return out
+
+
+def search_ground_transport(from_id: int, to_id: int, outbound_date: str,
+                            adults: int, inbound_date: Optional[str] = None,
+                            currency: str = "EUR", use_cache: bool = True):
+    """
+    EVERY scheduled coach/train/ferry departure for this route, both
+    legs -- {"outbound": [GroundJourney], "inbound": [...],
+    "link": <round-trip search link>} -- or None when Omio has no such
+    route.
+
+    Round trip in ONE call: passing `inboundDate` returns an `inbound`
+    array alongside `outbound` (verified live 2026-08-29, Geneva ->
+    Val Thorens: 4 outbound and 7 inbound departures), and the signed
+    link then covers the whole journey. Quoting only the outbound --
+    which this adapter did at first -- prices half a trip and links to
+    half a booking.
+
+    Never raises: an unrouted pair or a provider outage returns None
+    and the caller keeps whatever it had, labelled honestly.
+    """
+    if adults <= 0:
+        raise AdapterError(f"adults must be > 0, got {adults}")
+
+    key = f"omio:journeys:{from_id}:{to_id}:{outbound_date}:{inbound_date}:{adults}:{currency}"
+    if use_cache:
+        cached = get_cache().get(key)
+        if cached is not None:
+            return cached
+
+    args = {"fromId": from_id, "toId": to_id, "outboundDate": outbound_date,
+            "adults": adults, "currency": currency, "locale": "en"}
+    if inbound_date:
+        args["inboundDate"] = inbound_date
+    try:
+        payload = _call_tool("results", args)
+    except Exception as exc:
+        # DISCOVERY_ROUTE_NOT_FOUND is the common one and it is a real
+        # answer about coverage, not a transport failure -- logged at
+        # info so it stays diagnosable without shouting.
+        logger.info("Omio has no route %s->%s (%s): %s",
+                    from_id, to_id, outbound_date, str(exc)[:160])
+        return None
+
+    data = (payload or {}).get("data") or {}
+    link = data.get("link")
+    result = {
+        "outbound": _journeys_from(data.get("outbound"), adults, "outbound", link),
+        "inbound": _journeys_from(data.get("inbound"), adults, "inbound", link),
+        "link": link,
+    }
+    if not result["outbound"] and not result["inbound"]:
+        return None
+    if use_cache:
+        get_cache().set(key, result)
+    return result
