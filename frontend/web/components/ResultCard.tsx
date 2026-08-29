@@ -11,6 +11,7 @@ import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
 import { TransferOptions } from "./TransferOptions";
 import { JourneyTimeline } from "./JourneyTimeline";
+import { CostInstrument } from "./CostInstrument";
 import { AccommodationOptions } from "./AccommodationOptions";
 import { MoreDates } from "./MoreDates";
 import {
@@ -155,6 +156,9 @@ export function ResultCard({ result, variants, maxConnections = null }: {
   const [expanded, setExpanded] = useState(false);
   const deals = variants && variants.length > 0 ? variants : [result];
   const [dealIdx, setDealIdx] = useState(0);
+  // Which flight/transfer the journey timeline describes. Reset
+  // when the deal changes -- option lists differ per date.
+  const [transferIdx, setTransferIdx] = useState(0);
   const r = deals[Math.min(dealIdx, deals.length - 1)];
   // Dated results (the real search path) carry their own trip dates;
   // without them the booking endpoint has nothing to re-search.
@@ -208,27 +212,10 @@ export function ResultCard({ result, variants, maxConnections = null }: {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="text-end">
-            {/* A RANGE, not a single number, whenever the flight choice
-                genuinely moves the total. Showing only the low end
-                quietly assumes the traveller takes the cheapest
-                itinerary, which on real searches has meant a 24-hour
-                journey. The low end stays visually dominant because it
-                IS what the ranking used. */}
-            <div className="text-2xl font-extrabold tabular-nums leading-tight text-ink sm:text-3xl">
-              {formatEUR(r.cost.total_eur, locale)}
-              {showRange && (
-                <span className="block text-base font-bold text-muted sm:inline sm:text-lg">
-                  <span className="hidden sm:inline">{"\u2013"}</span>
-                  <span className="sm:hidden">{"\u2013 "}</span>
-                  {formatEUR(r.total_eur_with_fastest_flight as number, locale)}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-xs text-subtle">
-              {showRange ? t("perPersonTotalRange") : t("perPersonTotal")}
-            </div>
-          </div>
+          {/* The price used to live here, competing with the cost
+              instrument's own total further down the card. One total
+              per card: the instrument owns it, because there the sum
+              sits with the parts it is made of. */}
           <div
             className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 border-sky/60 text-sm font-bold text-sky"
             title={t("matchScoreTitle")}
@@ -264,7 +251,7 @@ export function ResultCard({ result, variants, maxConnections = null }: {
                 key={i}
                 type="button"
                 aria-pressed={i === dealIdx}
-                onClick={() => setDealIdx(i)}
+                onClick={() => { setDealIdx(i); setTransferIdx(0); }}
                 className={`flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
                   i === dealIdx
                     ? "border-signal bg-signal font-semibold text-white"
@@ -284,20 +271,9 @@ export function ResultCard({ result, variants, maxConnections = null }: {
         </div>
       )}
 
-      <JourneyTimeline result={r} />
+      <JourneyTimeline result={r} transferIndex={transferIdx} />
 
-      <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 sm:gap-y-2.5 lg:grid-cols-3">
-        {lineItems(r).map(({ icon: Icon, labelKey, value, source }) => (
-          <div key={labelKey} className="flex min-w-0 items-center gap-2 text-sm">
-            <Icon size={16} className="flex-none text-sky" />
-            <span className="truncate text-muted">{t(labelKey)}</span>
-            <span className="ms-auto whitespace-nowrap font-semibold tabular-nums text-ink">
-              {formatEUR(value, locale)}
-            </span>
-            {source !== null && <SourcePill kind={source} />}
-          </div>
-        ))}
-      </div>
+      <CostInstrument result={r} />
 
       {r.accommodation_property_name && (
         <p className="mt-4 text-sm text-muted">
@@ -369,7 +345,11 @@ export function ResultCard({ result, variants, maxConnections = null }: {
 
       <FlightOptions options={r.flight_options} booking={booking} />
 
-      <TransferOptions options={r.transfer_options ?? []} />
+      <TransferOptions
+        options={r.transfer_options ?? []}
+        selectedIndex={transferIdx}
+        onSelect={setTransferIdx}
+      />
 
       <AccommodationOptions options={r.accommodation_options} />
 

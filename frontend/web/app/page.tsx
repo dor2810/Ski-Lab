@@ -174,10 +174,21 @@ export default function Home() {
               </div>
             )}
 
-            {showingRealSearch && <PriceCalendar results={outcome!.results} />}
           </>
         )}
       </section>
+
+      {/* The calendar gets its OWN wider section rather than living in
+          the 768px results column. That column is right for cards but
+          wrong for a month grid: seven columns of ~90px marooned in a
+          1440px viewport is the "small and bad on PC" problem. A
+          sibling section is used instead of negative margins, which
+          break the moment the parent's padding changes. */}
+      {showingRealSearch && displayedResults && !searching && (
+        <section className="mx-auto max-w-5xl px-4 pb-14 sm:px-6 sm:pb-20">
+          <PriceCalendar results={outcome!.results} />
+        </section>
+      )}
 
       <WhySkiLab />
       <Footer />

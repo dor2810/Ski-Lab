@@ -66,7 +66,15 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-export function TransferOptions({ options }: { options: TransferOption[] }) {
+export function TransferOptions({
+  options, selectedIndex = 0, onSelect,
+}: {
+  options: TransferOption[];
+  // The chosen option drives the journey timeline above, so selecting
+  // here changes the icon and duration shown there.
+  selectedIndex?: number;
+  onSelect?: (index: number) => void;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
@@ -108,8 +116,22 @@ export function TransferOptions({ options }: { options: TransferOption[] }) {
             {options.map((o, i) => (
               <li
                 key={`${o.kind}-${o.mode}-${o.price_eur_per_person}-${i}`}
-                className={`rounded-lg px-2 py-1.5 ${o.roles.includes("cheapest") ? "bg-signal-soft" : ""}`}
+                className={`rounded-lg px-2 py-1.5 ${
+                  i === selectedIndex
+                    ? "bg-signal-soft ring-1 ring-signal/40"
+                    : o.roles.includes("cheapest") ? "bg-signal-soft/60" : ""
+                }`}
               >
+                {onSelect && (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(i)}
+                    aria-pressed={i === selectedIndex}
+                    className="mb-1 text-[10px] font-semibold text-sky hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+                  >
+                    {i === selectedIndex ? t("transferSelected") : t("transferUseThis")}
+                  </button>
+                )}
                 {o.roles.length > 0 && (
                   <div className="mb-0.5 flex flex-wrap items-center gap-1">
                     {o.roles.map((role) => <RoleBadge key={role} role={role} />)}

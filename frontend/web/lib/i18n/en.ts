@@ -155,6 +155,10 @@ const en = {
   perPersonTotal: "per person, total",
   matchScoreTitle: "Match score",
   lineFlight: "Flight",
+  costInstrumentTitle: "Where the money goes",
+  costInstrumentTotalLabel: "Total per person",
+  costInstrumentBiggest: "Biggest line: {line}",
+  lineBuffer: "Buffer (5%)",
   lineTransfer: "Transfer",
   lineAccommodation: "Accommodation",
   lineLiftPass: "Lift pass",
@@ -234,6 +238,8 @@ const en = {
   transferReturnIncluded: "return included",
   transferOneWayOnly: "one way",
   transferBook: "Book",
+  transferUseThis: "Use this leg",
+  transferSelected: "Shown in your journey",
   transferSeeRoutes: "See routes",
   transferOptionsNote: "Prices are per person and include the return leg where shown. Scheduled services run to a fixed timetable — check the times against your flights.",
   transferCheaperBadge: "Cheaper option",
@@ -276,6 +282,8 @@ const en = {
 
   // --- Price calendar ---
   priceByStartDate: "Price by start date",
+  priceCalendarInsight: "Cheapest start: {date} at {resort} for {price} — {saving} less per person than the priciest day in this window.",
+  priceCalendarEmptyNote: "Empty days had no result in this search — not a price of zero.",
   savesLine: "Travelling the week of {date1} saves {amount} per person versus {date2}.",
 
   // --- Why Ski Lab ---

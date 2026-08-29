@@ -150,6 +150,10 @@ const he: Record<keyof typeof en, string> = {
   perPersonTotal: "לאדם, סה״כ",
   matchScoreTitle: "ציון התאמה",
   lineFlight: "טיסה",
+  costInstrumentTitle: "לאן הכסף הולך",
+  costInstrumentTotalLabel: "סה״כ לאדם",
+  costInstrumentBiggest: "הסעיף הגדול: {line}",
+  lineBuffer: "רזרבה (5%)",
   lineTransfer: "הסעה",
   lineAccommodation: "לינה",
   lineLiftPass: "כרטיס סקי",
@@ -226,6 +230,8 @@ const he: Record<keyof typeof en, string> = {
   transferReturnIncluded: "כולל חזור",
   transferOneWayOnly: "כיוון אחד",
   transferBook: "להזמנה",
+  transferUseThis: "בחרו קטע זה",
+  transferSelected: "מוצג במסע שלכם",
   transferSeeRoutes: "למסלולים",
   transferOptionsNote: "המחירים לאדם וכוללים חזור היכן שמצוין. שירותים מסודרים פועלים בלוח זמנים קבוע — בדקו שהזמנים מתאימים לטיסות שלכם.",
   transferCheaperBadge: "אפשרות זולה יותר",
@@ -268,6 +274,8 @@ const he: Record<keyof typeof en, string> = {
 
   // --- Price calendar ---
   priceByStartDate: "מחיר לפי תאריך התחלה",
+  priceCalendarInsight: "היציאה הזולה: {date} ב{resort} ב-{price} — {saving} פחות לאדם מהיום היקר בחלון הזה.",
+  priceCalendarEmptyNote: "ימים ריקים לא החזירו תוצאה בחיפוש הזה — זה לא מחיר אפס.",
   savesLine: "נסיעה בשבוע של {date1} חוסכת {amount} לאדם לעומת {date2}.",
 
   // --- Why Ski Lab ---

@@ -83,15 +83,23 @@ function Connector() {
   return <li aria-hidden="true" className="h-px w-4 flex-none bg-line sm:w-6" />;
 }
 
-export function JourneyTimeline({ result }: { result: TripResult }) {
+export function JourneyTimeline({
+  result, flightIndex = 0, transferIndex = 0,
+}: {
+  result: TripResult;
+  // WHICH options the timeline describes. Defaults to 0 -- the
+  // cheapest of each, which is what the headline price is built from
+  // -- but the card passes the user's actual choice, so picking the
+  // train instead of the coach redraws the icon and the duration.
+  // A timeline that keeps showing the coach after you choose the
+  // train is describing a trip nobody selected.
+  flightIndex?: number;
+  transferIndex?: number;
+}) {
   const { t } = useTranslation();
 
-  // Anchored on the options the headline price is actually built from:
-  // flight_options is cheapest-first (engine/flight_picks) and so is
-  // transfer_options (engine/transfer_options), so [0] is the trip we
-  // are quoting -- not a different, prettier one.
-  const flight = result.flight_options?.[0] ?? null;
-  const transfer = result.transfer_options?.[0] ?? null;
+  const flight = result.flight_options?.[flightIndex] ?? result.flight_options?.[0] ?? null;
+  const transfer = result.transfer_options?.[transferIndex] ?? result.transfer_options?.[0] ?? null;
 
   const nights =
     result.start_date && result.end_date
