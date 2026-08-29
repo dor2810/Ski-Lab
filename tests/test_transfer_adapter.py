@@ -144,9 +144,14 @@ def test_search_transfer_options_rejects_nonpositive_adults():
 
 
 def test_search_transfer_options_raises_when_airport_cannot_be_resolved(monkeypatch):
+    # A resort NOT in the frozen code table (data/alps2alps_locations.py)
+    # still resolves live -- and must still fail loudly when the
+    # provider knows no such airport. Frozen resorts skip resolution
+    # entirely, which is the point of freezing them.
     monkeypatch.setattr(ta, "resolve_location", lambda *a, **k: None)
     with pytest.raises(AdapterError, match="airport"):
-        ta.search_transfer_options(_resort(), date(2027, 1, 10), "14:30", adults=2)
+        ta.search_transfer_options(_resort(name="Nowhere Ski Resort"),
+                                   date(2027, 1, 10), "14:30", adults=2)
 
 
 def test_search_transfer_options_raises_when_resort_cannot_be_resolved(monkeypatch):
@@ -156,9 +161,11 @@ def test_search_transfer_options_raises_when_resort_cannot_be_resolved(monkeypat
     monkeypatch.setattr(ta, "resolve_location", fake_resolve)
     # The message now names every VARIANT tried, not just "resort" --
     # that specificity is the point (see name_variants): a genuine gap
-    # must be diagnosable from the error alone.
+    # must be diagnosable from the error alone. Uses an unfrozen resort
+    # for the same reason as the test above.
     with pytest.raises(AdapterError, match="recognises no destination"):
-        ta.search_transfer_options(_resort(), date(2027, 1, 10), "14:30", adults=2)
+        ta.search_transfer_options(_resort(name="Nowhere Ski Resort"),
+                                   date(2027, 1, 10), "14:30", adults=2)
 
 
 def test_search_transfer_options_parses_a_real_shaped_response(monkeypatch):

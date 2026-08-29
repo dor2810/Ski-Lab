@@ -113,6 +113,9 @@ export interface CostBreakdown {
   // per-request "live" like the two above, but sourced rather than
   // guessed -- see api/routes/search.py's CostBreakdownOut.
   ski_pass_price_is_researched: boolean;
+  /** True when transfer_eur is a per-request operator quote for
+   *  this date, party size and flight-derived pickup time. */
+  transfer_price_is_live?: boolean;
 }
 
 // ONE day of a trip's weather. is_live_forecast true = a real forecast
@@ -220,12 +223,23 @@ export interface AlternativeDate {
 /** Provenance of the transfer line: a real Alps2Alps quote, or real
  * drive figures plus the exact reason no quote exists. */
 export interface TransferInfo {
-  source: "alps2alps" | "drive_time_only" | "estimated";
+  /** "alps2alps_live" = quoted just now for THIS date, party and
+   *  pickup time; "alps2alps" = a real but frozen quote. */
+  source: "alps2alps_live" | "alps2alps" | "drive_time_only" | "estimated";
   price_eur: number | null;
   duration_minutes: number | null;
   distance_km: number | null;
   vehicles_offered: number | null;
   unavailable_reason: string | null;
+  /** Live-quote only: the vehicle priced, and both pickup clock times
+   *  (the return one is the operator's own calculation from the return
+   *  flight's departure). */
+  vehicle_name?: string | null;
+  pickup_time?: string | null;
+  return_pickup_time?: string | null;
+  /** Every Alps2Alps API product is a private hire; their cheaper
+   *  shared seats are not exposed by the public API. */
+  is_private?: boolean | null;
 }
 
 export interface TripResult {

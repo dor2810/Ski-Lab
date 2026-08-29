@@ -215,6 +215,10 @@ const en = {
   flightBookNote: "Book opens this exact flight on Google Flights. The final price is confirmed there and can differ from the search price.",
 
   transferRealQuote: "Real transfer quote: €{price} one-way (van for 2) · ~{dur} drive",
+  transferLiveQuote: "Live quote: €{price} return, {vehicle}, pickup {pickup}",
+  transferTimeAlignmentNote: "Transfer times are built around the flight shown here: pickup {pickup} on arrival. If you book a different flight, re-check the times before paying.",
+  transferReturnPickupNote: "On departure day the operator collects you at {ret}.",
+  transferPrivateNote: "This is a private vehicle for your group — Alps2Alps also sells cheaper shared seats on their own site.",
   transferDriveOnly: "No operator quote for this route — real drive from {iata_free}: ~{dur} ({km} km)",
   accommodationOptionsTitle: "Places to stay ({count})",
   accommodationPerNight: "€{price}/night",

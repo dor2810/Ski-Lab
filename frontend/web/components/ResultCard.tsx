@@ -109,7 +109,11 @@ function lineItems(r: TripResult): { icon: typeof FlightIcon; labelKey: keyof Di
   return [
     { icon: FlightIcon, labelKey: "lineFlight", value: r.cost.flight_eur,
       source: r.cost.flight_price_is_live ? "live" : "estimated" },
-    { icon: TransferIcon, labelKey: "lineTransfer", value: r.cost.transfer_eur, source: null },
+    { icon: TransferIcon, labelKey: "lineTransfer", value: r.cost.transfer_eur,
+      // LIVE only when this exact date/party/pickup-time was quoted by
+      // the operator just now; the curated rate-card figure stays
+      // unbadged rather than borrowing a label it hasn't earned.
+      source: r.cost.transfer_price_is_live ? "live" : null },
     {
       icon: StayIcon,
       labelKey: "lineAccommodation",
@@ -315,7 +319,13 @@ export function ResultCard({ result, variants, maxConnections = null }: {
       {r.transfer_info && (
         <p className="mt-2 text-[11px] leading-snug text-subtle"
            title={r.transfer_info.unavailable_reason ?? undefined}>
-          {r.transfer_info.source === "alps2alps" && r.transfer_info.price_eur != null
+          {r.transfer_info.source === "alps2alps_live" && r.transfer_info.price_eur != null
+            ? t("transferLiveQuote", {
+                price: String(Math.round(r.transfer_info.price_eur)),
+                vehicle: r.transfer_info.vehicle_name ?? "",
+                pickup: r.transfer_info.pickup_time ?? "",
+              })
+            : r.transfer_info.source === "alps2alps" && r.transfer_info.price_eur != null
             ? t("transferRealQuote", {
                 price: String(Math.round(r.transfer_info.price_eur)),
                 dur: formatMinutes(r.transfer_info.duration_minutes),
@@ -327,6 +337,27 @@ export function ResultCard({ result, variants, maxConnections = null }: {
                   km: String(Math.round(r.transfer_info.distance_km ?? 0)),
                 })
               : null}
+        </p>
+      )}
+
+      {/* TIME-ALIGNMENT WARNING (owner's ask): the transfer is quoted
+          around this itinerary's own landing time, and the return
+          pickup is the operator's own calculation from the return
+          flight's departure -- but the traveller may book a different
+          flight than the one shown, so the times must be re-checked at
+          booking. Shown whenever a live quote exists, with the actual
+          times in it rather than a vague "check your times". */}
+      {r.transfer_info?.source === "alps2alps_live" && (
+        <p className="mt-2 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-[11px] leading-snug text-warn">
+          {t("transferTimeAlignmentNote", { pickup: r.transfer_info.pickup_time ?? "" })}
+          {/* The homeward clause only when the operator actually gave
+              us a return pickup -- it needs the RETURN FLIGHT's
+              departure time, which only some providers expose. An
+              empty slot in the sentence would read as a broken string
+              (caught in live review). */}
+          {r.transfer_info.return_pickup_time
+            && ` ${t("transferReturnPickupNote", { ret: r.transfer_info.return_pickup_time })}`}
+          {r.transfer_info.is_private && ` ${t("transferPrivateNote")}`}
         </p>
       )}
 

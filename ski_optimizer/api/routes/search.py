@@ -19,7 +19,9 @@ server. See reload_resorts() below for how to pick up spreadsheet edits
 without a full restart (useful during a verification pass).
 """
 import datetime
+import dataclasses
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -36,7 +38,8 @@ from ...engine.cost_calculator import (
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
     live_accommodation_property_name, live_accommodation_options,
     live_flight_options,
-    apply_live_flight_price, apply_live_accommodation_price,
+    apply_live_flight_price, apply_live_accommodation_price, apply_live_transfer_price,
+    live_transfer_cost_eur, live_transfer_info,
     live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
@@ -258,6 +261,11 @@ class CostBreakdownOut(BaseModel):
     total_eur: float
     flight_price_is_live: bool
     accommodation_price_is_live: bool
+    # True = transfer_eur is a per-request Alps2Alps quote for THIS
+    # date, party size and pickup time (derived from the flight's own
+    # landing time) -- not the curated rate-card figure. This is what
+    # the card's LIVE badge on the transfer line reports.
+    transfer_price_is_live: bool = False
     # True = ski_pass_eur is a REAL published 6-day price researched
     # from the resort's own ticketing pages (data/ski_pass_prices.py),
     # not the seed spreadsheet's estimate. Not per-request "live" like
@@ -364,6 +372,21 @@ class TransferInfoOut(BaseModel):
     distance_km: Optional[float] = None
     vehicles_offered: Optional[int] = None
     unavailable_reason: Optional[str] = None
+    # Live-quote only (source "alps2alps_live"): the vehicle actually
+    # priced, and the pickup time it was quoted for -- which is derived
+    # from this trip's own flight landing time, not a house assumption.
+    vehicle_name: Optional[str] = None
+    pickup_time: Optional[str] = None
+    # The operator's OWN computed resort pickup for the way home,
+    # derived from the return flight's departure time.
+    return_pickup_time: Optional[str] = None
+    # True for every Alps2Alps API product: their public API sells only
+    # PRIVATE vehicles (verified against their OpenAPI spec and live
+    # responses 2026-08-29). They do sell cheaper shared seats on their
+    # own website, which the API does not expose -- so the UI says this
+    # price is for a private vehicle rather than implying it is the
+    # cheapest way to travel.
+    is_private: Optional[bool] = None
 
 
 class AccommodationOptionOut(BaseModel):
@@ -568,7 +591,6 @@ def _prefetch_weather(jobs) -> dict:
     """
     if not jobs:
         return {}
-    from concurrent.futures import ThreadPoolExecutor
     out: dict = {}
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {
@@ -854,9 +876,132 @@ def _is_within_forecast_horizon(start_date) -> bool:
 # price", not a claim about when any specific flight actually lands.
 _ASSUMED_PICKUP_TIME = "14:00"
 
+# How long after wheels-down a transfer is realistically boarded:
+# taxi/deplane, passport queue, and ski-bag reclaim (outsized baggage
+# comes off a separate belt and is the slow part of an Alpine arrival).
+# 45 minutes is deliberately conservative -- a transfer booked too
+# early is a missed transfer.
+_ARRIVAL_TO_PICKUP_BUFFER_MINUTES = 45
+
+
+def _pickup_time_for(arrival) -> str:
+    """
+    "HH:MM" for the transfer pickup, derived from the flight's actual
+    LANDING time -- the owner's question ("Do you care about the time
+    of landing in the suggested flight to the time of the transfer you
+    recommend"). The honest answer was no: this was a hardcoded 14:00,
+    which quotes the wrong price and the wrong availability for a
+    flight that lands at 21:40.
+
+    Falls back to _ASSUMED_PICKUP_TIME when no arrival is known (a
+    provider that didn't supply one, or an undated preview) -- an
+    assumption we can name, rather than a fabricated precise time.
+
+    A pickup that would roll past midnight is clamped to 23:59 rather
+    than wrapping: the transfer belongs to the arrival DATE we quote,
+    and wrapping would silently move it to the following day.
+    """
+    if arrival is None:
+        return _ASSUMED_PICKUP_TIME
+    minutes = arrival.hour * 60 + arrival.minute + _ARRIVAL_TO_PICKUP_BUFFER_MINUTES
+    if minutes >= 24 * 60:
+        return "23:59"
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+# How many results get a LIVE transfer quote per search. Deliberately
+# small and env-tunable: Alps2Alps' quote endpoint 429s after ~14 rapid
+# calls with a >10 MINUTE cooldown (measured 2026-08-28), and that
+# cooldown would hit every user, not just this request. Frozen location
+# codes already cut each quote from three requests to one; this cap
+# bounds the rest. Results beyond it keep the curated figure, labelled
+# honestly -- never a live badge on a number that isn't live.
+_LIVE_TRANSFER_N = int(os.environ.get("LIVE_TRANSFER_N", "3"))
+
+
+def _prefetch_live_transfers(rows, group_size: int, live_allowed: bool,
+                             max_connections) -> dict:
+    """
+    {index: (pickup_time, live_info_or_None)} for the first
+    _LIVE_TRANSFER_N rows, fetched CONCURRENTLY.
+
+    Two things happen per row, in this order:
+      1. the pickup time is derived from the flight's REAL landing time
+         (a response-cache hit -- live_flight_options already ran for
+         this exact resort/date during repricing), and
+      2. that time is quoted live with Alps2Alps.
+
+    The pickup time is returned for EVERY row, live quote or not, so
+    even an unquoted row's booking deep link opens at a time that
+    matches its flight rather than a hardcoded afternoon.
+    """
+    out: dict = {}
+    if not rows:
+        return out
+    for i in range(len(rows)):
+        out[i] = (_ASSUMED_PICKUP_TIME, None)
+    if not live_allowed:
+        return out
+
+    def work(i):
+        row = rows[i]
+        picks = live_flight_options(row.resort, row.start_date, row.end_date,
+                                    origin_airport="TLV",
+                                    max_connections=max_connections)
+        pickup = _pickup_time_for(_arrival_of(picks))
+        # The RETURN flight's departure, passed straight through: the
+        # operator computes the resort pickup from it. Only sent when
+        # genuinely known -- a return date with no time returns zero
+        # vehicles from this provider (measured 2026-08-29).
+        home = _return_departure_of(picks)
+        return_time = f"{home.hour:02d}:{home.minute:02d}" if home else None
+        info = None
+        if i < _LIVE_TRANSFER_N:
+            info = live_transfer_info(row.resort, row.start_date, pickup, group_size,
+                                      return_date=row.end_date, return_time=return_time)
+            if info is not None:
+                per_person = live_transfer_cost_eur(
+                    row.resort, row.start_date, pickup, group_size,
+                    return_date=row.end_date, return_time=return_time)
+                info = {**info, "per_person_eur": per_person}
+        return i, pickup, info
+
+    with ThreadPoolExecutor(max_workers=min(4, len(rows))) as pool:
+        for future in [pool.submit(work, i) for i in range(len(rows))]:
+            try:
+                i, pickup, info = future.result()
+            except Exception:
+                logger.warning("live transfer prefetch failed", exc_info=True)
+                continue
+            out[i] = (pickup, info)
+    return out
+
+
+def _arrival_of(flight_picks) -> Optional[datetime.datetime]:
+    """The landing time of the itinerary whose price this result is
+    built on -- the cheapest, which is the one cost.flight_eur used
+    (engine/flight_picks.pick_flights returns cheapest first)."""
+    for pick in flight_picks or []:
+        arrival = getattr(pick.option, "arrival_time", None)
+        if arrival is not None:
+            return arrival
+    return None
+
+
+def _return_departure_of(flight_picks) -> Optional[datetime.datetime]:
+    """When that same itinerary flies home -- what the RETURN transfer
+    is built around. Alps2Alps turns a departure time into a resort
+    pickup itself (measured: 17:20 flight -> 11:10 pickup), so this is
+    passed through rather than converted here."""
+    for pick in flight_picks or []:
+        departure = getattr(pick.option, "return_departure_time", None)
+        if departure is not None:
+            return departure
+    return None
+
 
 def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: bool,
-                         return_date=None) -> str:
+                         return_date=None, pickup_time: str = None) -> str:
     """
     A booking link for the cheapest real transfer quote found
     (adapters/transfer_adapter.py, Alps2Alps) when available -- falling
@@ -885,8 +1030,9 @@ def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: 
     (cached across the two calls this makes internally), not one per
     result. The fallback has no such cost and applies to every result.
     """
+    pickup_time = pickup_time or _ASSUMED_PICKUP_TIME
     if attempt and pickup_date is not None:
-        booking = live_transfer_booking_url(resort, pickup_date, _ASSUMED_PICKUP_TIME, group_size)
+        booking = live_transfer_booking_url(resort, pickup_date, pickup_time, group_size)
         if booking:
             return booking
     # Prefilled deep link into the REAL Alps2Alps funnel for this exact
@@ -896,7 +1042,7 @@ def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: 
     # Covers EVERY dated result, not just the live-quoted top one; the
     # generic form remains only for undated previews and the few
     # resorts Alps2Alps doesn't serve.
-    deeplink = alps2alps_deeplink(resort.name, pickup_date, _ASSUMED_PICKUP_TIME,
+    deeplink = alps2alps_deeplink(resort.name, pickup_date, pickup_time,
                                   group_size, return_date=return_date)
     if deeplink:
         return deeplink
@@ -1035,6 +1181,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 flight_price_is_live=t.cost.flight_price_is_live,
                 accommodation_price_is_live=t.cost.accommodation_price_is_live,
                 ski_pass_price_is_researched=t.cost.ski_pass_price_is_researched,
+                transfer_price_is_live=t.cost.transfer_price_is_live,
             ),
             score=t.score,
             score_components=t.score_components,
@@ -1500,8 +1647,17 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
     weather_by_index = _prefetch_weather({
         i: (t.resort, t.start_date, t.end_date) for i, t in enumerate(dated_options)
     })
+    transfers_by_index = _prefetch_live_transfers(
+        dated_options, payload.group_size, live_reprice_allowed,
+        payload.max_connections)
+
     results = []
     for i, t in enumerate(dated_options):
+        pickup_time, live_transfer = transfers_by_index.get(
+            i, (_ASSUMED_PICKUP_TIME, None))
+        if live_transfer and live_transfer.get("per_person_eur") is not None:
+            t = dataclasses.replace(t, cost=apply_live_transfer_price(
+                t.cost, live_transfer["per_person_eur"]))
         property_name = _accommodation_property_name(
             t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
             t.cost.accommodation_price_is_live)
@@ -1525,6 +1681,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 flight_price_is_live=t.cost.flight_price_is_live,
                 accommodation_price_is_live=t.cost.accommodation_price_is_live,
                 ski_pass_price_is_researched=t.cost.ski_pass_price_is_researched,
+                transfer_price_is_live=t.cost.transfer_price_is_live,
             ),
             score=t.score,
             score_components=t.score_components,
@@ -1547,8 +1704,14 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0),
-                                                     return_date=t.end_date),
-            transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
+                                                     return_date=t.end_date,
+                                                     pickup_time=pickup_time),
+            # A LIVE quote when we have one (owner: "show the live label
+            # so people know it is fine"), the frozen real quote
+            # otherwise -- never the live label on a figure that isn't.
+            transfer_info=TransferInfoOut(**(
+                {k: v for k, v in live_transfer.items() if k in TransferInfoOut.model_fields}
+                if live_transfer else transfer_source_for(t.resort))),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
             weather=weather_by_index.get(i),

@@ -271,7 +271,27 @@ def _parse_flight_result(flight, currency_is_eur: bool, raw_card=None) -> Option
         is_round_trip=True,  # only ever called from a round-trip or one-way context; set per-query below
         booking_token=_extract_booking_ingredients(raw_card) if raw_card is not None else None,
         flight_numbers=_flight_numbers_from_card(raw_card) if raw_card is not None else [],
+        # Landing time (local at the destination) for the transfer
+        # pickup -- see FlightOption.arrival_time. Best-effort: an
+        # unparseable arrival degrades to None and the caller falls
+        # back to its documented assumed pickup time.
+        arrival_time=_arrival_datetime(last),
     )
+
+
+def _arrival_datetime(last_leg) -> Optional[datetime.datetime]:
+    """The final leg's arrival as a real datetime, or None. Requires a
+    genuine date AND time from the provider -- _to_datetime's
+    fallback_year guard would otherwise manufacture a 1900-01-01
+    landing, and a fabricated pickup time is exactly what this field
+    exists to avoid."""
+    try:
+        arrival = last_leg.arrival
+        if not arrival.date or not arrival.time:
+            return None
+        return _to_datetime(arrival, arrival.date[0])
+    except Exception:
+        return None
 
 
 def _build_query(

@@ -7,7 +7,7 @@ version later (Section 6 of the project blueprint) without touching the
 calculation/scoring logic.
 """
 from dataclasses import dataclass, field
-from datetime import date as _date
+from datetime import date as _date, datetime as _datetime
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoids a circular import at runtime (terrain.py imports nothing from here)
@@ -306,6 +306,21 @@ class FlightOption:
     # flight number is worse than no flight number to someone standing
     # at a departure board.
     flight_numbers: list = field(default_factory=list)
+    # When this itinerary LANDS, local time at the destination -- the
+    # fact an airport transfer is booked around. Kept because the
+    # transfer pickup time was otherwise a hardcoded guess (see
+    # api/routes/search._pickup_time_for): quoting a 14:00 pickup for a
+    # flight landing at 21:40 is a wrong number, and this project
+    # treats a wrong number as worse than a missing one. None when the
+    # provider didn't supply it -- never inferred from duration, since
+    # that would silently reintroduce the timezone bug the duration
+    # field itself was fixed for.
+    arrival_time: Optional[_datetime] = None
+    # When the RETURN flight departs, local time at the ski-side
+    # airport. Feeds the return transfer: Alps2Alps takes a departure
+    # time and computes the resort pickup itself. None unless the
+    # provider gave us a real inbound leg -- never inferred.
+    return_departure_time: Optional[_datetime] = None
 
 
 @dataclass
@@ -420,6 +435,20 @@ class TransferSearchResult:
     """What a live transfer search returns."""
     options: list  # List[TransferQuote]
     from_cache: bool = False
+    # The RETURN leg, when the request asked for a round trip (another
+    # TransferSearchResult, or None). It rides on the SAME provider
+    # response as the outbound -- Alps2Alps prices both legs in one
+    # request, and cheaper together than as two one-ways -- so it is
+    # attached here rather than returned separately, keeping every
+    # existing single-leg caller unchanged.
+    return_options: Optional["TransferSearchResult"] = None
+    # The operator's OWN computed pickup timestamps ("YYYY-MM-DD
+    # HH:MM:SS"). The return one is the valuable one: given the return
+    # FLIGHT'S departure time, Alps2Alps works out when the coach must
+    # leave the resort (measured: a 17:20 flight -> an 11:10 pickup),
+    # which is its drive-time-plus-check-in logic, not ours.
+    outbound_pickup: Optional[str] = None
+    return_pickup: Optional[str] = None
 
 
 @dataclass
@@ -509,6 +538,11 @@ class CostBreakdown:
     # per-request -- but genuinely sourced rather than guessed, which is
     # the distinction that matters to a user reading the number.
     ski_pass_price_is_researched: bool = False
+    # Same idea for transfer_eur -- False = the curated/formula figure
+    # (engine/transfers.py); True = a per-request Alps2Alps quote for
+    # THIS date, party size and pickup time, via
+    # cost_calculator.apply_live_transfer_price.
+    transfer_price_is_live: bool = False
 
     @property
     def total_eur(self) -> float:

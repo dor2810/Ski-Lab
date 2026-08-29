@@ -111,6 +111,19 @@ def _format_flight_number(segment: dict) -> Optional[str]:
     return raw or None
 
 
+def _parse_iso_datetime(raw) -> Optional[datetime.datetime]:
+    """Kiwi's '2027-01-10T08:30:00' -> datetime, or None for anything
+    unparseable. A missing landing time must degrade to 'unknown' (the
+    caller then falls back to a documented assumed pickup), never to a
+    fabricated one."""
+    if not raw:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_itinerary(it: dict) -> Optional[FlightOption]:
     """One itinerary -> FlightOption, or None for anything malformed --
     one bad entry must never sink the whole search (house style, see
@@ -152,6 +165,16 @@ def _parse_itinerary(it: dict) -> Optional[FlightOption]:
             # docstring prescribes.
             booking_token=it.get("bookingUrl"),
             flight_numbers=numbers,
+            # Landing time, local at the destination -- what the airport
+            # transfer is actually booked around (see FlightOption.
+            # arrival_time). Kiwi gives it directly on the outbound leg;
+            # a malformed one degrades to None rather than sinking the
+            # whole itinerary, same as every other field here.
+            arrival_time=_parse_iso_datetime(outbound.get("arrivalTime")),
+            # The return leg's DEPARTURE -- what the homeward transfer
+            # has to be built around (see FlightOption).
+            return_departure_time=_parse_iso_datetime(
+                (it.get("inbound") or {}).get("departureTime")),
         )
     except (KeyError, TypeError, ValueError):
         return None

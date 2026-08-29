@@ -205,9 +205,9 @@ def resolve_location(query: str, location_type: Optional[str] = None, use_cache:
     return code
 
 
-def _parse_vehicles(data: dict) -> List[TransferQuote]:
-    outbound = (data or {}).get("outbound") or {}
-    vehicles = outbound.get("vehicles") or []
+def _parse_vehicles(data: dict, leg: str = "outbound") -> List[TransferQuote]:
+    block = (data or {}).get(leg) or {}
+    vehicles = block.get("vehicles") or []
     duration = float((data.get("route") or {}).get("duration_minutes") or 0)
     options = []
     for v in vehicles:
@@ -253,15 +253,34 @@ def search_transfer_options(
     # "Malpensa"). See name_variants(). The error messages name every
     # variant tried, so a genuine gap is diagnosable rather than
     # mysterious.
+    # FROZEN CODES FIRST (data/alps2alps_locations.py, resolved once by
+    # scripts/build_alps2alps_locations.py): a place's code never
+    # changes, so re-resolving it live spends two of this provider's
+    # scarce requests per quote for an answer we already have. That
+    # matters -- their quote endpoint 429s after ~14 rapid calls with a
+    # >10 minute cooldown, so a live quote must cost ONE request, not
+    # three. Falls through to live resolution for any resort not in the
+    # frozen table (so a newly added resort still works).
+    origin_code = dest_code = None
+    try:
+        from ..data.alps2alps_locations import ALPS2ALPS_LOCATIONS
+        frozen = ALPS2ALPS_LOCATIONS.get(resort.name)
+        if frozen:
+            origin_code, dest_code = frozen["airport_code"], frozen["resort_code"]
+    except ImportError:
+        pass
+
     origin_query = _airport_city_name(resort.nearest_airport)
-    origin_code, _ = resolve_location_any(origin_query, location_type="airport",
-                                          use_cache=use_cache)
+    if origin_code is None:
+        origin_code, _ = resolve_location_any(origin_query, location_type="airport",
+                                              use_cache=use_cache)
     if origin_code is None:
         raise AdapterError(
             f"Alps2Alps recognises no airport among {name_variants(origin_query)!r}")
 
-    dest_code, _ = resolve_location_any(resort.name, location_type="resort",
-                                        use_cache=use_cache)
+    if dest_code is None:
+        dest_code, _ = resolve_location_any(resort.name, location_type="resort",
+                                            use_cache=use_cache)
     if dest_code is None:
         raise AdapterError(
             f"Alps2Alps recognises no destination among {name_variants(resort.name)!r}")
@@ -277,16 +296,84 @@ def search_transfer_options(
         "from": origin_code, "to": dest_code,
         "date": pickup_date.isoformat(), "time": pickup_time,
         "adults": adults, "currency": currency,
+        # The provider's spec asks AI agents to identify themselves.
+        "source": _AI_SOURCE,
     }
     if return_date is not None:
         params["return_date"] = return_date.isoformat()
         params["return_time"] = return_time or pickup_time
 
     data = _fetch_json("/transfer-options", params)
-    result = TransferSearchResult(options=_parse_vehicles(data))
+    result = TransferSearchResult(options=_parse_vehicles(data, "outbound"))
+    # The RETURN leg rides on the same response (and the same request):
+    # attached to the result rather than returned separately so this
+    # function's signature and every existing caller stay unchanged.
+    # See search_transfer_round_trip for what the two legs are for.
+    return_block = (data or {}).get("return")
+    if return_block:
+        result.return_options = TransferSearchResult(
+            options=_parse_vehicles(data, "return"))
+        result.return_pickup = return_block.get("pick_up_date_time")
+    result.outbound_pickup = ((data or {}).get("outbound") or {}).get("pick_up_date_time")
     if use_cache:
         get_cache().set(key, result)
     return result
+
+
+#: Sent on every call at the provider's own request -- their OpenAPI
+#: spec asks AI agents to identify with `source=<platform>` so they can
+#: attribute the traffic. Cheap courtesy to an operator giving us a
+#: free, keyless, documented API.
+_AI_SOURCE = "claude"
+
+
+def search_transfer_round_trip(
+    resort: Resort,
+    pickup_date: datetime.date,
+    pickup_time: str,
+    adults: int,
+    return_date: Optional[datetime.date] = None,
+    return_time: Optional[str] = None,
+    currency: str = "EUR",
+    use_cache: bool = True,
+) -> dict:
+    """
+    BOTH legs of the airport run in ONE request:
+    {"outbound": TransferSearchResult, "return": TransferSearchResult|None,
+     "outbound_pickup": str|None, "return_pickup": str|None}.
+
+    WHY BOTH IN ONE CALL (measured against the live API 2026-08-29):
+      - The operator prices a round trip CHEAPER than two one-ways
+        (Geneva->Val Thorens: EUR423.50 one-way vs EUR402.33 as part of
+        a return booking), so quoting legs separately overstates the
+        cost of the trip we are actually recommending.
+      - `return_time` is treated as the RETURN FLIGHT'S DEPARTURE time
+        and Alps2Alps computes the resort pickup itself -- a 17:20
+        flight gave an 11:10 pickup, a 07:00 flight gave 02:00. That is
+        the operator's own drive-time-plus-check-in logic, and it is
+        strictly better than any buffer we could invent here.
+      - `return_date` WITHOUT `return_time` returns ZERO VEHICLES, so
+        the return half is only ever sent when we genuinely know the
+        return flight's departure time. Half a request is worse than
+        none: it looks like "no transfers available".
+
+    Ski bags are left to the provider's seasonal default (winter: 2),
+    which is why a winter quote offers minivans rather than the
+    3-seat economy car -- skis need the space. Verified: passing
+    ski_bags=0 does surface the cheaper car, which would be the wrong
+    vehicle for this product.
+    """
+    outbound = search_transfer_options(
+        resort=resort, pickup_date=pickup_date, pickup_time=pickup_time,
+        adults=adults, return_date=return_date if return_time else None,
+        return_time=return_time, currency=currency, use_cache=use_cache,
+    )
+    return {
+        "outbound": outbound,
+        "return": getattr(outbound, "return_options", None),
+        "outbound_pickup": getattr(outbound, "outbound_pickup", None),
+        "return_pickup": getattr(outbound, "return_pickup", None),
+    }
 
 
 def cheapest_price_eur(result: TransferSearchResult, group_size: int) -> Optional[float]:

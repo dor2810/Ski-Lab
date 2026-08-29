@@ -935,6 +935,150 @@ def apply_live_accommodation_price(cost: CostBreakdown, live_price_per_person: f
         # is: this rebuilds the dataclass field by field, so anything
         # not named here silently reverts to its default.
         ski_pass_price_is_researched=cost.ski_pass_price_is_researched,
+        transfer_price_is_live=cost.transfer_price_is_live,
+    )
+
+
+def _live_transfer_result(resort: Resort, pickup_date, pickup_time: str, group_size: int,
+                          return_date=None, return_time=None):
+    """
+    One live Alps2Alps quote for this route/date/party, or None.
+
+    COST DISCIPLINE: exactly ONE provider request. The adapter's own
+    two-step lookup (resolve airport, resolve resort, then quote) is
+    skipped by handing it the FROZEN location codes
+    (data/alps2alps_locations.py) -- which matters because their quote
+    endpoint 429s after ~14 rapid calls with a >10 minute cooldown
+    (measured 2026-08-28), so thirding the request count is what makes
+    live transfer pricing affordable at all.
+
+    Never raises: a rate limit or an unserved resort degrades to None
+    and the caller keeps the curated figure, honestly labelled.
+    """
+    if pickup_date is None:
+        return None
+    try:
+        from ..data.alps2alps_locations import ALPS2ALPS_LOCATIONS
+        from ..adapters import transfer_adapter
+    except ImportError:
+        return None
+    if resort.name not in ALPS2ALPS_LOCATIONS:
+        return None
+    try:
+        # Round trip in ONE request -- both legs, priced together
+        # (cheaper than two one-ways) and with the RETURN leg's resort
+        # pickup computed by the operator from the return flight's
+        # departure time. return_time is only ever sent when we truly
+        # know it: return_date alone returns zero vehicles.
+        return transfer_adapter.search_transfer_round_trip(
+            resort=resort, pickup_date=pickup_date, pickup_time=pickup_time,
+            adults=group_size,
+            return_date=return_date if return_time else None,
+            return_time=return_time,
+        )
+    except Exception:
+        logger.info("live transfer quote unavailable for %s", resort.name, exc_info=True)
+        return None
+
+
+def live_transfer_cost_eur(resort: Resort, pickup_date, pickup_time: str,
+                           group_size: int, return_date=None,
+                           return_time=None) -> Optional[float]:
+    """
+    Real per-PERSON airport transfer cost for this trip, or None.
+
+    Alps2Alps prices a whole vehicle, and a ski trip needs the airport
+    run in BOTH directions -- so the per-person figure is
+    (vehicle price x 2) / group_size, matching exactly what
+    engine/transfers.py's curated path computes. A vehicle that cannot
+    seat the whole party is excluded rather than quoted as if it could.
+    """
+    legs = _live_transfer_result(resort, pickup_date, pickup_time, group_size,
+                                 return_date, return_time)
+    if legs is None:
+        return None
+    from ..adapters import transfer_adapter
+    out = transfer_adapter.cheapest_price_eur(legs["outbound"], group_size)
+    if out is None:
+        return None
+    back = (transfer_adapter.cheapest_price_eur(legs["return"], group_size)
+            if legs.get("return") else None)
+    # Both real legs when we have them; otherwise the outbound doubled
+    # -- a documented approximation of the return, not a second quote
+    # dressed up as one.
+    vehicle_total = out + back if back is not None else out * 2
+    return round(vehicle_total / group_size, 2)
+
+
+def live_transfer_info(resort: Resort, pickup_date, pickup_time: str,
+                       group_size: int, return_date=None,
+                       return_time=None) -> Optional[dict]:
+    """
+    Provenance for a LIVE transfer quote, shaped like
+    transfer_source_for() so the API can substitute one for the other.
+    source is "alps2alps_live" -- deliberately distinct from the frozen
+    "alps2alps": both are real Alps2Alps prices, but only this one was
+    quoted for the user's own date, party size and pickup time, and
+    that is the difference the LIVE badge claims.
+
+    price_eur stays the ONE-WAY VEHICLE price the operator quoted (what
+    the booking page will show); the per-person trip figure is
+    live_transfer_cost_eur's job.
+    """
+    legs = _live_transfer_result(resort, pickup_date, pickup_time, group_size,
+                                 return_date, return_time)
+    if legs is None:
+        return None
+    from ..adapters import transfer_adapter
+    result = legs["outbound"]
+    cheapest = transfer_adapter.cheapest_option(result, group_size)
+    if cheapest is None:
+        return None
+    return {
+        "source": "alps2alps_live",
+        "price_eur": cheapest.price_eur,
+        "duration_minutes": cheapest.duration_minutes or None,
+        "distance_km": None,
+        "vehicles_offered": len([o for o in result.options
+                                 if o.max_passengers >= group_size]),
+        "unavailable_reason": None,
+        "vehicle_name": cheapest.vehicle_name,
+        "pickup_time": pickup_time,
+        # Clock time only ("11:10") off the operator's own computed
+        # return pickup timestamp -- what the traveller has to be ready
+        # for on departure day.
+        "return_pickup_time": (legs.get("return_pickup") or "")[11:16] or None,
+        # EVERY vehicle this API sells is a PRIVATE hire for the whole
+        # party -- verified 2026-08-29 against their OpenAPI spec (no
+        # shared/shuttle/per-seat concept anywhere in it) and against
+        # live responses (only Standard/XL/Premium minivans, plus a
+        # 3-seat car once ski bags are removed). Alps2Alps DOES sell
+        # cheaper shared seats on their own website; the public API
+        # does not expose them, so we say so rather than implying this
+        # price is the cheapest way to travel.
+        "is_private": True,
+    }
+
+
+def apply_live_transfer_price(cost: CostBreakdown, live_price: float) -> CostBreakdown:
+    """
+    Swaps the curated transfer figure for a real per-person quote,
+    rescaling the misc buffer exactly as apply_live_flight_price does.
+    Returns a NEW CostBreakdown with transfer_price_is_live=True.
+    """
+    delta = live_price - cost.transfer_eur
+    return CostBreakdown(
+        flight_eur=cost.flight_eur,
+        transfer_eur=live_price,
+        accommodation_eur=cost.accommodation_eur,
+        ski_pass_eur=cost.ski_pass_eur,
+        equipment_eur=cost.equipment_eur,
+        food_eur=cost.food_eur,
+        misc_eur=round(cost.misc_eur + delta * MISC_COST_RATE, 2),
+        flight_price_is_live=cost.flight_price_is_live,
+        accommodation_price_is_live=cost.accommodation_price_is_live,
+        ski_pass_price_is_researched=cost.ski_pass_price_is_researched,
+        transfer_price_is_live=True,
     )
 
 
@@ -965,6 +1109,7 @@ def apply_live_flight_price(cost: CostBreakdown, live_price: float) -> CostBreak
         # already-live accommodation flag back to False.
         accommodation_price_is_live=cost.accommodation_price_is_live,
         ski_pass_price_is_researched=cost.ski_pass_price_is_researched,
+        transfer_price_is_live=cost.transfer_price_is_live,
     )
 
 
