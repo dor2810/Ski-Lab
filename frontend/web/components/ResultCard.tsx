@@ -12,6 +12,7 @@ import { FlightOptions } from "./FlightOptions";
 import { TransferOptions } from "./TransferOptions";
 import { JourneyTimeline } from "./JourneyTimeline";
 import { CostInstrument } from "./CostInstrument";
+import { TripDetails, HandoffLink } from "./TripDetails";
 import { AccommodationOptions } from "./AccommodationOptions";
 import { MoreDates } from "./MoreDates";
 import {
@@ -217,10 +218,13 @@ export function ResultCard({ result, variants, maxConnections = null }: {
               per card: the instrument owns it, because there the sum
               sits with the parts it is made of. */}
           <div
-            className="flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 border-sky/60 text-sm font-bold text-sky"
+            className="flex h-14 w-14 flex-none flex-col items-center justify-center rounded-full border-2 border-sky/60 leading-none text-sky"
             title={t("matchScoreTitle")}
           >
-            {scorePct}
+            <span className="text-sm font-bold">{scorePct}</span>
+            <span className="mt-0.5 text-[9px] uppercase tracking-wide opacity-80">
+              {t("matchScoreLabel")}
+            </span>
           </div>
         </div>
       </div>
@@ -275,129 +279,101 @@ export function ResultCard({ result, variants, maxConnections = null }: {
 
       <CostInstrument result={r} />
 
-      {r.accommodation_property_name && (
-        <p className="mt-4 text-sm text-muted">
-          <StayIcon size={14} className="me-1.5 inline-block align-text-bottom text-sky" />
-          {t("accommodationPropertyNamePrefix")} <span className="font-semibold text-ink">{r.accommodation_property_name}</span>
-        </p>
-      )}
-
-      <div className={`flex flex-wrap items-center gap-2 ${r.accommodation_property_name ? "mt-2" : "mt-4"}`}>
-        {r.flight_search_url && (
-          <SearchLinkButton href={r.flight_search_url} label={t("viewFlights")} />
-        )}
-        <SearchLinkButton href={r.accommodation_search_url} label={t("viewAccommodation")} />
-        <SearchLinkButton href={r.transfer_search_url} label={t("viewTransfer")} />
-        <SearchLinkButton href={r.equipment_search_url} label={t("viewEquipment")} />
-        <SearchLinkButton href={r.ski_pass_search_url} label={t("viewSkiPass")} />
-        <span className="text-[11px] text-subtle">{t("searchLinkDisclaimer")}</span>
-      </div>
-
-      {/* Transfer provenance -- a real Alps2Alps price, or the real
-          drive figures with (in the tooltip) the exact reason there is
-          no operator quote. Never a silent estimate. */}
-      {r.transfer_info && (
-        <p className="mt-2 text-[11px] leading-snug text-subtle"
-           title={r.transfer_info.unavailable_reason ?? undefined}>
-          {r.transfer_info.source === "alps2alps_live" && r.transfer_info.price_eur != null
-            ? t("transferLiveQuote", {
-                price: String(Math.round(r.transfer_info.price_eur)),
-                vehicle: r.transfer_info.vehicle_name ?? "",
-                pickup: r.transfer_info.pickup_time ?? "",
-              })
-            : r.transfer_info.source === "alps2alps" && r.transfer_info.price_eur != null
-            ? t("transferRealQuote", {
-                price: String(Math.round(r.transfer_info.price_eur)),
-                dur: formatMinutes(r.transfer_info.duration_minutes),
-              })
-            : r.transfer_info.duration_minutes != null
-              ? t("transferDriveOnly", {
-                  iata_free: "",
-                  dur: formatMinutes(r.transfer_info.duration_minutes),
-                  km: String(Math.round(r.transfer_info.distance_km ?? 0)),
-                })
-              : null}
-        </p>
-      )}
-
-      {/* TIME-ALIGNMENT WARNING (owner's ask): the transfer is quoted
-          around this itinerary's own landing time, and the return
-          pickup is the operator's own calculation from the return
-          flight's departure -- but the traveller may book a different
-          flight than the one shown, so the times must be re-checked at
-          booking. Shown whenever a live quote exists, with the actual
-          times in it rather than a vague "check your times". */}
-      {r.transfer_info?.source === "alps2alps_live" && (
-        <p className="mt-2 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-[11px] leading-snug text-warn">
-          {t("transferTimeAlignmentNote", { pickup: r.transfer_info.pickup_time ?? "" })}
-          {/* The homeward clause only when the operator actually gave
-              us a return pickup -- it needs the RETURN FLIGHT's
-              departure time, which only some providers expose. An
-              empty slot in the sentence would read as a broken string
-              (caught in live review). */}
-          {r.transfer_info.return_pickup_time
-            && ` ${t("transferReturnPickupNote", { ret: r.transfer_info.return_pickup_time })}`}
-          {r.transfer_info.is_private && ` ${t("transferPrivateNote")}`}
-        </p>
-      )}
-
-      <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
-
-      <FlightOptions options={r.flight_options} booking={booking} />
-
-      <TransferOptions
-        options={r.transfer_options ?? []}
-        selectedIndex={transferIdx}
-        onSelect={setTransferIdx}
-      />
-
-      <AccommodationOptions options={r.accommodation_options} />
-
-      <WhatsIncluded />
-
-      <WeatherWeek weather={r.weather} />
-
-      <div className="mt-5">
-        <TerrainBar terrain={r.resort.terrain} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-subtle">
-        <span>{t("kmPiste", { km: r.resort.piste_km })}</span>
-        <span className="flex items-center gap-1">
-          <PinIcon size={12} /> {t("minFromAirport", { min: Math.round(r.resort.transfer_time_minutes), airport: r.resort.nearest_airport })}
-        </span>
-        <span>{t("offPisteRating", { n: r.resort.off_piste_rating })}</span>
-        <span className="flex items-center gap-1">
-          <SnowIcon size={12} /> {t("snowRating", { n: r.resort.snow_reliability })}
-        </span>
-        <span>{t("nightlifeRating", { n: r.resort.nightlife_rating })}</span>
-      </div>
-
-      {/* r.explanation comes pre-translated from the backend (see
-          nlp/explainer.py's lang param) and already starts with the
-          localized "Why:" equivalent -- no separate label needed here. */}
-      <p className="mt-3 text-sm leading-relaxed text-muted">{r.explanation}</p>
-
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="mt-4 text-sm font-semibold text-sky hover:text-sky/80"
-      >
-        {expanded ? t("hideTripDetails") : t("viewTripDetails")}
-      </button>
-
-      {expanded && (
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-line pt-4 text-xs sm:grid-cols-3">
-          {Object.entries(r.score_components).map(([dim, val]) => (
-            <div key={dim} className="flex justify-between text-subtle">
-              <span className="capitalize">{DIMENSION_KEYS[dim] ? t(DIMENSION_KEYS[dim]) : dim.replace("_", " ")}</span>
-              <span className="tabular-nums text-muted">{Math.round(val * 100)}%</span>
+      {/* EVIDENCE, behind one disclosure. Everything below used to be
+          eight peer blocks making the card 2,662px tall at 1280px --
+          which buried the cost instrument and made comparing trips
+          impossible. Each partner hand-off now lives inside the
+          section it belongs to instead of a five-button cluster. */}
+      <TripDetails
+        result={r}
+        gettingThere={
+          <>
+            <FlightOptions options={r.flight_options} booking={booking} />
+            <TransferOptions
+              options={r.transfer_options ?? []}
+              selectedIndex={transferIdx}
+              onSelect={setTransferIdx}
+            />
+            {r.transfer_info && (
+              <p className="mt-2 text-[11px] leading-snug text-subtle"
+                 title={r.transfer_info.unavailable_reason ?? undefined}>
+                {r.transfer_info.source === "alps2alps_live" && r.transfer_info.price_eur != null
+                  ? t("transferLiveQuote", {
+                      price: String(Math.round(r.transfer_info.price_eur)),
+                      vehicle: r.transfer_info.vehicle_name ?? "",
+                      pickup: r.transfer_info.pickup_time ?? "",
+                    })
+                  : r.transfer_info.source === "alps2alps" && r.transfer_info.price_eur != null
+                    ? t("transferRealQuote", {
+                        price: String(Math.round(r.transfer_info.price_eur)),
+                        dur: formatMinutes(r.transfer_info.duration_minutes),
+                      })
+                    : r.transfer_info.duration_minutes != null
+                      ? t("transferDriveOnly", {
+                          iata_free: "",
+                          dur: formatMinutes(r.transfer_info.duration_minutes),
+                          km: String(Math.round(r.transfer_info.distance_km ?? 0)),
+                        })
+                      : null}
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <HandoffLink href={r.flight_search_url} label={t("viewFlights")} />
+              <HandoffLink href={r.transfer_search_url} label={t("viewTransfer")} />
+              <HandoffLink href={r.equipment_search_url} label={t("viewEquipment")} />
             </div>
-          ))}
-          {r.resort.needs_verification && (
-            <p className="col-span-full mt-1 text-warn">{t("needsVerificationNote")}</p>
-          )}
-        </div>
-      )}
+            <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
+          </>
+        }
+        staying={
+          <>
+            {r.accommodation_property_name && (
+              <p className="text-sm text-muted">
+                <StayIcon size={14} className="me-1.5 inline-block align-text-bottom text-sky" />
+                {t("accommodationPropertyNamePrefix")}{" "}
+                <span className="font-semibold text-ink">{r.accommodation_property_name}</span>
+              </p>
+            )}
+            <AccommodationOptions options={r.accommodation_options} />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <HandoffLink href={r.accommodation_search_url} label={t("viewAccommodation")} />
+              <HandoffLink href={r.ski_pass_search_url} label={t("viewSkiPass")} />
+            </div>
+            <WhatsIncluded />
+            <p className="mt-2 text-[11px] text-subtle">{t("searchLinkDisclaimer")}</p>
+          </>
+        }
+        conditions={
+          <>
+            <WeatherWeek weather={r.weather} />
+            <div className="mt-4">
+              <TerrainBar terrain={r.resort.terrain} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-subtle">
+              <span>{t("kmPiste", { km: r.resort.piste_km })}</span>
+              <span className="flex items-center gap-1">
+                <PinIcon size={12} /> {t("minFromAirport", { min: Math.round(r.resort.transfer_time_minutes), airport: r.resort.nearest_airport })}
+              </span>
+              <span>{t("offPisteRating", { n: r.resort.off_piste_rating })}</span>
+              <span className="flex items-center gap-1">
+                <SnowIcon size={12} /> {t("snowRating", { n: r.resort.snow_reliability })}
+              </span>
+              <span>{t("nightlifeRating", { n: r.resort.nightlife_rating })}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-line pt-4 text-xs sm:grid-cols-3">
+              {Object.entries(r.score_components).map(([dim, val]) => (
+                <div key={dim} className="flex justify-between text-subtle">
+                  <span className="capitalize">{DIMENSION_KEYS[dim] ? t(DIMENSION_KEYS[dim]) : dim.replace("_", " ")}</span>
+                  <span className="tabular-nums text-muted">{Math.round(val * 100)}%</span>
+                </div>
+              ))}
+              {r.resort.needs_verification && (
+                <p className="col-span-full mt-1 text-warn">{t("needsVerificationNote")}</p>
+              )}
+            </div>
+          </>
+        }
+      />
     </article>
   );
 }
