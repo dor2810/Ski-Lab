@@ -4,6 +4,8 @@
 // later only touches this one file.
 import {
   Plane,
+  Bus,
+  TrainFront,
   BedDouble,
   Car,
   CableCar,
@@ -30,6 +32,8 @@ const defaultProps: Partial<LucideProps> = {
 
 export const FlightIcon = (p: LucideProps) => <Plane {...defaultProps} {...p} />;
 export const StayIcon = (p: LucideProps) => <BedDouble {...defaultProps} {...p} />;
+export const BusIcon = (p: LucideProps) => <Bus {...defaultProps} {...p} />;
+export const TrainIcon = (p: LucideProps) => <TrainFront {...defaultProps} {...p} />;
 export const TransferIcon = (p: LucideProps) => <Car {...defaultProps} {...p} />;
 export const GondolaIcon = (p: LucideProps) => <CableCar {...defaultProps} {...p} />;
 export const MountainIcon = (p: LucideProps) => <Mountain {...defaultProps} {...p} />;

@@ -166,6 +166,9 @@ export interface FlightOption {
   flight_numbers: string[];
   /** What the WHOLE trip costs if this flight is the one taken. */
   trip_total_eur: number;
+  /** Length of the RETURN leg. duration_minutes is the outbound
+   *  only, so the journey timeline must not reuse it. */
+  return_duration_minutes?: number | null;
   /**
    * A real booking deep link shipped with the option (Kiwi-sourced
    * itineraries carry one in the search response). Null for

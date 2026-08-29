@@ -321,6 +321,12 @@ class FlightOption:
     # time and computes the resort pickup itself. None unless the
     # provider gave us a real inbound leg -- never inferred.
     return_departure_time: Optional[_datetime] = None
+    # How long the RETURN leg flies. total_duration_minutes above is
+    # the OUTBOUND only (see the google adapter's own note: "first
+    # departure to last arrival"), so a door-to-door timeline that
+    # reused it for the way home would be quietly wrong on any
+    # asymmetric itinerary. None when the provider didn't say.
+    return_duration_minutes: Optional[int] = None
 
 
 @dataclass

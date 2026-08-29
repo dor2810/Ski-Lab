@@ -355,6 +355,10 @@ class FlightOptionOut(BaseModel):
     # just what the flight costs. The headline total assumes the
     # cheapest flight; this is what makes the alternatives comparable.
     trip_total_eur: float
+    # Outbound length is duration_minutes above; this is the way HOME.
+    # Feeds the door-to-door journey timeline on the card. None when
+    # the provider didn't supply a return leg.
+    return_duration_minutes: Optional[int] = None
     # A real booking deep link shipped WITH the option, when the
     # provider hands one over in the search response (Kiwi does; its
     # bookingUrl rides in FlightOption.booking_token). None for
@@ -834,6 +838,7 @@ def _flight_options_out(resort: Resort, outbound_date, return_date,
             roles=list(p.roles),
             flight_numbers=list(p.option.flight_numbers or []),
             trip_total_eur=round(apply_live_flight_price(cost, p.option.price_eur).total_eur, 2),
+            return_duration_minutes=getattr(p.option, "return_duration_minutes", None),
             # Kiwi keeps its bookingUrl in booking_token; Google's
             # token there is opaque protobuf. Only a real link ships.
             booking_url=(p.option.booking_token

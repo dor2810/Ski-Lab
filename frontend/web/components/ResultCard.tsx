@@ -10,6 +10,7 @@ import { WeatherWeek } from "./WeatherWeek";
 import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
 import { TransferOptions } from "./TransferOptions";
+import { JourneyTimeline } from "./JourneyTimeline";
 import { AccommodationOptions } from "./AccommodationOptions";
 import { MoreDates } from "./MoreDates";
 import {
@@ -282,6 +283,8 @@ export function ResultCard({ result, variants, maxConnections = null }: {
             ))}
         </div>
       )}
+
+      <JourneyTimeline result={r} />
 
       <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 sm:gap-y-2.5 lg:grid-cols-3">
         {lineItems(r).map(({ icon: Icon, labelKey, value, source }) => (

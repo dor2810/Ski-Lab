@@ -175,6 +175,9 @@ def _parse_itinerary(it: dict) -> Optional[FlightOption]:
             # has to be built around (see FlightOption).
             return_departure_time=_parse_iso_datetime(
                 (it.get("inbound") or {}).get("departureTime")),
+            return_duration_minutes=(
+                int((it.get("inbound") or {}).get("durationSeconds") or 0) // 60
+                or None),
         )
     except (KeyError, TypeError, ValueError):
         return None
