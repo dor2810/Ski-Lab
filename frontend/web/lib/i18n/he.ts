@@ -212,6 +212,7 @@ const he: Record<keyof typeof en, string> = {
   accommodationPerNight: "€{price}/לילה",
   accommodationPerPersonStay: "€{price} לאדם לכל השהות",
   dealOf: "דיל {i} מתוך {n} לאתר זה",
+  dealByDateLabel: "מחיר לפי תאריך יציאה",
   dealPrev: "הדיל הקודם",
   dealNext: "הדיל הבא",
   moreDatesTitle: "תאריכים נוספים ב{resort} ({count})",

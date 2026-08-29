@@ -40,7 +40,7 @@ from ...engine.cost_calculator import (
     live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
-    google_flights_url, google_hotels_url, alps2alps_search_url,
+    google_flights_url, google_hotels_url, alps2alps_search_url, alps2alps_deeplink,
     equipment_search_url as _equipment_search_url,
     ski_pass_search_url as _ski_pass_search_url,
 )
@@ -855,7 +855,8 @@ def _is_within_forecast_horizon(start_date) -> bool:
 _ASSUMED_PICKUP_TIME = "14:00"
 
 
-def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: bool) -> str:
+def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: bool,
+                         return_date=None) -> str:
     """
     A booking link for the cheapest real transfer quote found
     (adapters/transfer_adapter.py, Alps2Alps) when available -- falling
@@ -888,6 +889,17 @@ def _transfer_search_url(resort: Resort, pickup_date, group_size: int, attempt: 
         booking = live_transfer_booking_url(resort, pickup_date, _ASSUMED_PICKUP_TIME, group_size)
         if booking:
             return booking
+    # Prefilled deep link into the REAL Alps2Alps funnel for this exact
+    # route/date/party (frozen location codes, zero API calls -- see
+    # engine/links.alps2alps_deeplink). Owner's ask: "a link that gets
+    # me into the real transfer and not some generic search page".
+    # Covers EVERY dated result, not just the live-quoted top one; the
+    # generic form remains only for undated previews and the few
+    # resorts Alps2Alps doesn't serve.
+    deeplink = alps2alps_deeplink(resort.name, pickup_date, _ASSUMED_PICKUP_TIME,
+                                  group_size, return_date=return_date)
+    if deeplink:
+        return deeplink
     return alps2alps_search_url()
 
 
@@ -1044,7 +1056,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 payload.group_size, t.cost.accommodation_price_is_live, t.cost),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
-                                                     payload.group_size, attempt=(i == 0)),
+                                                     payload.group_size, attempt=(i == 0),
+                                                     return_date=return_date),
             transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),
@@ -1533,7 +1546,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 payload.group_size, t.cost.accommodation_price_is_live, t.cost),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
-                                                     payload.group_size, attempt=(i == 0)),
+                                                     payload.group_size, attempt=(i == 0),
+                                                     return_date=t.end_date),
             transfer_info=TransferInfoOut(**transfer_source_for(t.resort)),
             equipment_search_url=_equipment_search_url(t.resort),
             ski_pass_search_url=_ski_pass_search_url(t.resort),

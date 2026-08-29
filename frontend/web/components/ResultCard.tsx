@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { TripResult } from "@/lib/api";
-import { formatEUR, formatDate } from "@/lib/format";
+import { formatEUR, formatDate, formatShortDate } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
 import { TerrainBar } from "./TerrainBar";
@@ -199,27 +199,6 @@ export function ResultCard({ result, variants, maxConnections = null }: {
               )}
             </p>
           )}
-          {deals.length > 1 && (
-            <div className="mt-1.5 flex items-center gap-2">
-              <button
-                type="button"
-                aria-label={t("dealPrev")}
-                disabled={dealIdx === 0}
-                onClick={() => setDealIdx((i) => Math.max(0, i - 1))}
-                className="rounded-md border border-line px-2 py-0.5 text-xs font-bold text-sky disabled:opacity-30"
-              >‹</button>
-              <span className="text-[11px] font-semibold text-subtle">
-                {t("dealOf", { i: String(dealIdx + 1), n: String(deals.length) })}
-              </span>
-              <button
-                type="button"
-                aria-label={t("dealNext")}
-                disabled={dealIdx >= deals.length - 1}
-                onClick={() => setDealIdx((i) => Math.min(deals.length - 1, i + 1))}
-                className="rounded-md border border-line px-2 py-0.5 text-xs font-bold text-sky disabled:opacity-30"
-              >›</button>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -252,6 +231,52 @@ export function ResultCard({ result, variants, maxConnections = null }: {
           </div>
         </div>
       </div>
+
+      {/* PRICE-BY-START-DATE switcher (replaces the ‹ › arrows, owner's
+          ask): one chip per deal, chronological, each carrying its date
+          AND its total so the whole price-by-date picture is visible at
+          a glance -- pressing a chip swaps the entire card to that
+          deal, exactly as the arrows did. The engine's best deal is
+          the pre-selected one (deals[0]); chips are merely sorted by
+          date for scanning, so "first chip" ≠ "best" on purpose.
+          Over-budget deals show their price in the warn tone. */}
+      {deals.length > 1 && (
+        <div
+          role="group"
+          aria-label={t("dealByDateLabel")}
+          className="mt-3 flex flex-wrap gap-1.5"
+        >
+          {deals
+            .map((d, i) => ({ d, i }))
+            .sort((a, b) =>
+              a.d.start_date && b.d.start_date
+                ? a.d.start_date.localeCompare(b.d.start_date)
+                : a.i - b.i
+            )
+            .map(({ d, i }) => (
+              <button
+                key={i}
+                type="button"
+                aria-pressed={i === dealIdx}
+                onClick={() => setDealIdx(i)}
+                className={`flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                  i === dealIdx
+                    ? "border-signal bg-signal font-semibold text-white"
+                    : "border-line bg-sunken text-muted hover:border-line-strong"
+                }`}
+              >
+                <span>{d.start_date ? formatShortDate(d.start_date, locale) : t("dealOf", { i: String(i + 1), n: String(deals.length) })}</span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    i === dealIdx ? "" : d.within_budget ? "text-ink" : "text-warn"
+                  }`}
+                >
+                  {formatEUR(d.cost.total_eur, locale)}
+                </span>
+              </button>
+            ))}
+        </div>
+      )}
 
       <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 sm:gap-y-2.5 lg:grid-cols-3">
         {lineItems(r).map(({ icon: Icon, labelKey, value, source }) => (

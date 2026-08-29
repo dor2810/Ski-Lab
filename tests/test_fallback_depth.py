@@ -274,3 +274,40 @@ def test_second_pass_repricing_reflags_rows_pushed_over_budget():
             assert not t.within_budget, (
                 f"{t.resort.name} {t.start_date}: live total "
                 f"{t.cost.total_eur} exceeds budget but is flagged within budget")
+
+
+def test_a_resorts_deals_are_ordered_by_their_real_scores():
+    # Owner report 2026-08-29 ("bansko had two possible times... it
+    # showed first the one that is earlier in the year but more
+    # expensive"): display order froze on PRE-repricing scores (static
+    # ties break toward the earlier date), so after finalize() landed
+    # the real prices, deal 1 could be strictly worse than deal 2 --
+    # pricier AND lower-scoring. Within one resort's own display
+    # slots, rows must be re-ranked on their post-repricing scores
+    # (within-budget rows always ahead of over-budget ones); global
+    # positions across resorts stay frozen.
+    from ski_optimizer.engine.date_search import search_date_range
+    from ski_optimizer.models import UserPreferences
+
+    resorts = load_resorts()
+    prefs = UserPreferences(budget_eur_per_person=2500, ski_days=5,
+                            target_resort=resorts[0].name)
+
+    def earlier_is_pricier(resort, s, e, _prefs):
+        return 500.0 - (s.day * 5)
+
+    options = search_date_range(
+        resorts, prefs,
+        earliest_date=datetime.date(2027, 1, 4),
+        latest_date=datetime.date(2027, 1, 31),
+        top_n=4, pad_with_duplicates=False,
+        # Cap small enough that finalize() (not pass 1) prices most of
+        # the displayed rows -- the exact conditions of the report.
+        live_reprice_n=2, max_results_per_resort=4,
+        flight_cost_fn=earlier_is_pricier,
+    )
+    keys = [(not t.within_budget, -t.score) for t in options]
+    assert keys == sorted(keys), (
+        "a resort's deals must be ordered by real (post-repricing) score: "
+        + str([(str(t.start_date), round(t.cost.total_eur), round(t.score, 4))
+               for t in options]))

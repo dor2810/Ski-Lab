@@ -43,6 +43,7 @@ own docstring for what's verified about them.
 """
 from datetime import date
 from typing import Optional
+from urllib.parse import urlencode
 
 from ..models import Resort
 from .cost_calculator import airport_codes_for
@@ -103,6 +104,54 @@ def google_hotels_url(resort: Resort, checkin_date: Optional[date] = None,
 # fallback in spirit (always real, always working) but reaches a
 # generic search TOOL, not resort-specific results.
 ALPS2ALPS_BOOKING_FORM_URL = "https://booking.alps2alps.com/booking/index"
+
+ALPS2ALPS_QUICK_CHECKOUT_URL = "https://booking.alps2alps.com/booking/quick-checkout"
+
+
+def alps2alps_deeplink(resort_name: str, pickup_date, pickup_time: str,
+                       adults: int, return_date=None,
+                       return_time: str = None) -> Optional[str]:
+    """
+    A REAL, prefilled Alps2Alps booking page for this exact transfer --
+    route, date, party size, return leg -- built OFFLINE from the
+    frozen location codes (data/alps2alps_locations.py), zero API
+    calls at search time.
+
+    HOW (verified live 2026-08-29): the per-vehicle booking_url the
+    /transfer-options API returns is a plain parameterized link --
+    /booking/quick-checkout?from=<airport-code>&to=<resort-code>&
+    date=...&time=...&adults=...[&return_date=...&return_time=...] --
+    and WITHOUT a vehicle id it lands inside the live funnel (step-3)
+    with the actual route, dates and party loaded, real prices on
+    screen (Sofia airport -> Bansko confirmed, return leg echoed).
+    Only the codes are provider-specific, and codes are stable place
+    ids -- exactly the fetch-once-ship-as-data pattern of
+    transfer_drive_times.py, and the only shape that survives their
+    rate limits (~14 rapid quote calls then a 429 with a >10min
+    cooldown, measured 2026-08-28).
+
+    None when this resort has no frozen code pair (see UNRESOLVED in
+    the data file for the exact reason per resort) or no date --
+    callers fall back to the generic booking form, never a dead link.
+    """
+    if pickup_date is None:
+        return None
+    try:
+        from ..data.alps2alps_locations import ALPS2ALPS_LOCATIONS
+    except ImportError:
+        return None
+    loc = ALPS2ALPS_LOCATIONS.get(resort_name)
+    if not loc:
+        return None
+    params = {
+        "from": loc["airport_code"], "to": loc["resort_code"],
+        "date": pickup_date.isoformat(), "time": pickup_time,
+        "adults": adults, "currency": "EUR",
+    }
+    if return_date is not None:
+        params["return_date"] = return_date.isoformat()
+        params["return_time"] = return_time or pickup_time
+    return f"{ALPS2ALPS_QUICK_CHECKOUT_URL}?{urlencode(params)}"
 
 
 def alps2alps_search_url() -> str:

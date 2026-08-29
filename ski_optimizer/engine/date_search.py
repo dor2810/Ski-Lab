@@ -591,6 +591,32 @@ def search_date_range(
                 t, cost=f.cost, score=f.score,
                 score_components=f.score_components,
                 within_budget=f.cost.total_eur <= prefs.budget_eur_per_person))
+
+        # Within each resort, re-rank its OWN display slots on the
+        # real (post-repricing) scores -- global positions stay frozen
+        # (see the docstring), but "deal 1 of N" for a resort must be
+        # its genuinely best deal. Without this, static-estimate ties
+        # break toward the earlier date BEFORE the real prices land,
+        # and the card leads with a date that is pricier AND
+        # lower-scoring than its own alternatives (owner's Bansko
+        # report, 2026-08-29). Within-budget rows always outrank
+        # over-budget ones, whatever their scores.
+        slots: dict = {}
+        for i, t in enumerate(out):
+            slots.setdefault(t.resort.name, []).append(i)
+        for idxs in slots.values():
+            if len(idxs) < 2:
+                continue
+            ranked = sorted((out[i] for i in idxs),
+                            key=lambda t: (not t.within_budget, -t.score))
+            # The "More dates" alternatives ride on a resort's lead
+            # row; keep them on whichever row leads after the re-rank.
+            alts = next((t.alternatives for t in ranked if t.alternatives), None)
+            for slot, row in zip(idxs, ranked):
+                cleaned = dc_replace(row, alternatives=[]) if row.alternatives else row
+                out[slot] = cleaned
+            if alts:
+                out[idxs[0]] = dc_replace(out[idxs[0]], alternatives=alts)
         return out
 
     results = [t for t in all_evaluated if t.cost.total_eur <= prefs.budget_eur_per_person]

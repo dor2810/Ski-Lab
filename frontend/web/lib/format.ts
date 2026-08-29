@@ -7,6 +7,14 @@ export function formatDate(iso: string, locale: string = "en-GB"): string {
   return d.toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
+// Chip label for the price-by-start-date switcher: weekday + date,
+// e.g. "Sat 5 Dec" / "שבת 5 בדצמ׳" -- the weekday is load-bearing on a
+// ski card (Saturday is the classic changeover day).
+export function formatShortDate(iso: string, locale: string = "en-GB"): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+}
+
 // Short weekday label for a single day in a weather breakdown, e.g.
 // "Sun" / "יום א׳" depending on locale.
 export function formatWeekday(iso: string, locale: string = "en-GB"): string {

@@ -220,6 +220,7 @@ const en = {
   accommodationPerNight: "€{price}/night",
   accommodationPerPersonStay: "€{price} per person for the stay",
   dealOf: "Deal {i} of {n} for this resort",
+  dealByDateLabel: "Price by start date",
   dealPrev: "Previous deal",
   dealNext: "Next deal",
   moreDatesTitle: "More dates at {resort} ({count})",

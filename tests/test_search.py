@@ -317,11 +317,20 @@ def test_transfer_search_url_is_populated_only_for_the_top_result(authed_client,
     assert len(body["results"]) > 1
     assert len(calls) <= 1
     assert body["results"][0]["transfer_search_url"] == "https://booking.alps2alps.com/fake"
-    # Every OTHER result still gets a real, working link -- just the
-    # generic Alps2Alps booking form, not a live-quoted one (attempt
-    # is gated to the top result only, same as flight/accommodation).
+    # Every OTHER result still gets a real, working link -- since
+    # 2026-08-29 a PREFILLED deep link into the Alps2Alps funnel for
+    # its own route/date/party (built offline from frozen location
+    # codes, no live request -- owner: "a link that gets me into the
+    # real transfer and not some generic search page"), falling back
+    # to the generic form only where Alps2Alps has no coverage.
+    from ski_optimizer.data.alps2alps_locations import ALPS2ALPS_LOCATIONS
     for result in body["results"][1:]:
-        assert result["transfer_search_url"] == "https://booking.alps2alps.com/booking/index"
+        url = result["transfer_search_url"]
+        if result["resort"]["name"] in ALPS2ALPS_LOCATIONS:
+            assert "quick-checkout" in url, url
+            assert "date=2027-01-10" in url, url
+        else:
+            assert url == "https://booking.alps2alps.com/booking/index"
 
 
 def test_transfer_search_url_falls_back_to_the_booking_form_when_the_provider_has_nothing(authed_client, monkeypatch):
@@ -331,12 +340,28 @@ def test_transfer_search_url_falls_back_to_the_booking_form_when_the_provider_ha
     from ski_optimizer.api.routes import search as search_route
 
     monkeypatch.setattr(search_route, "live_transfer_booking_url", lambda *a, **k: None)
+    monkeypatch.setattr(search_route, "alps2alps_deeplink", lambda *a, **k: None)
     resp = authed_client.post("/trips/search", json={
         "budget_eur_per_person": 1500, "ski_days": 5,
         "target_resort": "Livigno", "outbound_date": "2027-01-10",
     }, headers=CSRF_HEADERS)
     body = resp.json()
     assert body["results"][0]["transfer_search_url"] == "https://booking.alps2alps.com/booking/index"
+
+
+def test_transfer_link_is_prefilled_when_the_live_quote_fails(authed_client, monkeypatch):
+    # The middle tier: no live quote, but Alps2Alps DOES cover this
+    # resort -- the link must still land in the real funnel with this
+    # trip's own route and dates, not on the generic form.
+    from ski_optimizer.api.routes import search as search_route
+
+    monkeypatch.setattr(search_route, "live_transfer_booking_url", lambda *a, **k: None)
+    resp = authed_client.post("/trips/search", json={
+        "budget_eur_per_person": 5000, "ski_days": 5,
+        "target_resort": "Livigno", "outbound_date": "2027-01-10",
+    }, headers=CSRF_HEADERS)
+    url = resp.json()["results"][0]["transfer_search_url"]
+    assert "quick-checkout" in url and "date=2027-01-10" in url, url
 
 
 def test_only_the_top_result_attempts_a_booking_link(authed_client, monkeypatch):
