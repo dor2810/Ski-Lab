@@ -22,11 +22,43 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./ski_lab.db")
 
-# SQLite needs this flag when used from multiple threads (FastAPI's default
-# threadpool for sync routes); Postgres doesn't need or accept it.
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# How long a pooled connection may live. Neon parks idle compute and
+# drops the socket well before an hour, so connections are retired on
+# our side first.
+_POOL_RECYCLE_SECONDS = 300
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+def engine_kwargs(url: str) -> dict:
+    """
+    How to build the engine for a given database URL.
+
+    pool_pre_ping IS NOT OPTIONAL HERE. Without it, SQLAlchemy hands out
+    whatever is in the pool, including a connection the provider has
+    already closed. Measured in production 2026-09-01: POST /auth/register
+    returned 500 with
+
+        psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+    because Neon had suspended the compute between requests. This app's
+    traffic is a few users with long gaps -- precisely the pattern that
+    keeps a pooled connection sitting idle until it is dead. Pre-ping
+    costs one trivial round trip and transparently replaces it.
+
+    Separated from the module-level engine below so the settings can be
+    asserted without a live database (see
+    tests/test_db_connection_pool.py).
+    """
+    is_sqlite = url.startswith("sqlite")
+    return {
+        # SQLite needs this flag when used from multiple threads (FastAPI's
+        # default threadpool for sync routes); Postgres doesn't accept it.
+        "connect_args": {"check_same_thread": False} if is_sqlite else {},
+        "pool_pre_ping": True,
+        "pool_recycle": _POOL_RECYCLE_SECONDS,
+    }
+
+
+engine = create_engine(DATABASE_URL, **engine_kwargs(DATABASE_URL))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
