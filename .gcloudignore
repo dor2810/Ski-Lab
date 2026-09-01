@@ -1,0 +1,21 @@
+# What Cloud Build actually needs is only what the Dockerfile COPYs:
+# requirements.txt, ski_optimizer/ and data/. Without this file gcloud
+# uploaded the whole working tree -- 47,136 files, 997 MiB, mostly
+# .venv (327M), frontend/web/node_modules (714M) and .next (402M) --
+# which pushed a build past ten minutes before it even started.
+#
+# Allowlist rather than blocklist: a new heavy directory should slow
+# nobody's deploy by default.
+*
+
+!/Dockerfile
+!/requirements.txt
+!/ski_optimizer/
+!/ski_optimizer/**
+!/data/
+!/data/**
+
+# Never ship these even from inside the allowed paths.
+**/__pycache__/
+**/*.pyc
+.env
