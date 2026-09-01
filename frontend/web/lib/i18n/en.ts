@@ -342,7 +342,7 @@ const en = {
   priceCellFetchReal: "Get the real price for {resort} starting {date} — uses 1 credit",
   priceCellFetchRealTitle: "This day is our estimate. Fetching the real flight and hotel prices for it uses 1 of your daily credits.",
   priceCellFetching: "checking…",
-  priceCalendarStateLegend: "Filled days are trips we priced for real and you can open below. Outlined days are our estimate — click one to fetch its real price (1 credit).",
+  priceCalendarStateLegend: "Filled days open a full trip below. Outlined days are ones we have not worked out in detail — click one to price it properly (1 credit). A ~ means the figure is our estimate rather than a live quote.",
   priceCalendarFetchFailed: "Could not get a real price for that day. No credit was spent if the search never ran.",
   priceCalendarEstimatedLegend: "Outlined days marked ~ are our own estimate, not a live quote — only the shortlisted trips get real flight and hotel prices. Estimates move by season, not day by day, so neighbouring outlined days often share a figure.",
   priceViewCompare: "Compare resorts",

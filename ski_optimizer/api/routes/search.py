@@ -593,6 +593,18 @@ class AccommodationChoiceOut(BaseModel):
 
 class TripResultOut(BaseModel):
     resort: ResortOut
+    # The dates this trip was priced FOR, echoed back.
+    #
+    # They were missing entirely, so a fixed-date search returned a
+    # priced trip with no indication of which day it belonged to. Found
+    # 2026-09-01 by the calendar's "price this day properly" action: it
+    # got a valid result, could not tell which date it was for, and
+    # dropped it -- the credit was spent and nothing appeared.
+    #
+    # None only for the landing-page preview, which deliberately runs
+    # without a date (see FixedDateSearchParams.outbound_date).
+    start_date: Optional[datetime.date] = None
+    end_date: Optional[datetime.date] = None
     cost: CostBreakdownOut
     score: float
     score_components: Dict[str, float]
@@ -1409,6 +1421,8 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             t.resort, payload.outbound_date, prefs.nights, prefs.rooms_needed,
             t.cost.accommodation_price_is_live)
         results.append(TripResultOut(
+            start_date=payload.outbound_date,
+            end_date=return_date,
             resort=_to_resort_out(t.resort),
             cost=CostBreakdownOut(
                 flight_eur=t.cost.flight_eur, transfer_eur=t.cost.transfer_eur,

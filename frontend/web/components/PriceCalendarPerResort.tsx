@@ -255,18 +255,31 @@ export function PriceCalendarPerResort({
                 // still be striped and it read as noise. One state,
                 // one treatment: a filled cell is a trip, an outlined
                 // one is a number we worked out.
+                // FILL FOLLOWS THE ACTION, not the price's provenance.
+                //
+                // These were keyed off `estimated` while the click was
+                // keyed off `canOpen`, and on real data they diverge:
+                // measured against production, 24 days are live-priced
+                // and 24 have cards, but only 12 are both -- the
+                // repricing set is picked by static score BEFORE
+                // repricing, the displayed set by score after. That
+                // left twelve days looking solid and openable while
+                // doing nothing, which is the dead click all over
+                // again. Now: filled means "opens a card", outlined
+                // means "click to fetch it". The ~ still marks an
+                // estimate, but it no longer decides the shape.
                 const cellClass = `relative flex aspect-[5/4] flex-col items-center justify-center rounded-lg px-1 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-signal ${
-                  canOpen ? "cursor-pointer hover:scale-[1.04]" : ""
-                } ${onFetchReal && estimated ? "cursor-pointer hover:scale-[1.04]" : ""} ${
-                  isCheapest ? "ring-2 ring-signal ring-offset-1" : ""
-                } ${estimated ? "border-2 border-dashed" : ""}`;
-                const cellStyle = estimated
+                  canOpen || onFetchReal ? "cursor-pointer hover:scale-[1.04]" : ""
+                } ${isCheapest ? "ring-2 ring-signal ring-offset-1" : ""} ${
+                  canOpen ? "" : "border-2 border-dashed"
+                }`;
+                const cellStyle = canOpen
+                  ? { backgroundColor: bg, color: fg }
                   // The ramp colour moves to the BORDER and the text, so
-                  // the cell still reads as its price without pretending
-                  // to be a quote.
-                  ? { borderColor: bg, color: "var(--color-muted)",
-                      backgroundColor: "transparent" }
-                  : { backgroundColor: bg, color: fg };
+                  // the cell still reads as its price without claiming
+                  // to be a trip we can show.
+                  : { borderColor: bg, color: "var(--color-muted)",
+                      backgroundColor: "transparent" };
                 const inner = (
                   <>
                     <span className="text-[10px] opacity-80">{day.getDate()}</span>
@@ -279,8 +292,12 @@ export function PriceCalendarPerResort({
                   // An estimate is worth a real lookup, and that lookup
                   // costs a credit -- so it is an offer, not a silent
                   // dead end.
-                  if (estimated && onFetchReal) {
-                    const busy = fetching === key;
+                  if (onFetchReal) {
+                    // The page keys this by "resort|date"; comparing it
+                    // against the bare date meant the busy state never
+                    // showed and a two-minute fetch looked like a dead
+                    // click (measured against production 2026-09-01).
+                    const busy = fetching === `${active}|${key}`;
                     return (
                       <button
                         key={key}
