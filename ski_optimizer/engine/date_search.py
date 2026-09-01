@@ -369,6 +369,11 @@ def search_date_range(
     # See cap_per_resort: False = user-facing result lists, where a
     # shorter varied list beats one padded with duplicate resorts.
     pad_with_duplicates: bool = True,
+    # OUT-PARAMETER, filled with one compact record per (resort, start
+    # date) for EVERY date evaluated -- not just the rows that survive
+    # ranking and capping. See the note below on why the calendar needs
+    # this. Left as None by callers that do not want it; never read.
+    series_out: Optional[list] = None,
 ) -> List[DatedTripOption]:
     """
     Full funnel: shortlist resorts, then evaluate each across every
@@ -618,6 +623,31 @@ def search_date_range(
             if alts:
                 out[idxs[0]] = dc_replace(out[idxs[0]], alternatives=alts)
         return out
+
+    # THE PRICE-BY-DATE SERIES, and why it exists.
+    #
+    # This function answers "what are the best trips", and the answer is
+    # capped: top_n rows, at most max_results_per_resort each. Measured
+    # 2026-08-30 on a whole-December search: 24 candidate start dates
+    # were evaluated and priced, and the response carried THREE distinct
+    # dates (5, 12, 19 Dec) across 10 rows -- because the best-scoring
+    # rows cluster on the best dates.
+    #
+    # The price calendar asks a different question -- "what does each
+    # day cost" -- and was being fed this ranked list, so 21 of 24
+    # priced days rendered blank under a note claiming they had no
+    # result. They had a result; it was discarded by the cap.
+    #
+    # Every figure here is already computed, so this is free.
+    if series_out is not None:
+        best_per_pair: dict = {}
+        for t in all_evaluated:
+            key = (t.resort.name, t.start_date)
+            seen = best_per_pair.get(key)
+            if seen is None or t.cost.total_eur < seen.cost.total_eur:
+                best_per_pair[key] = t
+        series_out.extend(
+            sorted(best_per_pair.values(), key=lambda t: (t.start_date, t.resort.name)))
 
     results = [t for t in all_evaluated if t.cost.total_eur <= prefs.budget_eur_per_person]
 

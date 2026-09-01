@@ -147,6 +147,11 @@ class UserPreferences:
     # --- trip style (used by the static cost model) ---
     skill_level: str = "intermediate"      # beginner | intermediate | advanced | expert
     accommodation_tier: str = "standard"   # budget | standard | luxury
+    # WHICH property to price the trip on. accommodation_tier above only
+    # nudges which RESORT scores well (engine/scoring.py), using that
+    # resort's average nightly rate -- it never chose a property, which
+    # is why every trip came back priced on the cheapest bed found.
+    accommodation_filter: Optional["AccommodationFilter"] = None
     food_profile: str = "normal"           # budget | normal | luxury
     equipment_tier: str = "standard"       # standard | premium
     rooms_needed: Optional[int] = None     # defaults to ceil(group_size / 2) if not set
@@ -383,8 +388,95 @@ class AccommodationOption:
     property_name: str
     rating: Optional[float] = None                 # provider's own scale, not normalized
     distance_to_lifts_km: Optional[float] = None
+    # QUALITY ATTRIBUTES. Only the `stays` source supplies these (see
+    # adapters/stays_adapter.py); the primary scraper cannot, so they
+    # are None on any property that source did not also return. None
+    # means UNKNOWN and must never be rendered as "1 star" or "no
+    # reviews" -- a property Google has not classified is not a bad
+    # property.
+    star_class: Optional[int] = None               # 1-5, the hotel's own classification
+    review_count: Optional[int] = None             # how many reviews `rating` averages
+    amenities: Optional[list] = None               # provider's own vocabulary, e.g. ["SPA", "PARKING"]
+    # WHERE a star claim comes from. "published" = the provider told us
+    # this property's class. "provider_filter" = the provider filtered
+    # the search to a class range but did not publish the individual
+    # class, so we may say what we ASKED for and must not print stars
+    # against the property. None = no claim either way.
+    star_class_source: Optional[str] = None
     cancellation_policy: Optional[str] = None       # free text, e.g. "free_cancellation", "non_refundable"
     booking_token: Optional[str] = None             # opaque, provider-specific; see FlightOption's docstring
+
+
+@dataclass(frozen=True)
+class AccommodationFilter:
+    """
+    What the traveller will accept for a bed, as a constraint on WHICH
+    property the trip is priced on.
+
+    WHY IT EXISTS: every trip used to be priced on the cheapest bed the
+    search returned, whatever it was, while the only accommodation knob
+    in the API (accommodation_tier) merely nudged which RESORT scored
+    well, using that resort's average nightly rate -- it never touched
+    the property. So asking for "luxury" still costed the trip on a
+    hostel.
+
+    All fields optional; None means "no constraint". A property whose
+    star_class or rating is UNKNOWN cannot satisfy a floor on that
+    field -- see engine/cost_calculator.select_live_accommodation.
+    """
+    # A ceiling on this trip's accommodation line, per person, for the
+    # WHOLE stay -- the same unit the cost breakdown shows, not a
+    # nightly rate.
+    max_eur_per_person: Optional[float] = None
+    min_star_class: Optional[int] = None          # 1-5, the property's own classification
+    min_rating: Optional[float] = None            # guest review score, provider's scale
+    # NOT SURFACED IN THE PRODUCT, deliberately: the provider's amenity
+    # data is a truncated, partly wrong subset (BEACH_ACCESS on 65% of
+    # ALPINE properties; WIFI on 0% yet its filter matches nearly
+    # everything) and its filter does not discriminate. Measurements in
+    # adapters/stays_adapter._parse_hotel. Re-measure before using.
+    required_amenities: Optional[list] = None     # provider vocabulary, e.g. ["SPA"]
+    # Straight-line km to the nearest lift (adapters/lift_distance.py).
+    # The owner's stated first question about any ski bed.
+    max_distance_to_lifts_km: Optional[float] = None
+    # Guards a rating floor against thin data: 4.7 from 34 reviews is
+    # not the same claim as 4.4 from 1,401 (both seen live).
+    min_review_count: Optional[int] = None
+
+    def is_empty(self) -> bool:
+        return (self.max_eur_per_person is None and self.min_star_class is None
+                and self.min_rating is None and not self.required_amenities
+                and self.max_distance_to_lifts_km is None
+                and self.min_review_count is None)
+
+
+@dataclass(frozen=True)
+class AccommodationChoiceReport:
+    """
+    How a filtered pick went, so the UI can say what happened instead of
+    silently showing fewer results. `unrated_set_aside` is the honest
+    part: properties dropped only because the provider publishes no
+    star class or rating for them, not because they failed the test.
+    """
+    considered: int = 0
+    matched: int = 0
+    unrated_set_aside: int = 0
+    cheapest_available_eur_per_person: Optional[float] = None
+    # True when NOTHING carried a class/rating to judge by and the pick
+    # is therefore an unclassified property. The trip is real and
+    # priced, but the quality floor was NOT verified -- callers must
+    # say so rather than implying the filter was met.
+    # Properties the PROVIDER filtered to the requested class but whose
+    # individual class it does not publish. Real vetting we cannot
+    # re-check -- neither a verified match nor an unknown.
+    provider_vetted: int = 0
+    fell_back_to_unrated: bool = False
+    # True when every property WAS rated and every one sat below the
+    # floor, so the pick is a real place that is known not to meet it.
+    # Still better than returning nothing: returning nothing sends the
+    # ranker back to a static estimate, replacing a real price with a
+    # generic guess. Flagged so the UI never implies a match.
+    fell_back_below_floor: bool = False
 
 
 @dataclass

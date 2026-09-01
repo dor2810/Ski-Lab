@@ -645,6 +645,8 @@ def live_accommodation_cost_eur_per_person(
     nights: int,
     group_size: int,
     rooms_needed: int,
+    accommodation_filter=None,
+    property_type: str = "HOTELS",
 ) -> Optional[float]:
     """
     Real per-person accommodation cost for a dated stay, or None if live
@@ -674,10 +676,14 @@ def live_accommodation_cost_eur_per_person(
     comparable/swappable.
     """
     try:
-        cheapest = _cheapest_live_accommodation_option(resort, checkin_date, nights, rooms_needed)
-        if cheapest is None:
-            return None
-        return round((cheapest.price_eur_per_night * nights * rooms_needed) / group_size, 2)
+        # With no filter this is still the cheapest bed, unchanged; with
+        # one, it is the cheapest bed that actually meets it -- and None
+        # when nothing does, which the caller must NOT paper over with
+        # the cheapest (see select_live_accommodation).
+        _, per_person, _ = select_live_accommodation(
+            resort, checkin_date, nights, rooms_needed, group_size, accommodation_filter,
+            property_type)
+        return per_person
     except Exception:
         # Deliberately broad, matching live_flight_cost_eur: a hotel-
         # provider outage should degrade the trip estimate, not take
@@ -701,7 +707,164 @@ def _cheapest_live_accommodation_option(resort: Resort, checkin_date, nights: in
     return min(result.options, key=lambda o: o.price_eur_per_night)
 
 
-def _live_accommodation_search(resort: Resort, checkin_date, nights: int, rooms_needed: int):
+def select_live_accommodation(resort: Resort, checkin_date, nights: int,
+                              rooms_needed: int, group_size: int,
+                              accommodation_filter=None,
+                              property_type: str = "HOTELS"):
+    """
+    WHICH property this trip is priced on, given what the traveller will
+    accept. Returns (option, per_person_eur, AccommodationChoiceReport).
+
+    Cheapest-that-qualifies, never dearest-that-fits: a budget is a
+    ceiling, not a target. With no filter this is exactly the old
+    behaviour -- the cheapest bed -- so unfiltered searches are
+    unchanged.
+
+    UNKNOWN IS NOT A PASS. Google publishes no star class for some real
+    inventory (verified live 2026-08-30: Hotel Altapura in Val Thorens
+    came back unclassified beside four-star neighbours). Such a
+    property cannot satisfy "4 stars or better", because we would be
+    asserting something we do not know. It is set aside and COUNTED, so
+    the caller can say so rather than quietly returning less.
+
+    Returns (None, None, report) when nothing qualifies. The caller
+    must not substitute the cheapest bed: that would tell the traveller
+    their filter was met when it was not.
+    """
+    from ..models import AccommodationChoiceReport
+
+    result = _live_accommodation_search(resort, checkin_date, nights, rooms_needed,
+                                        accommodation_filter, group_size, property_type)
+    options = result.options
+    # ENRICH ONLY WHEN IT IS NEEDED. Pricing an unfiltered trip needs a
+    # price and nothing else, and enrichment is a SECOND network call
+    # (adapters/stays_adapter) whose failure would land in this
+    # function's caller as None -- i.e. an ESTIMATED accommodation line
+    # on a trip we could previously price live. No filter, no extra
+    # dependency, no new way to lose a live price.
+    if accommodation_filter is not None and not accommodation_filter.is_empty():
+        try:
+            options = _enrich_options(resort, checkin_date, nights, rooms_needed, options)
+        except Exception:
+            # Enrichment is a nice-to-have. Losing it costs us the star
+            # classes; letting it raise would cost us the whole live
+            # price and hand the traveller an ESTIMATE instead.
+            logger.warning("accommodation enrichment failed for %s; "
+                           "filtering on what we already have", resort.name, exc_info=True)
+    if not options:
+        return None, None, AccommodationChoiceReport()
+
+    def per_person(option) -> float:
+        # Same arithmetic as the unfiltered path and the static
+        # estimate, so the three stay directly comparable.
+        return round((option.price_eur_per_night * nights * rooms_needed) / group_size, 2)
+
+    cheapest_any = min(per_person(o) for o in options)
+    if accommodation_filter is None or accommodation_filter.is_empty():
+        pick = min(options, key=lambda o: o.price_eur_per_night)
+        return pick, per_person(pick), AccommodationChoiceReport(
+            considered=len(options), matched=len(options),
+            cheapest_available_eur_per_person=cheapest_any)
+
+    f = accommodation_filter
+    wanted = {a.upper() for a in (f.required_amenities or [])}
+    matched, vetted, unrated = [], [], []
+    for option in options:
+        # The spend cap and the amenity list bind everywhere, including
+        # the fallback: a budget is not a preference.
+        if f.max_eur_per_person is not None and per_person(option) > f.max_eur_per_person:
+            continue
+        if wanted and not wanted.issubset({a.upper() for a in (option.amenities or [])}):
+            continue
+
+        # UNKNOWN is not FAILED. A property the provider never
+        # classified is a gap in our data; a 3-star when 5 was asked
+        # for is a known answer. Only the first is worth falling back
+        # on, and only when nothing else qualifies at all.
+        judged_unknown = False
+        if f.min_star_class is not None:
+            if option.star_class is None:
+                judged_unknown = True
+            elif option.star_class < f.min_star_class:
+                continue
+        if f.min_rating is not None:
+            if option.rating is None:
+                judged_unknown = True
+            elif option.rating < f.min_rating:
+                continue
+        if f.min_review_count is not None:
+            # A rating floor with no sample size behind it is thin: 4.7
+            # from 34 guests and 4.4 from 1,401 are different claims
+            # (both real, Val Thorens 2026-08-30).
+            if option.review_count is None:
+                judged_unknown = True
+            elif option.review_count < f.min_review_count:
+                continue
+        if f.max_distance_to_lifts_km is not None:
+            # Straight-line metres to the nearest lift, computed from
+            # coordinates against OpenStreetMap -- unknown wherever the
+            # provider gave us no coordinates, so it degrades exactly
+            # like an unpublished star class.
+            if option.distance_to_lifts_km is None:
+                judged_unknown = True
+            elif option.distance_to_lifts_km > f.max_distance_to_lifts_km:
+                continue
+
+        if not judged_unknown:
+            matched.append(option)
+        elif (f.min_star_class is not None and option.star_class is None
+              and option.star_class_source == "provider_filter"):
+            # Google narrowed the search to this class range but does
+            # not publish the individual class here. Vetted, not
+            # verified: better than an unknown, weaker than a published
+            # class, and never printed as stars against the property.
+            vetted.append(option)
+        else:
+            unrated.append(option)
+
+    report = AccommodationChoiceReport(
+        considered=len(options), matched=len(matched), provider_vetted=len(vetted),
+        unrated_set_aside=len(unrated),
+        cheapest_available_eur_per_person=cheapest_any)
+    if matched:
+        pick = min(matched, key=lambda o: o.price_eur_per_night)
+        return pick, per_person(pick), report
+
+    # Nothing verified. Rather than returning None -- which sends the
+    # ranker back to the STATIC ESTIMATE (engine/scoring.py keeps the
+    # estimate when live pricing is None), pricing the trip on a
+    # generic guess -- offer the cheapest real place we did find, and
+    # flag that its quality is unverified. Owner's rule, 2026-08-30:
+    # "put them at the bottom, and if there is no option with rate,
+    # put the options you find."
+    if vetted:
+        pick = min(vetted, key=lambda o: o.price_eur_per_night)
+        return pick, per_person(pick), report
+    if unrated:
+        pick = min(unrated, key=lambda o: o.price_eur_per_night)
+        return pick, per_person(pick), dataclasses.replace(report, fell_back_to_unrated=True)
+
+    # LAST RESORT: everything was rated and everything sat below the
+    # floor. Returning None here would be the regression the owner
+    # named -- "previously we would find but now not" -- because the
+    # ranker answers None with the static estimate, so a real EUR-priced
+    # property would be replaced by a generic guess. Offer the cheapest
+    # real place inside the hard constraints instead, clearly flagged
+    # as not meeting the floor. Ranked after unrated on purpose:
+    # "unknown" may yet be what you wanted; "below your floor" is known
+    # not to be.
+    below_floor = [o for o in options
+                   if (f.max_eur_per_person is None or per_person(o) <= f.max_eur_per_person)
+                   and (not wanted or wanted.issubset({a.upper() for a in (o.amenities or [])}))]
+    if below_floor:
+        pick = min(below_floor, key=lambda o: o.price_eur_per_night)
+        return pick, per_person(pick), dataclasses.replace(report, fell_back_below_floor=True)
+    return None, None, report
+
+
+def _live_accommodation_search(resort: Resort, checkin_date, nights: int, rooms_needed: int,
+                               accommodation_filter=None, group_size: int = 2,
+                               property_type: str = "HOTELS"):
     """
     Our own Google Hotels scraper first, the free `stays` package
     second -- the accommodation twin of the flight chain's
@@ -719,6 +882,26 @@ def _live_accommodation_search(resort: Resort, checkin_date, nights: int, rooms_
     Both return AccommodationSearchResult, so callers see one shape.
     """
     from ..adapters import google_hotels_adapter
+    # WITH A FILTER, `stays` LEADS. Our own scraper cannot filter and
+    # cannot see a star class, so filtering its output means filtering
+    # whatever a relevance search happened to return -- measured
+    # 2026-08-30, that missed real four-star inventory in Kitzbuehel
+    # entirely. `stays` asks Google to narrow the search instead.
+    # Without a filter nothing changes: our scraper still leads.
+    filtered = accommodation_filter is not None and not accommodation_filter.is_empty()
+    if filtered or property_type != "HOTELS":
+        try:
+            from ..adapters import stays_adapter
+            narrowed = stays_adapter.search_accommodation(
+                resort, checkin_date, nights, rooms_needed,
+                accommodation_filter=accommodation_filter, group_size=group_size,
+                property_type=property_type)
+            if narrowed.options:
+                return narrowed
+        except Exception:
+            logger.warning("filtered accommodation search failed for %s", resort.name,
+                           exc_info=True)
+
     try:
         result = google_hotels_adapter.search_accommodation(
             resort, checkin_date, nights, rooms_needed)
@@ -808,7 +991,8 @@ def _enrich_options(resort: Resort, checkin_date, nights: int, rooms_needed: int
     """
     if not options:
         return options
-    if all(o.rating is not None and o.distance_to_lifts_km is not None for o in options):
+    if all(o.rating is not None and o.distance_to_lifts_km is not None
+           and o.star_class is not None for o in options):
         return options
 
     def norm(name: str) -> str:
@@ -840,6 +1024,14 @@ def _enrich_options(resort: Resort, checkin_date, nights: int, rooms_needed: int
             distance_to_lifts_km=(option.distance_to_lifts_km
                                   if option.distance_to_lifts_km is not None
                                   else match.distance_to_lifts_km),
+            # Star class, review count and amenities exist ONLY on this
+            # side -- the primary scraper never sets them -- so an
+            # unmatched property keeps None, an honest "we don't know".
+            star_class=(option.star_class if option.star_class is not None
+                        else match.star_class),
+            review_count=(option.review_count if option.review_count is not None
+                          else match.review_count),
+            amenities=option.amenities if option.amenities else match.amenities,
         ))
     return out
 
@@ -850,6 +1042,9 @@ def live_accommodation_options(
     nights: int,
     rooms_needed: int,
     limit: int = 4,
+    accommodation_filter=None,
+    group_size: int = 2,
+    property_type: str = "HOTELS",
 ):
     """
     The cheapest few real, named properties behind this result's
@@ -872,9 +1067,28 @@ def live_accommodation_options(
     Returns [] rather than raising, matching every other live_* helper.
     """
     try:
-        result = _live_accommodation_search(resort, checkin_date, nights, rooms_needed)
+        # Same filtered search the pricing used, so the list shown on
+        # the card is drawn from the same inventory the trip was priced
+        # against -- not a second, unfiltered set of properties.
+        result = _live_accommodation_search(resort, checkin_date, nights, rooms_needed,
+                                            accommodation_filter, group_size, property_type)
         options = _enrich_options(resort, checkin_date, nights, rooms_needed, result.options)
         by_price = sorted(options, key=lambda o: o.price_eur_per_night)
+
+        # With a quality floor set, a place the provider never
+        # classified sinks to the bottom rather than being deleted --
+        # it cannot be judged, so it must not lead the list, but it is
+        # still real inventory the traveller may want (owner's rule,
+        # 2026-08-30). Without a floor there is nothing to rank
+        # against, so pure price order stands, unchanged.
+        if accommodation_filter is not None and not accommodation_filter.is_empty():
+            def unknown_last(option) -> int:
+                if accommodation_filter.min_star_class is not None and option.star_class is None:
+                    return 1
+                if accommodation_filter.min_rating is not None and option.rating is None:
+                    return 1
+                return 0
+            by_price = sorted(by_price, key=unknown_last)
         return by_price[: max(1, limit)]
     except Exception:
         logger.exception("live_accommodation_options failed for %s", resort.name)

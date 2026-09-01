@@ -30,11 +30,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from ...data.resort_repository import load_resorts
 from ...models import (
-    Resort, UserPreferences,
+    Resort, UserPreferences, AccommodationFilter,
     VALID_SKILL_LEVELS, VALID_ACCOMMODATION_TIERS,
     VALID_FOOD_PROFILES, VALID_EQUIPMENT_TIERS, VALID_WEIGHT_KEYS,
 )
 from ...engine.cost_calculator import (
+    select_live_accommodation,
     live_flight_cost_eur, live_flight_booking_url,
     live_accommodation_cost_eur_per_person, live_accommodation_booking_url,
     live_accommodation_property_name, live_accommodation_options,
@@ -43,7 +44,8 @@ from ...engine.cost_calculator import (
     live_transfer_cost_eur, live_transfer_info, all_transfer_options,
 )
 from ...engine.transfer_options import cheapest_price_eur_per_person
-from ...engine.cost_calculator import (  # noqa: E402  (grouped continuation)
+from ...engine.cost_calculator import (
+    select_live_accommodation,  # noqa: E402  (grouped continuation)
     live_transfer_booking_url, transfer_source_for,
 )
 from ...engine.links import (
@@ -122,6 +124,22 @@ def _validate_resort_names(names: Optional[List[str]]) -> None:
         )
 
 
+def _accommodation_filter_from(payload) -> Optional[AccommodationFilter]:
+    """The traveller's accommodation constraints, or None when they set
+    none -- an empty filter must stay None so the unfiltered path is
+    byte-for-byte the old behaviour."""
+    f = AccommodationFilter(
+        max_eur_per_person=getattr(payload, "accommodation_max_eur_per_person", None),
+        min_star_class=getattr(payload, "accommodation_min_star_class", None),
+        min_rating=getattr(payload, "accommodation_min_rating", None),
+        required_amenities=getattr(payload, "accommodation_required_amenities", None),
+        max_distance_to_lifts_km=getattr(
+            payload, "accommodation_max_distance_to_lifts_km", None),
+        min_review_count=getattr(payload, "accommodation_min_review_count", None),
+    )
+    return None if f.is_empty() else f
+
+
 class SearchRequest(BaseModel):
     budget_eur_per_person: float = Field(gt=0)
     # Optional floor for "price range" requests: results cheaper than
@@ -140,6 +158,28 @@ class SearchRequest(BaseModel):
     group_size: int = Field(default=2, gt=0, le=20)
     skill_level: str = "intermediate"
     accommodation_tier: str = "standard"
+    # WHICH property to price the trip on. accommodation_tier above only
+    # shifts which RESORT scores well (engine/scoring.py); these decide
+    # the bed itself, which is what "not always the cheapest" needs.
+    accommodation_max_eur_per_person: Optional[float] = Field(default=None, gt=0)
+    accommodation_min_star_class: Optional[int] = Field(default=None, ge=1, le=5)
+    accommodation_min_rating: Optional[float] = Field(default=None, ge=0, le=5)
+    accommodation_required_amenities: Optional[List[str]] = Field(
+        default=None,
+        description=("Accepted but NOT recommended: the provider's amenity data is a "
+                     "truncated, partly wrong subset (BEACH_ACCESS tagged on 65% of "
+                     "Alpine properties; WIFI on 0% while its filter matches nearly "
+                     "everything) and its amenity filter returns 18 of 20 whatever is "
+                     "asked. Measured 2026-08-30 over 78 properties."))
+    # Straight-line km to the nearest lift -- the one ski-specific
+    # accommodation filter, from coordinates + OpenStreetMap.
+    accommodation_max_distance_to_lifts_km: Optional[float] = Field(default=None, gt=0)
+    # Guards a rating floor against thin samples.
+    accommodation_min_review_count: Optional[int] = Field(default=None, ge=0)
+    # HOTELS (default, unchanged) or VACATION_RENTALS. Verified
+    # 2026-08-30 to return entirely different inventory -- chalets,
+    # apartments, a farmhouse -- that a hotels-only search never shows.
+    accommodation_property_type: str = "HOTELS"
     food_profile: str = "normal"
     equipment_tier: str = "standard"
     target_resort: Optional[str] = None
@@ -446,9 +486,10 @@ class AccommodationOptionOut(BaseModel):
     One real, named property behind a result's accommodation price --
     same reasoning as FlightOptionOut: the scrape always returned ~20
     named, priced properties and we showed ONE name off it. Cheapest
-    first, no "best" pick -- the provider's rating/distance fields are
-    not parsed, so there is no honest second axis to rank on (see
-    cost_calculator.live_accommodation_options).
+    first. Ranking stays on price, but rating, star class, review count
+    and distance to the lifts ARE now carried (via the `stays`
+    enrichment pass) so the traveller can judge and filter on them --
+    each one None wherever the provider does not publish it.
     """
     property_name: str
     price_eur_per_night: float
@@ -467,6 +508,28 @@ class AccommodationOptionOut(BaseModel):
     # whenever either side is unknown. The single most requested
     # accommodation fact on a ski trip.
     distance_to_lifts_km: Optional[float] = None
+    # The property's own star classification, 1-5, when Google
+    # publishes one. Verified live 2026-08-30 that some real inventory
+    # has none (Hotel Altapura, Val Thorens) -- None means UNKNOWN and
+    # must never render as one star or as "unrated = bad".
+    star_class: Optional[int] = None
+    # How many reviews `rating` averages. A 4.6 from 12 guests and a
+    # 4.6 from 1,400 are not the same claim, and without this the
+    # rating alone invites the wrong one.
+    review_count: Optional[int] = None
+    # The provider's own amenity vocabulary, e.g. ["SPA", "PARKING"].
+    amenities: Optional[List[str]] = None
+    # True when the traveller set a quality floor and this property
+    # carries nothing to judge it by. It is still offered -- and, if
+    # nothing better exists, still priced on -- but the floor was NOT
+    # verified for it, and the UI must say so rather than let it read
+    # as a match.
+    # "published" = the provider told us this property's class;
+    # "provider_filter" = the provider narrowed the search to the
+    # requested class but does not publish each property's own, so the
+    # UI may say what was ASKED for and must not print stars.
+    star_class_source: Optional[str] = None
+    quality_unverified: bool = False
     # The whole trip's cost if this property is the one booked, via the
     # same apply_live_accommodation_price the engine prices with -- so
     # the misc buffer rescales identically, never a second formula.
@@ -478,6 +541,54 @@ class AccommodationOptionOut(BaseModel):
     # single-property landing page -- see
     # google_hotels_adapter.search_url's verified-live note.
     url: str
+
+
+class DatePriceOut(BaseModel):
+    """
+    One (resort, start date) price from the whole evaluated grid --
+    what the price calendar needs.
+
+    SEPARATE FROM `results` ON PURPOSE. `results` answers "what are the
+    best trips" and is capped (top_n rows, max_results_per_resort each);
+    measured 2026-08-30, a whole-December search evaluated 24 start
+    dates and returned THREE distinct ones, so the calendar rendered 21
+    priced days as blank under a note saying they had no result. This
+    carries every date that was actually evaluated. It costs nothing --
+    the engine already computed all of it.
+    """
+    resort_name: str
+    country: str
+    start_date: datetime.date
+    total_eur: float
+    within_budget: bool
+    # False wherever the row was never live-repriced (live pricing is
+    # capped per search), so the calendar can say which figures are
+    # estimates instead of implying every cell is a quote.
+    price_is_live: bool
+
+
+class AccommodationChoiceOut(BaseModel):
+    """
+    WHY the accommodation line reads the way it does, when the
+    traveller set constraints. Present only for filtered searches.
+
+    Exists so a filtered search can never end in a silent shrug: if a
+    spend cap prices every real property out, the trip falls back to a
+    STATIC ESTIMATE that may itself exceed the cap, and without this
+    the card had no way to say so.
+    """
+    considered: int
+    matched: int
+    provider_vetted: int
+    unrated_set_aside: int
+    fell_back_to_unrated: bool
+    fell_back_below_floor: bool
+    # The cheapest real property found, ignoring the filter -- what to
+    # quote when a cap turns out to be unreachable here.
+    cheapest_available_eur_per_person: Optional[float] = None
+    # True when no real property could be priced at all, so the
+    # accommodation line is an estimate rather than a place.
+    priced_on_an_estimate: bool = False
 
 
 class TripResultOut(BaseModel):
@@ -513,6 +624,8 @@ class TripResultOut(BaseModel):
     # accommodation price is live, and a response-cache hit rather than
     # a second scrape (cost_calculator.live_accommodation_options).
     accommodation_options: List[AccommodationOptionOut] = []
+    # Why the accommodation line reads as it does, when filtered.
+    accommodation_choice: Optional[AccommodationChoiceOut] = None
     # The trip total spans a RANGE, because which flight you take
     # changes it. total_eur is the low end (cheapest flight); this is
     # the high end (typically the fastest or nonstop option). Equal to
@@ -758,10 +871,39 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
     return live_accommodation_property_name(resort, checkin_date, nights, rooms_needed)
 
 
+def _accommodation_choice_out(resort: Resort, checkin_date, nights: int, rooms_needed: int,
+                              group_size: int, accommodation_filter,
+                              property_type: str = "HOTELS"):
+    """None unless the traveller actually filtered. Re-runs the same
+    response-cached selection the pricing already made, so this costs a
+    cache read, not a second search."""
+    if accommodation_filter is None or accommodation_filter.is_empty() or checkin_date is None:
+        return None
+    try:
+        pick, _, report = select_live_accommodation(
+            resort, checkin_date, nights, rooms_needed, group_size,
+            accommodation_filter, property_type)
+    except Exception:
+        logger.warning("accommodation choice report unavailable for %s", resort.name,
+                       exc_info=True)
+        return None
+    return AccommodationChoiceOut(
+        considered=report.considered, matched=report.matched,
+        provider_vetted=report.provider_vetted,
+        unrated_set_aside=report.unrated_set_aside,
+        fell_back_to_unrated=report.fell_back_to_unrated,
+        fell_back_below_floor=report.fell_back_below_floor,
+        cheapest_available_eur_per_person=report.cheapest_available_eur_per_person,
+        priced_on_an_estimate=pick is None,
+    )
+
+
 def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
                                rooms_needed: int, group_size: int,
                                accommodation_price_is_live: bool,
-                               cost) -> List["AccommodationOptionOut"]:
+                               cost,
+                               accommodation_filter=None,
+                               property_type: str = "HOTELS") -> List["AccommodationOptionOut"]:
     """
     The named properties behind this result's accommodation price.
     Empty unless the price is actually live -- with a static estimate
@@ -772,7 +914,10 @@ def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
     if not accommodation_price_is_live or checkin_date is None:
         return []
     checkout_date = checkin_date + datetime.timedelta(days=nights)
-    options = live_accommodation_options(resort, checkin_date, nights, rooms_needed)
+    options = live_accommodation_options(resort, checkin_date, nights, rooms_needed,
+                                         accommodation_filter=accommodation_filter,
+                                         group_size=group_size,
+                                         property_type=property_type)
     out = []
     for i, o in enumerate(options):
         # The same per-person formula live_accommodation_cost_eur_per_
@@ -785,6 +930,14 @@ def _accommodation_options_out(resort: Resort, checkin_date, nights: int,
             is_cheapest=(i == 0),
             rating=o.rating,
             distance_to_lifts_km=o.distance_to_lifts_km,
+            star_class=o.star_class,
+            review_count=o.review_count,
+            amenities=o.amenities,
+            star_class_source=o.star_class_source,
+            quality_unverified=bool(
+                accommodation_filter is not None
+                and ((accommodation_filter.min_star_class is not None and o.star_class is None)
+                     or (accommodation_filter.min_rating is not None and o.rating is None))),
             trip_total_eur=round(apply_live_accommodation_price(cost, per_person).total_eur, 2),
             url=google_hotels_url(resort, checkin_date, checkout_date,
                                   property_name=o.property_name),
@@ -1154,6 +1307,7 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
             group_size=payload.group_size,
             skill_level=payload.skill_level,
             accommodation_tier=payload.accommodation_tier,
+            accommodation_filter=_accommodation_filter_from(payload),
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
@@ -1207,7 +1361,10 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
         def accommodation_cost_fn(resort, start_date, end_date, _prefs):
             return live_accommodation_cost_eur_per_person(
                 resort, start_date, nights=prefs.nights,
-                group_size=payload.group_size, rooms_needed=prefs.rooms_needed)
+                group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
+                accommodation_filter=prefs.accommodation_filter,
+                property_type=payload.accommodation_property_type,
+            )
 
     live_pricing_active = flight_cost_fn is not None
 
@@ -1280,7 +1437,12 @@ def search_trips(payload: SearchRequest, current_user: Optional[User] = Depends(
                 t.cost.flight_price_is_live, payload.max_connections, t.cost)),
             accommodation_options=_accommodation_options_out(
                 t.resort, payload.outbound_date, prefs.nights, prefs.rooms_needed,
-                payload.group_size, t.cost.accommodation_price_is_live, t.cost),
+                payload.group_size, t.cost.accommodation_price_is_live, t.cost,
+                accommodation_filter=prefs.accommodation_filter,
+                property_type=payload.accommodation_property_type),
+            accommodation_choice=_accommodation_choice_out(
+                t.resort, payload.outbound_date, prefs.nights, prefs.rooms_needed, payload.group_size,
+                prefs.accommodation_filter, payload.accommodation_property_type),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, payload.outbound_date,
                                                      payload.group_size, attempt=(i == 0),
@@ -1407,6 +1569,23 @@ class SearchDateRangeRequest(BaseModel):
     group_size: int = Field(default=2, gt=0, le=20)
     skill_level: str = "intermediate"
     accommodation_tier: str = "standard"
+    # WHICH property to price the trip on -- see SearchRequest for the
+    # reasoning. Both search modes take the same accommodation
+    # constraints; a traveller does not stop caring about the bed
+    # because their dates are flexible.
+    accommodation_max_eur_per_person: Optional[float] = Field(default=None, gt=0)
+    accommodation_min_star_class: Optional[int] = Field(default=None, ge=1, le=5)
+    accommodation_min_rating: Optional[float] = Field(default=None, ge=0, le=5)
+    accommodation_required_amenities: Optional[List[str]] = Field(
+        default=None,
+        description=("Accepted but NOT recommended: the provider's amenity data is a "
+                     "truncated, partly wrong subset (BEACH_ACCESS tagged on 65% of "
+                     "Alpine properties; WIFI on 0% while its filter matches nearly "
+                     "everything) and its amenity filter returns 18 of 20 whatever is "
+                     "asked. Measured 2026-08-30 over 78 properties."))
+    accommodation_max_distance_to_lifts_km: Optional[float] = Field(default=None, gt=0)
+    accommodation_min_review_count: Optional[int] = Field(default=None, ge=0)
+    accommodation_property_type: str = "HOTELS"
     food_profile: str = "normal"
     equipment_tier: str = "standard"
     # None = search across resorts (like search_trips); set this to pin
@@ -1556,6 +1735,8 @@ class DatedTripResultOut(BaseModel):
     accommodation_property_name: Optional[str] = None
     flight_options: List[FlightOptionOut] = []
     accommodation_options: List[AccommodationOptionOut] = []
+    # Why the accommodation line reads as it does, when filtered.
+    accommodation_choice: Optional[AccommodationChoiceOut] = None
     total_eur_with_fastest_flight: Optional[float] = None
     transfer_search_url: str
     transfer_info: Optional["TransferInfoOut"] = None
@@ -1569,6 +1750,10 @@ class SearchDateRangeResponse(BaseModel):
     candidate_dates_per_resort: int
     live_pricing_active: bool
     results: List[DatedTripResultOut]
+    # Every (resort, date) the search actually evaluated -- the price
+    # calendar's data. `results` above is the capped best-trips list and
+    # is far too sparse to draw a month from; see DatePriceOut.
+    date_prices: List[DatePriceOut] = []
     credits: Optional[CreditsOut] = None
     # See SearchResponse.live_pricing_blocked.
     live_pricing_blocked: bool = False
@@ -1624,6 +1809,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             group_size=payload.group_size,
             skill_level=payload.skill_level,
             accommodation_tier=payload.accommodation_tier,
+            accommodation_filter=_accommodation_filter_from(payload),
             food_profile=payload.food_profile,
             equipment_tier=payload.equipment_tier,
             target_resort=payload.target_resort,
@@ -1669,6 +1855,8 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
             return live_accommodation_cost_eur_per_person(
                 resort, start_date, nights=prefs.nights,
                 group_size=payload.group_size, rooms_needed=prefs.rooms_needed,
+                accommodation_filter=prefs.accommodation_filter,
+                property_type=payload.accommodation_property_type,
             )
 
     # Charge for the REAL number of candidate start dates this search
@@ -1681,6 +1869,9 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         payload.step_days, start_weekday, start_weekdays=start_weekdays))
     credit_info = _charge_credits(db, current_user, candidate_dates=planned_candidates)
 
+    # Filled by the engine with every (resort, date) it evaluated --
+    # the calendar's data, which the capped results list cannot supply.
+    _date_series: List = []
     dated_options = search_date_range(
         _resort_cache, prefs, effective_earliest, payload.latest_date,
         shortlist_size=8, step_days=payload.step_days, start_weekday=start_weekday,
@@ -1709,6 +1900,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         # one is a real scrape.
         live_reprice_n=_LIVE_REPRICE_N if live_reprice_allowed else None,
         max_results_per_resort=payload.max_results_per_resort,
+        series_out=_date_series,
     )
 
     if payload.min_budget_eur_per_person is not None:
@@ -1811,7 +2003,12 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
                 t.cost.flight_price_is_live, payload.max_connections, t.cost)),
             accommodation_options=_accommodation_options_out(
                 t.resort, t.start_date, prefs.nights, prefs.rooms_needed,
-                payload.group_size, t.cost.accommodation_price_is_live, t.cost),
+                payload.group_size, t.cost.accommodation_price_is_live, t.cost,
+                accommodation_filter=prefs.accommodation_filter,
+                property_type=payload.accommodation_property_type),
+            accommodation_choice=_accommodation_choice_out(
+                t.resort, t.start_date, prefs.nights, prefs.rooms_needed, payload.group_size,
+                prefs.accommodation_filter, payload.accommodation_property_type),
             total_eur_with_fastest_flight=(max(o.trip_total_eur for o in _fo) if _fo else None),
             transfer_search_url=_transfer_search_url(t.resort, t.start_date,
                                                      payload.group_size, attempt=(i == 0),
@@ -1844,6 +2041,21 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         candidate_dates_per_resort=candidate_dates,
         live_pricing_active=flight_cost_fn is not None,
         results=results,
+        # Every date the search really evaluated. Without this the
+        # calendar could only draw the handful of dates that survived
+        # ranking -- three of twenty-four on a December search.
+        date_prices=[
+            DatePriceOut(
+                resort_name=t.resort.name,
+                country=t.resort.country,
+                start_date=t.start_date,
+                total_eur=round(t.cost.total_eur, 2),
+                within_budget=t.cost.total_eur <= prefs.budget_eur_per_person,
+                price_is_live=bool(t.cost.flight_price_is_live
+                                   and t.cost.accommodation_price_is_live),
+            )
+            for t in _date_series
+        ],
     )
 
 
