@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { TripResult } from "@/lib/api";
 import type { Dictionary } from "@/lib/i18n/languages";
 import { useTranslation } from "@/lib/i18n/context";
@@ -27,7 +27,7 @@ import { FlightIcon, StayIcon, SnowIcon, ExternalLinkIcon } from "./icons";
  * card got long in the first place.
  */
 
-type TabKey = "getting" | "staying" | "conditions";
+export type TabKey = "getting" | "staying" | "conditions";
 
 const TABS: { key: TabKey; label: keyof Dictionary; icon: typeof FlightIcon }[] = [
   { key: "getting", label: "tabGettingThere", icon: FlightIcon },
@@ -37,15 +37,23 @@ const TABS: { key: TabKey; label: keyof Dictionary; icon: typeof FlightIcon }[] 
 
 export function TripDetails({
   result, gettingThere, staying, conditions,
+  open, onOpenChange, tab, onTabChange,
 }: {
   result: TripResult;
   gettingThere: React.ReactNode;
   staying: React.ReactNode;
   conditions: React.ReactNode;
+  // CONTROLLED: the cost breakdown above can open this straight to a
+  // given tab, which is what makes the breakdown a table of contents
+  // rather than a dead end.
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tab: TabKey;
+  onTabChange: (tab: TabKey) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<TabKey>("getting");
+  const setOpen = (fn: (o: boolean) => boolean) => onOpenChange(fn(open));
+  const setTab = onTabChange;
   const panelId = useId();
 
   const body = tab === "getting" ? gettingThere : tab === "staying" ? staying : conditions;
@@ -103,14 +111,31 @@ export function TripDetails({
 }
 
 /** A partner hand-off, now living inside the section it belongs to. */
-export function HandoffLink({ href, label }: { href: string | null; label: string }) {
+export function HandoffLink({ href, label, flash = false }: {
+  href: string | null;
+  label: string;
+  /**
+   * Briefly call this link out because the traveller arrived here by
+   * clicking the matching cost line. Opening the right tab answers
+   * "where do I look"; it does not answer "what do I press", and for
+   * kit hire and the lift pass the link IS the next step.
+   */
+  flash?: boolean;
+}) {
   if (!href) return null;
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-sky hover:border-sky/60 hover:bg-sky/10"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold text-sky transition-colors duration-500 hover:border-sky/60 hover:bg-sky/10 ${
+        flash
+          // Colour is not the only carrier -- the ring changes the
+          // shape of the control too, so this reads without relying on
+          // hue perception. Motion is opt-out; the ring is not.
+          ? "border-signal bg-signal-soft ring-2 ring-signal motion-safe:animate-pulse"
+          : "border-line"
+      }`}
     >
       <ExternalLinkIcon size={12} />
       {label}

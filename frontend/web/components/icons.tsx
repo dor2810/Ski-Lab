@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   CloudSnow,
   ExternalLink,
+  Check,
   type LucideProps,
 } from "lucide-react";
 
@@ -49,3 +50,4 @@ export const ChartIcon = (p: LucideProps) => <ChartLine {...defaultProps} {...p}
 export const ConfidenceIcon = (p: LucideProps) => <ShieldCheck {...defaultProps} {...p} />;
 export const WeatherIcon = (p: LucideProps) => <CloudSnow {...defaultProps} {...p} />;
 export const ExternalLinkIcon = (p: LucideProps) => <ExternalLink {...defaultProps} {...p} />;
+export const CheckIcon = (p: LucideProps) => <Check {...defaultProps} {...p} />;

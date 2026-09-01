@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "@/lib/i18n/context";
 import type { AccommodationOption } from "@/lib/api";
 import { ExternalLinkIcon, StayIcon } from "./icons";
+import { OptionRadioGroup, SelectableOptionRow } from "./SelectableOptionRow";
 
 /**
  * The real, named properties behind a result's accommodation price --
@@ -21,9 +22,27 @@ import { ExternalLinkIcon, StayIcon } from "./icons";
  * Rentals"), numbers on the line below, so a 390px phone never
  * scrolls sideways.
  */
-export function AccommodationOptions({ options }: { options: AccommodationOption[] }) {
+export function AccommodationOptions({
+  options, selectedIndex = 0, onSelect, tripTotalFor, defaultOpen = false,
+}: {
+  options: AccommodationOption[];
+  // The chosen property drives the accommodation line in the cost
+  // breakdown and the card total, so this is a real selection.
+  selectedIndex?: number;
+  onSelect?: (index: number) => void;
+  /** Whole-trip cost for a given per-person stay price, with the
+   *  card's other selections held as they are. */
+  tripTotalFor?: (stayEur: number) => number;
+  /** Start expanded. Used inside the Trip details tabs, where the tab
+   *  already IS the disclosure, so a second shut layer only costs a
+   *  click. */
+  defaultOpen?: boolean;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // Inside the Trip details tabs the tab IS the disclosure, so a
+  // second collapsed layer just costs a click -- and clicking
+  // "Flight" in the cost breakdown would land you on a shut panel.
+  const [open, setOpen] = useState(defaultOpen);
 
   if (!options || options.length === 0) return null;
 
@@ -44,26 +63,36 @@ export function AccommodationOptions({ options }: { options: AccommodationOption
 
       {open && (
         <>
-          <ul className="mt-2.5 space-y-1.5">
+          <OptionRadioGroup label={t("accommodationOptionsTitle", { count: String(options.length) })}>
             {options.map((o, i) => (
-              <li
+              <SelectableOptionRow
                 key={`${o.property_name}-${i}`}
-                className={`rounded-lg px-2 py-1.5 ${o.is_cheapest ? "bg-signal-soft" : ""}`}
+                selected={i === selectedIndex}
+                onSelect={onSelect ? () => onSelect(i) : undefined}
+                selectedLabel={t("accommodationSelected")}
+                tint={o.is_cheapest ? "bg-sunken" : undefined}
               >
                 <div className="flex min-w-0 items-baseline gap-2 text-xs">
                   {/* The name IS the link -- a separate button per row
                       needed width the phone doesn't have (see the
                       432px lesson in FlightOptions). Dated Google
-                      Hotels search narrowed to this property. */}
-                  <a
-                    href={o.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex min-w-0 flex-1 items-center gap-1 font-semibold text-sky hover:underline"
-                  >
-                    <span className="min-w-0 truncate">{o.property_name}</span>
-                    <ExternalLinkIcon size={11} className="flex-none opacity-70" />
-                  </a>
+                      Hotels search narrowed to this property.
+
+                      It deliberately does NOT stretch: the row itself
+                      is the select target now, so the empty space
+                      beside a short property name has to belong to the
+                      row, not to the link. */}
+                  <span className="flex min-w-0 flex-1">
+                    <a
+                      href={o.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex min-w-0 items-center gap-1 font-semibold text-sky hover:underline"
+                    >
+                      <span className="min-w-0 truncate">{o.property_name}</span>
+                      <ExternalLinkIcon size={11} className="flex-none opacity-70" />
+                    </a>
+                  </span>
                   <span className="flex-none tabular-nums text-muted">
                     {t("accommodationPerNight", { price: String(Math.round(o.price_eur_per_night)) })}
                   </span>
@@ -80,19 +109,60 @@ export function AccommodationOptions({ options }: { options: AccommodationOption
                       })}
                     </span>
                   )}
+                  {/* Star class is the property's own classification;
+                      the rating beside it is what guests scored it.
+                      Two different claims, so they are never merged --
+                      and a property Google has not classified simply
+                      shows no stars rather than being marked down. */}
+                  {/* Ranked last and labelled, never silently dropped:
+                      much ski inventory is apartments Google does not
+                      classify, and a place we cannot judge is not a
+                      place we should hide (owner's rule). */}
+                  {/* "Google narrowed the search to the stars you
+                      asked for but will not tell us this property's
+                      own class" is a different claim from "nobody
+                      rated this place", and the two must not share a
+                      label. */}
+                  {o.star_class_source === "provider_filter" && (
+                    <span className="flex-none rounded-full bg-signal-soft px-1.5 py-px text-[10px] font-semibold text-signal"
+                          title={t("accommodationVettedTitle")}>
+                      {t("accommodationVetted")}
+                    </span>
+                  )}
+                  {o.quality_unverified && o.star_class_source !== "provider_filter" && (
+                    <span className="flex-none rounded-full bg-sunken px-1.5 py-px text-[10px] font-semibold text-muted"
+                          title={t("accommodationUnratedTitle")}>
+                      {t("accommodationUnrated")}
+                    </span>
+                  )}
+                  {o.star_class != null && (
+                    <span className="flex-none font-semibold text-ink"
+                          title={t("accommodationStarsTitle", { n: String(o.star_class) })}>
+                      {"\u2605".repeat(o.star_class)}
+                    </span>
+                  )}
                   {o.rating != null && (
-                    <span className="flex-none">{t("accommodationRating", { r: o.rating.toFixed(1) })}</span>
+                    <span className="flex-none" title={o.review_count != null
+                      ? t("accommodationReviewsTitle", { n: String(o.review_count) }) : undefined}>
+                      {t("accommodationRating", { r: o.rating.toFixed(1) })}
+                      {o.review_count != null && (
+                        <span className="ms-1 text-subtle">
+                          {t("accommodationReviewCount", { n: o.review_count.toLocaleString() })}
+                        </span>
+                      )}
+                    </span>
                   )}
                   <span className="min-w-0 flex-1 truncate">
                     {t("accommodationPerPersonStay", { price: String(Math.round(o.per_person_eur)) })}
                   </span>
-                  <span className="flex-none tabular-nums">
-                    {t("flightTripTotal", { total: String(Math.round(o.trip_total_eur)) })}
+                  <span className="flex-none tabular-nums" title={t("tripTotalTooltip")}>
+                    {t("flightTripTotal", { total: String(Math.round(
+                      tripTotalFor ? tripTotalFor(o.per_person_eur) : o.trip_total_eur)) })}
                   </span>
                 </div>
-              </li>
+              </SelectableOptionRow>
             ))}
-          </ul>
+          </OptionRadioGroup>
           {/* Price-only ordering, said out loud rather than implied. */}
           <p className="mt-2 text-[10px] leading-snug text-subtle">{t("accommodationOptionsNote")}</p>
         </>

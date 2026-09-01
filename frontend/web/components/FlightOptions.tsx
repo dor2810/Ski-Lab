@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n/context";
 import { useAuth } from "@/lib/auth/context";
 import { fetchFlightBookingLink, type FlightOption } from "@/lib/api";
 import { FlightIcon } from "./icons";
+import { OptionRadioGroup, SelectableOptionRow } from "./SelectableOptionRow";
 
 /**
  * The real itineraries behind a result's flight price -- the curated
@@ -48,7 +49,8 @@ export interface BookingContext {
   flightSearchUrl: string | null;
 }
 
-function RoleBadge({ role }: { role: string }) {
+function RoleBadge({ role }: { role: string
+}) {
   const { t } = useTranslation();
   const label =
     role === "cheapest" ? t("flightRoleCheapest")
@@ -135,9 +137,30 @@ function BookFlightButton({ option, booking }: { option: FlightOption; booking: 
   );
 }
 
-export function FlightOptions({ options, booking }: { options: FlightOption[]; booking: BookingContext | null }) {
+export function FlightOptions({
+  options, booking, selectedIndex = 0, onSelect, tripTotalFor, defaultOpen = false,
+}: {
+  options: FlightOption[];
+  booking: BookingContext | null;
+  // The chosen flight drives the card's headline numbers and the
+  // journey timeline, so this is a real selection, not a preview.
+  selectedIndex?: number;
+  onSelect?: (index: number) => void;
+  /** Whole-trip cost for a given flight price, with the card's
+   *  other selections held as they are. Falls back to the API's
+   *  own figure (valid only at the default selection). */
+  tripTotalFor?: (flightEur: number) => number;
+  /** Start expanded. Used inside the Trip details tabs, where the tab
+   *  already IS the disclosure, so a second shut layer only costs a
+   *  click -- and clicking a cost line would otherwise land you on a
+   *  closed panel. */
+  defaultOpen?: boolean;
+}) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // Inside the Trip details tabs the tab IS the disclosure, so a
+  // second collapsed layer just costs a click -- and clicking
+  // "Flight" in the cost breakdown would land you on a shut panel.
+  const [open, setOpen] = useState(defaultOpen);
 
   if (!options || options.length === 0) return null;
 
@@ -174,11 +197,15 @@ export function FlightOptions({ options, booking }: { options: FlightOption[]; b
       )}
 
       {open && (
-        <ul className="mt-2.5 space-y-1.5">
+        <OptionRadioGroup label={t("flightOptionsTitle", { count: String(options.length) })}>
           {options.map((o, i) => (
-            <li
+            <SelectableOptionRow
               key={`${o.airline}-${o.price_eur}-${i}`}
-              className={`rounded-lg px-2 py-1.5 ${o.roles.includes("best") ? "bg-signal-soft" : ""}`}
+              selected={i === selectedIndex}
+              onSelect={onSelect ? () => onSelect(i) : undefined}
+              selectedLabel={t("flightSelected")}
+              tint={o.roles.includes("best") ? "bg-sunken" : undefined}
+              badges={o.roles.map((role) => <RoleBadge key={role} role={role} />)}
             >
               {/* THREE compact lines, not one. Six-plus pieces of data
                   in a single row needed 432px against roughly 300px of
@@ -186,11 +213,6 @@ export function FlightOptions({ options, booking }: { options: FlightOption[]; b
                   horizontal scroll. Line 1: what it IS (labels). Line
                   2: what you choose between. Line 3: the detail you
                   check afterwards, plus the action. */}
-              {o.roles.length > 0 && (
-                <div className="mb-0.5 flex flex-wrap items-center gap-1">
-                  {o.roles.map((role) => <RoleBadge key={role} role={role} />)}
-                </div>
-              )}
               <div className="flex min-w-0 items-baseline gap-2 text-xs">
                 <span className="w-12 flex-none font-semibold tabular-nums text-ink">
                   €{Math.round(o.price_eur)}
@@ -211,14 +233,15 @@ export function FlightOptions({ options, booking }: { options: FlightOption[]; b
                 <span className="min-w-0 flex-1 truncate">
                   {o.flight_numbers.length > 0 ? o.flight_numbers.join(" · ") : " "}
                 </span>
-                <span className="flex-none tabular-nums">
-                  {t("flightTripTotal", { total: String(Math.round(o.trip_total_eur)) })}
+                <span className="flex-none tabular-nums" title={t("tripTotalTooltip")}>
+                  {t("flightTripTotal", { total: String(Math.round(
+                    tripTotalFor ? tripTotalFor(o.price_eur) : o.trip_total_eur)) })}
                 </span>
                 {booking && <BookFlightButton option={o} booking={booking} />}
               </div>
-            </li>
+            </SelectableOptionRow>
           ))}
-        </ul>
+        </OptionRadioGroup>
       )}
 
       {open && booking && (

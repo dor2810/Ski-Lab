@@ -52,20 +52,40 @@ function TransferGlyph({ mode, size }: { mode: string | null; size: number }) {
 }
 
 function Leg({
-  icon, label, sub, unknownReason,
+  icon, label, sub, unknownReason, onOpen, openLabel,
 }: {
   icon: React.ReactNode; label: string | null; sub: string;
+  /** Open the detail this leg belongs to -- the flight list for a
+   *  plane, the transfer list for a coach, the stay for the nights. */
+  onOpen?: () => void;
+  /** What that jump does, for the tooltip and the accessible name. */
+  openLabel?: string;
   // Why this leg has no figure. A bare dash reads as a bug; the
   // reason turns it into information (this provider publishes
   // outbound legs only -- see the component docstring).
   unknownReason?: string;
 }) {
   const { t } = useTranslation();
+  // The icon is the target: a whole-leg hit area would swallow the
+  // duration text, which people select and read.
+  const disc = (
+    <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-sky">
+      {icon}
+    </span>
+  );
   return (
     <li className="flex min-w-0 flex-col items-center gap-1 text-center">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-sky">
-        {icon}
-      </span>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          title={openLabel}
+          aria-label={openLabel}
+          className="rounded-full transition-colors hover:text-signal focus:outline-none focus-visible:ring-2 focus-visible:ring-signal [&>span]:hover:border-signal"
+        >
+          {disc}
+        </button>
+      ) : disc}
       <span
         className={`text-xs font-semibold tabular-nums ${label ? "text-ink" : "cursor-help text-subtle"}`}
         title={label ? undefined : unknownReason}
@@ -84,7 +104,7 @@ function Connector() {
 }
 
 export function JourneyTimeline({
-  result, flightIndex = 0, transferIndex = 0,
+  result, flightIndex = 0, transferIndex = 0, onNavigate,
 }: {
   result: TripResult;
   // WHICH options the timeline describes. Defaults to 0 -- the
@@ -95,6 +115,8 @@ export function JourneyTimeline({
   // train is describing a trip nobody selected.
   flightIndex?: number;
   transferIndex?: number;
+  /** Open the tab holding this leg's detail, same as the cost lines. */
+  onNavigate?: (tab: "getting" | "staying") => void;
 }) {
   const { t } = useTranslation();
 
@@ -132,24 +154,36 @@ export function JourneyTimeline({
       {/* Scrolls inside itself on a narrow phone rather than pushing
           the whole card sideways. */}
       <ol className="flex items-start justify-between gap-1 overflow-x-auto">
-        <Leg icon={<FlightIcon size={16} />} label={outbound} sub={t("timelineFlightOut")} />
+        <Leg
+          icon={<FlightIcon size={16} />}
+          label={outbound}
+          sub={t("timelineFlightOut")}
+          onOpen={onNavigate ? () => onNavigate("getting") : undefined}
+          openLabel={t("timelineOpenFlights")}
+        />
         <Connector />
         <Leg
           icon={<TransferGlyph mode={transferMode} size={16} />}
           label={ride}
           sub={transferLabel}
+          onOpen={onNavigate ? () => onNavigate("getting") : undefined}
+          openLabel={t("timelineOpenTransfer")}
         />
         <Connector />
         <Leg
           icon={<SnowMountainIcon size={16} />}
           label={nights != null ? t("timelineNights", { n: String(nights) }) : null}
           sub={result.resort.name}
+          onOpen={onNavigate ? () => onNavigate("staying") : undefined}
+          openLabel={t("timelineOpenStay")}
         />
         <Connector />
         <Leg
           icon={<TransferGlyph mode={transferMode} size={16} />}
           label={ride}
           sub={transferLabel}
+          onOpen={onNavigate ? () => onNavigate("getting") : undefined}
+          openLabel={t("timelineOpenTransfer")}
         />
         <Connector />
         <Leg
@@ -157,6 +191,8 @@ export function JourneyTimeline({
           label={back}
           sub={t("timelineFlightBack")}
           unknownReason={t("timelineReturnUnknown")}
+          onOpen={onNavigate ? () => onNavigate("getting") : undefined}
+          openLabel={t("timelineOpenFlights")}
         />
       </ol>
     </section>

@@ -6,7 +6,8 @@ import { ProblemSection } from "@/components/ProblemSection";
 import { HowItWorks } from "@/components/HowItWorks";
 import { SearchCard, type SearchOutcome } from "@/components/SearchCard";
 import { ResultCard } from "@/components/ResultCard";
-import { PriceCalendar } from "@/components/PriceCalendar";
+import { PriceExplorer } from "@/components/PriceExplorer";
+import { SearchProgress } from "@/components/SearchProgress";
 import { WhySkiLab } from "@/components/WhySkiLab";
 import { Footer } from "@/components/Footer";
 import { searchFixedDates, ApiError, type TripResult } from "@/lib/api";
@@ -22,6 +23,57 @@ export default function Home() {
   // separate "fixed date" mode any more: a date range no wider than the
   // trip length already degrades to exactly one candidate date).
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
+  // A day clicked in the price views: which resort's card to open, on
+  // which start date. The seq makes a repeat click on the same day a
+  // new instruction rather than an unchanged prop.
+  const [pick, setPick] = useState<{ resort: string; date: string; seq: number } | null>(null);
+  // "resort|date" currently being re-priced for real, and the last
+  // failure, so a spent credit never disappears without explanation.
+  const [fetchingReal, setFetchingReal] = useState<string | null>(null);
+  const [fetchRealError, setFetchRealError] = useState<string | null>(null);
+
+  /**
+   * Buy the real price for ONE estimated day.
+   *
+   * The calendar prices every date, but only the shortlist gets live
+   * flight and hotel lookups -- the rest carry a static estimate that
+   * moves by season band, not by day. This re-runs the SAME
+   * preferences for a single (resort, date), which the backend bills
+   * at exactly one credit (cost_for_candidate_dates(1)), and folds the
+   * answer back in so the day becomes a real, openable trip.
+   */
+  async function fetchRealPrice(resort: string, date: string) {
+    const params = outcome?.refineParams;
+    if (!params || fetchingReal) return;
+    setFetchRealError(null);
+    setFetchingReal(`${resort}|${date}`);
+    try {
+      const data = await runAuthed((token) => searchFixedDates(
+        { ...params, outbound_date: date, target_resort: resort,
+          include_resorts: null, exclude_resorts: null },
+        token
+      ));
+      const fresh = data.results.find((r) => r.resort.name === resort);
+      if (!fresh) { setFetchRealError(t("priceCalendarFetchFailed")); return; }
+      setOutcome((prev) => prev && ({
+        ...prev,
+        // The new row joins the cards, replacing any older row for the
+        // same resort and date.
+        results: [...prev.results.filter(
+          (r) => !(r.resort.name === resort && r.start_date === date)), fresh],
+        datePrices: prev.datePrices?.map((d) =>
+          d.resort_name === resort && d.start_date === date
+            ? { ...d, total_eur: fresh.cost.total_eur,
+                within_budget: fresh.within_budget, price_is_live: true }
+            : d),
+      }));
+      setPick((p) => ({ resort, date, seq: (p?.seq ?? 0) + 1 }));
+    } catch {
+      setFetchRealError(t("priceCalendarFetchFailed"));
+    } finally {
+      setFetchingReal(null);
+    }
+  }
   const [searching, setSearching] = useState(false);
 
   // Fast, quota-free PREVIEW shown before the user has searched anything
@@ -114,9 +166,12 @@ export default function Home() {
       />
 
       <section className="mx-auto max-w-3xl px-4 pb-14 sm:px-6 sm:pb-20">
-        {(previewLoading || searching) && (
+        {/* A real search takes ~80s, which is far too long for a line
+            of text. The preview is quick, so it keeps the plain line. */}
+        {searching && <SearchProgress />}
+        {previewLoading && !searching && (
           <p className="animate-rise-in text-center text-sm text-subtle">
-            {searching ? t("searching") : t("findingRealTrips")}
+            {t("findingRealTrips")}
           </p>
         )}
 
@@ -132,6 +187,34 @@ export default function Home() {
           <p className="text-center text-sm text-subtle">{t("signInToSeeExamples")}</p>
         )}
 
+        {/* THE CALENDAR LEADS. A date-range search is asking "when
+            should I go", and the answer is the shape of the whole
+            month -- the cards below are the detail on the days you
+            pick out of it. It sits in its own wider container because
+            a month grid squeezed into the card column was the "small
+            and bad on PC" problem. */}
+        {displayedResults && !searching && (
+          <>
+          </>
+        )}
+      </section>
+
+      {showingRealSearch && displayedResults && !searching && (
+        <section className="mx-auto max-w-5xl px-4 pb-8 sm:px-6">
+          {fetchRealError && (
+            <p className="mb-3 text-sm text-warn">{fetchRealError}</p>
+          )}
+          <PriceExplorer
+            results={outcome!.results}
+            datePrices={outcome!.datePrices}
+            onFetchReal={outcome!.refineParams ? fetchRealPrice : undefined}
+            fetching={fetchingReal}
+            onPick={(resort, date) => setPick((p) => ({ resort, date, seq: (p?.seq ?? 0) + 1 }))}
+          />
+        </section>
+      )}
+
+      <section className="mx-auto max-w-3xl px-4 pb-14 sm:px-6 sm:pb-20">
         {displayedResults && !searching && (
           <>
             <div className="mb-6 flex items-center justify-between">
@@ -168,7 +251,9 @@ export default function Home() {
                   }
                   return [...groups.entries()].map(([name, list]) => (
                     <ResultCard key={name} result={list[0]} variants={list}
-                                maxConnections={showingRealSearch ? outcome!.maxConnections : null} />
+                                maxConnections={showingRealSearch ? outcome!.maxConnections : null}
+                                focus={pick && pick.resort === name
+                                  ? { date: pick.date, seq: pick.seq } : null} />
                   ));
                 })()}
               </div>
@@ -184,12 +269,6 @@ export default function Home() {
           1440px viewport is the "small and bad on PC" problem. A
           sibling section is used instead of negative margins, which
           break the moment the parent's padding changes. */}
-      {showingRealSearch && displayedResults && !searching && (
-        <section className="mx-auto max-w-5xl px-4 pb-14 sm:px-6 sm:pb-20">
-          <PriceCalendar results={outcome!.results} />
-        </section>
-      )}
-
       <WhySkiLab />
       <Footer />
     </>

@@ -198,6 +198,24 @@ export interface AccommodationOption {
    * walking distance; null when unknown.
    */
   distance_to_lifts_km: number | null;
+  /** 1-5 where Google publishes one; null means UNKNOWN, not "bad". */
+  star_class: number | null;
+  /** How many reviews `rating` averages. */
+  review_count: number | null;
+  amenities: string[] | null;
+  /**
+   * A quality floor was set and this place carries nothing to judge it
+   * by. Still offered -- and priced on when nothing better exists --
+   * but never presented as having met the filter.
+   */
+  quality_unverified: boolean;
+  /**
+   * "published" — the provider gave us this property's class.
+   * "provider_filter" — the provider narrowed the search to the class
+   * we asked for but does not publish each property's own, so we may
+   * say what was asked for and must not print stars.
+   */
+  star_class_source: string | null;
   /** The whole trip's cost if this property is the one booked. */
   trip_total_eur: number;
   /**
@@ -314,6 +332,7 @@ export interface TripResult {
   // The real named properties behind accommodation_eur, cheapest
   // first. Same contract: empty unless the accommodation price is live.
   accommodation_options: AccommodationOption[];
+  accommodation_choice: AccommodationChoice | null;
   // The trip total is a RANGE: total_eur is the low end (cheapest
   // flight) and this is the high end (typically the fastest/nonstop).
   // null when there is only one real flight choice.
@@ -346,6 +365,19 @@ export interface Credits {
   daily_allowance: number;
 }
 
+/** Why a filtered search's accommodation line reads as it does. */
+export interface AccommodationChoice {
+  considered: number;
+  matched: number;
+  provider_vetted: number;
+  unrated_set_aside: number;
+  fell_back_to_unrated: boolean;
+  fell_back_below_floor: boolean;
+  cheapest_available_eur_per_person: number | null;
+  /** No real property could be priced, so the line is an estimate. */
+  priced_on_an_estimate: boolean;
+}
+
 export interface SearchResponse {
   query_resort_count: number;
   live_pricing_active: boolean;
@@ -358,7 +390,26 @@ export interface SearchResponse {
   live_pricing_blocked: boolean;
 }
 
+/**
+ * One (resort, start date) the search actually evaluated.
+ *
+ * The results list is capped for the CARDS (best trips, a few rows);
+ * this is every date that was priced, which is what a calendar needs.
+ * Measured 2026-08-30: a December search evaluated 24 start dates and
+ * returned 3 in `results`.
+ */
+export interface DatePrice {
+  resort_name: string;
+  country: string;
+  start_date: string;
+  total_eur: number;
+  within_budget: boolean;
+  /** False where the row was never live-repriced — an estimate. */
+  price_is_live: boolean;
+}
+
 export interface SearchDateRangeResponse extends SearchResponse {
+  date_prices?: DatePrice[];
   candidate_dates_per_resort: number;
 }
 
@@ -390,6 +441,24 @@ export interface CommonSearchFields {
   group_size: number;
   skill_level: SkillLevel;
   accommodation_tier: AccommodationTier;
+  /**
+   * WHICH property the trip is priced on. `accommodation_tier` above
+   * only shifts which resort scores well; these decide the bed.
+   * A ceiling per person for the whole stay -- the same unit the cost
+   * breakdown's Accommodation line shows, not a nightly rate.
+   */
+  accommodation_max_eur_per_person?: number | null;
+  /** 1-5. Properties Google has not classified cannot satisfy this. */
+  accommodation_min_star_class?: number | null;
+  /** Guest review score out of 5. */
+  accommodation_min_rating?: number | null;
+  accommodation_required_amenities?: string[] | null;
+  /** Straight-line km to the nearest lift, from coordinates + OpenStreetMap. */
+  accommodation_max_distance_to_lifts_km?: number | null;
+  /** Minimum reviews behind a rating, so thin samples cannot win. */
+  accommodation_min_review_count?: number | null;
+  /** "HOTELS" (default) or "VACATION_RENTALS" — genuinely different inventory. */
+  accommodation_property_type?: string;
   food_profile: FoodProfile;
   equipment_tier: EquipmentTier;
   target_resort?: string | null;
@@ -424,6 +493,11 @@ export interface FixedDateSearchParams extends CommonSearchFields {
 }
 
 export interface FlexibleWindowSearchParams extends CommonSearchFields {
+  /** How many dates per resort may appear. This, not top_n, is what
+   *  widens the range of DATES in the results — and the engine
+   *  evaluates every (resort, date) regardless, so raising either
+   *  costs no extra pricing (see engine/date_search's live_reprice_n). */
+  max_results_per_resort?: number;
   // See FixedDateSearchParams.ski_days -- same contract.
   ski_days: number;
   earliest_date: string;

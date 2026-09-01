@@ -137,6 +137,9 @@ export const SAMPLE_TRIPS: Record<string, TripResult> = {
         "per_person_eur": 156.0,
         "is_cheapest": false,
         "rating": 4.6,
+        "star_class": 4,
+        "review_count": 359,
+        "amenities": ["SPA", "PARKING"],
         "distance_to_lifts_km": 0.67,
         "trip_total_eur": 1000.03,
         "url": "https://www.google.com/travel/search?q=Hotels%20in%20BanskoVilla%20Zlateva%20House%2C%20Bansko%2C%20Bansko%2C%20Bulgaria&hl=en&curr=EUR&gl=us&ts=CAESCgoCCAMKAggDEAAaWQo7EjcyADozQmFuc2tvVmlsbGEgWmxhdGV2YSBIb3VzZSwgQmFuc2tvLCBCYW5za28sIEJ1bGdhcmlhGgASGhIUCgcI6g8QDBgIEgcI6g8QDBgOGAYyAggBKgkKBToDRVVSGgA"

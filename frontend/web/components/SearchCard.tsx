@@ -14,6 +14,8 @@ import {
   type WeekdayName,
   type TripResult,
   type Credits,
+  type DatePrice,
+  type FixedDateSearchParams,
 } from "@/lib/api";
 import { todayPlusDays, addDays } from "@/lib/format";
 import { useAuth, SessionExpiredError } from "@/lib/auth/context";
@@ -31,6 +33,21 @@ import { CreditMeter } from "./CreditMeter";
 
 export interface SearchOutcome {
   results: TripResult[];
+  /**
+   * Every (resort, start date) the search evaluated -- the calendar's
+   * data. `results` is the capped best-trips list: a December search
+   * evaluated 24 start dates and returned 3, so drawing a calendar
+   * from it left priced days blank. Absent for fixed-date searches,
+   * which have a single date by definition.
+   */
+  datePrices?: DatePrice[];
+  /**
+   * The preferences THIS search ran with, so a single (resort, date)
+   * can be re-priced later without the traveller re-filling the form.
+   * Used by the calendar's "get the real price" action, which spends a
+   * credit on one day.
+   */
+  refineParams?: FixedDateSearchParams;
   livePricingActive: boolean;
   // See lib/api.ts's SearchResponse.live_pricing_blocked.
   livePricingBlocked: boolean;
@@ -145,6 +162,19 @@ export function SearchCard({
 
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [accomTier, setAccomTier] = useState<AccommodationTier>("standard");
+  // WHICH property the trip gets priced on. Empty string = no limit,
+  // which must send null rather than 0 -- a EUR0 cap matches nothing.
+  const [accomMaxPP, setAccomMaxPP] = useState<string>("");
+  const [accomMinStars, setAccomMinStars] = useState<string>("");
+  // Guest score, not stars. Far better covered: a live Kitzbuehel
+  // search returned review scores for 11 of 12 properties and star
+  // classes for NONE of them (checked 2026-08-30).
+  const [accomMinRating, setAccomMinRating] = useState<string>("");
+  const [accomMinReviews, setAccomMinReviews] = useState<string>("");
+  // Real metres to the nearest lift, computed from coordinates against
+  // OpenStreetMap -- the one filter that is actually about skiing.
+  const [accomMaxLiftKm, setAccomMaxLiftKm] = useState<string>("");
+  const [accomPropertyType, setAccomPropertyType] = useState<string>("HOTELS");
   const [foodProfile, setFoodProfile] = useState<FoodProfile>("normal");
   const [transferModes, setTransferModes] = useState<Set<TransferMode>>(new Set());
   const [maxConnections, setMaxConnections] = useState<string>(""); // "" = no preference
@@ -292,17 +322,24 @@ export function SearchCard({
     const resortList = selectedList ?? defaultScope;
     const effectiveMode: ResortFilterMode = selectedList ? resortMode : "include";
 
-    setLoading(true);
-    onSearchStart();
-    try {
-      const data = await runAuthed((token) => searchFlexibleWindow(
-        {
+    // Built once and reused: the flexible search sends it now, and the
+    // calendar's "get the real price for this day" action re-sends the
+    // SAME preferences for one date later. Rebuilding it there would be
+    // a second place for the two to drift apart.
+    const common = {
           budget_eur_per_person: budget,
           group_size: travellers,
           skill_level: skillLevel,
           accommodation_tier: accomTier,
+          accommodation_max_eur_per_person: accomMaxPP.trim() === "" ? null : Number(accomMaxPP),
+          accommodation_min_star_class: accomMinStars === "" ? null : Number(accomMinStars),
+          accommodation_min_rating: accomMinRating === "" ? null : Number(accomMinRating),
+          accommodation_min_review_count: accomMinReviews === "" ? null : Number(accomMinReviews),
+          accommodation_max_distance_to_lifts_km:
+            accomMaxLiftKm === "" ? null : Number(accomMaxLiftKm),
+          accommodation_property_type: accomPropertyType,
           food_profile: foodProfile,
-          equipment_tier: "standard",
+          equipment_tier: "standard" as const,
           max_connections: maxConnections === "" ? null : Number(maxConnections),
           with_ski_bags: withSkiBags,
           preferred_transfer_modes: transferModes.size > 0 ? [...transferModes] : null,
@@ -311,15 +348,36 @@ export function SearchCard({
           start_weekday: startWeekday === "" ? null : startWeekday,
           weights: normalizeWeights(weights),
           ski_days: skiDays,
+    };
+
+    setLoading(true);
+    onSearchStart();
+    try {
+      const data = await runAuthed((token) => searchFlexibleWindow(
+        {
+          ...common,
           earliest_date: earliest,
           latest_date: latest,
-          top_n: 12,
+          // 24 rows, 6 per resort. FREE: the engine evaluates every
+          // (resort, date) whatever this says -- 192 pairs on a
+          // December window, measured identical at top_n 10 and 40 --
+          // and it already live-prices up to 24 pairs (_LIVE_REPRICE_N)
+          // chosen with this very per-resort cap. At 12 we were paying
+          // to price 24 and showing 12. Six per resort rather than
+          // three because that is what widens the DATES shown, which
+          // is what the calendar above is asking about.
+          top_n: 24,
+          max_results_per_resort: 6,
         },
         token
       ));
       if (data.credits) setCredits(data.credits);
       onOutcome({
         results: data.results,
+        // The same preferences, ready to re-run for a single day.
+        refineParams: common,
+        // Only the date-range search has a grid of dates to report.
+        datePrices: "date_prices" in data ? data.date_prices : undefined,
         livePricingActive: data.live_pricing_active,
         livePricingBlocked: data.live_pricing_blocked,
         candidateDates: data.candidate_dates_per_resort,
@@ -491,6 +549,112 @@ export function SearchCard({
                         <option key={value} value={value} className="bg-canvas">{t(key)}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label htmlFor="accomMax" className={labelClass()}>
+                      {t("accommodationMaxLabel")}
+                    </label>
+                    <input
+                      id="accomMax"
+                      type="number"
+                      min={0}
+                      step={25}
+                      inputMode="numeric"
+                      value={accomMaxPP}
+                      onChange={(e) => setAccomMaxPP(e.target.value)}
+                      placeholder={t("accommodationMaxPlaceholder")}
+                      className={fieldClass()}
+                    />
+                    <p className="mt-1 text-[11px] leading-snug text-subtle">
+                      {t("accommodationMaxHint")}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="accomStars" className={labelClass()}>
+                      {t("accommodationStarsLabel")}
+                    </label>
+                    <select
+                      id="accomStars" value={accomMinStars}
+                      onChange={(e) => setAccomMinStars(e.target.value)}
+                      className={fieldClass()}
+                    >
+                      <option value="" className="bg-canvas">{t("accommodationStarsAny")}</option>
+                      <option value="3" className="bg-canvas">{t("accommodationStars3")}</option>
+                      <option value="4" className="bg-canvas">{t("accommodationStars4")}</option>
+                      <option value="5" className="bg-canvas">{t("accommodationStars5")}</option>
+                    </select>
+                    {accomMinStars !== "" && (
+                      <p className="mt-1 text-[11px] leading-snug text-warn">
+                        {t("accommodationStarsWarning")}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="accomRating" className={labelClass()}>
+                      {t("accommodationRatingLabel")}
+                    </label>
+                    <select
+                      id="accomRating" value={accomMinRating}
+                      onChange={(e) => setAccomMinRating(e.target.value)}
+                      className={fieldClass()}
+                    >
+                      <option value="" className="bg-canvas">{t("accommodationStarsAny")}</option>
+                      <option value="4" className="bg-canvas">{t("accommodationRating4")}</option>
+                      <option value="4.5" className="bg-canvas">{t("accommodationRating45")}</option>
+                    </select>
+                    <p className="mt-1 text-[11px] leading-snug text-subtle">
+                      {t("accommodationRatingHint")}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="accomLift" className={labelClass()}>
+                      {t("accommodationLiftLabel")}
+                    </label>
+                    <select
+                      id="accomLift" value={accomMaxLiftKm}
+                      onChange={(e) => setAccomMaxLiftKm(e.target.value)}
+                      className={fieldClass()}
+                    >
+                      <option value="" className="bg-canvas">{t("accommodationStarsAny")}</option>
+                      <option value="0.2" className="bg-canvas">{t("accommodationLiftSkiIn")}</option>
+                      <option value="0.5" className="bg-canvas">{t("accommodationLiftShortWalk")}</option>
+                      <option value="1" className="bg-canvas">{t("accommodationLiftUnder1km")}</option>
+                    </select>
+                    <p className="mt-1 text-[11px] leading-snug text-subtle">
+                      {t("accommodationLiftHint")}
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="accomType" className={labelClass()}>
+                      {t("accommodationTypeLabel")}
+                    </label>
+                    <select
+                      id="accomType" value={accomPropertyType}
+                      onChange={(e) => setAccomPropertyType(e.target.value)}
+                      className={fieldClass()}
+                    >
+                      <option value="HOTELS" className="bg-canvas">{t("accommodationTypeHotels")}</option>
+                      <option value="VACATION_RENTALS" className="bg-canvas">
+                        {t("accommodationTypeRentals")}
+                      </option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="accomReviews" className={labelClass()}>
+                      {t("accommodationReviewsLabel")}
+                    </label>
+                    <select
+                      id="accomReviews" value={accomMinReviews}
+                      onChange={(e) => setAccomMinReviews(e.target.value)}
+                      className={fieldClass()}
+                    >
+                      <option value="" className="bg-canvas">{t("accommodationStarsAny")}</option>
+                      <option value="50" className="bg-canvas">{t("accommodationReviews50")}</option>
+                      <option value="200" className="bg-canvas">{t("accommodationReviews200")}</option>
+                    </select>
+                    <p className="mt-1 text-[11px] leading-snug text-subtle">
+                      {t("accommodationReviewsHint")}
+                    </p>
                   </div>
                   <div>
                     <label htmlFor="food" className={labelClass()}>{t("foodStyle")}</label>

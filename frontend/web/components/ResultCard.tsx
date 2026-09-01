@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TripResult } from "@/lib/api";
 import { formatEUR, formatDate, formatShortDate } from "@/lib/format";
+import { tripTotalWith } from "@/lib/tripTotal";
 import { useTranslation } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n/languages";
 import { TerrainBar } from "./TerrainBar";
@@ -11,8 +12,8 @@ import { WhatsIncluded } from "./WhatsIncluded";
 import { FlightOptions } from "./FlightOptions";
 import { TransferOptions } from "./TransferOptions";
 import { JourneyTimeline } from "./JourneyTimeline";
-import { CostInstrument } from "./CostInstrument";
-import { TripDetails, HandoffLink } from "./TripDetails";
+import { CostInstrument, type FlashTarget } from "./CostInstrument";
+import { TripDetails, HandoffLink, type TabKey } from "./TripDetails";
 import { AccommodationOptions } from "./AccommodationOptions";
 import { MoreDates } from "./MoreDates";
 import {
@@ -138,7 +139,10 @@ function formatMinutes(minutes: number | null): string {
   return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
 }
 
-export function ResultCard({ result, variants, maxConnections = null }: {
+/** How long a handoff link stays called out, in ms. */
+const FLASH_MS = 2600;
+
+export function ResultCard({ result, variants, maxConnections = null, focus = null }: {
   result: TripResult;
   // Every result the search returned FOR THIS RESORT, rank order --
   // the owner's ask: "Val Thorens and the best deal it found and some
@@ -152,6 +156,12 @@ export function ResultCard({ result, variants, maxConnections = null }: {
   // click time (see FlightOptions' BookingContext). Absent for the
   // landing-page preview, which has no flight options anyway.
   maxConnections?: number | null;
+  /**
+   * "Show me this resort on this date" -- sent by the price views when
+   * a day is clicked. Carries a seq so that clicking the SAME day
+   * twice still scrolls; a bare date would be an unchanged prop.
+   */
+  focus?: { date: string; seq: number } | null;
 }) {
   const { t, locale } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -160,7 +170,90 @@ export function ResultCard({ result, variants, maxConnections = null }: {
   // Which flight/transfer the journey timeline describes. Reset
   // when the deal changes -- option lists differ per date.
   const [transferIdx, setTransferIdx] = useState(0);
+  const [flightIdx, setFlightIdx] = useState(0);
+  const [stayIdx, setStayIdx] = useState(0);
+  // Details visibility lives HERE so the cost breakdown can open it to
+  // a specific tab -- clicking "Flight" should land you on the flight
+  // list, not merely reveal a closed accordion.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<TabKey>("getting");
+
+  // A handoff link called out for a moment after the traveller lands
+  // on its tab -- see HandoffLink's `flash`.
+  const cardRef = useRef<HTMLElement>(null);
+  // Bumped on every breakdown -> detail jump, so a repeat click on
+  // the same line scrolls again.
+  const [navSeq, setNavSeq] = useState(0);
+  const [flash, setFlash] = useState<FlashTarget | null>(null);
+
+  // Long enough to notice and follow, short enough not to become
+  // permanent decoration on a link you have already seen.
+  // Every jump from the cost breakdown brings the CARD's bottom edge to
+  // the bottom of the screen. Not the clicked line, and not the target
+  // link: centring either threw the page past what was being read.
+  // Keyed on a counter so clicking the same line twice still scrolls.
+  useEffect(() => {
+    if (navSeq === 0) return;
+    const card = cardRef.current;
+    if (!card) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Two frames: the tab has to open and lay out before the card has
+    // its final height.
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => {
+      card.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "end" });
+    }));
+    return () => cancelAnimationFrame(id);
+  }, [navSeq]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const id = window.setTimeout(() => setFlash(null), FLASH_MS);
+    return () => window.clearTimeout(id);
+  }, [flash]);
+
+  function showDetail(tab: TabKey, target?: FlashTarget) {
+    setDetailsTab(tab);
+    setDetailsOpen(true);
+    setFlash(target ?? null);
+    setNavSeq((n) => n + 1);
+  }
+
   const r = deals[Math.min(dealIdx, deals.length - 1)];
+
+  // Arriving from a price view: switch to that date, then bring the
+  // card to the top of the screen and mark it, so it is obvious which
+  // of several cards just answered.
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (!focus) return;
+    const i = deals.findIndex((d) => d.start_date === focus.date);
+    if (i >= 0) {
+      setDealIdx(i);
+      setTransferIdx(0);
+      setFlightIdx(0);
+      setStayIdx(0);
+    }
+    const card = cardRef.current;
+    if (card) {
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() => {
+        card.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+      });
+    }
+    setArrived(true);
+    const id = window.setTimeout(() => setArrived(false), FLASH_MS);
+    return () => window.clearTimeout(id);
+    // deals is derived from props and stable for a given result set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
+
+  // The traveller's current choices, so every "whole trip" figure on
+  // the card is quoted against the same trip.
+  const chosenFlightEur = r.flight_options?.[flightIdx]?.price_eur ?? r.cost.flight_eur;
+  const chosenTransferEur =
+    r.transfer_options?.[transferIdx]?.price_eur_per_person ?? r.cost.transfer_eur;
+  const chosenStayEur = r.accommodation_options?.[stayIdx]?.per_person_eur ?? r.cost.accommodation_eur;
+
   // Dated results (the real search path) carry their own trip dates;
   // without them the booking endpoint has nothing to re-search.
   const booking = r.start_date && r.end_date
@@ -182,11 +275,14 @@ export function ResultCard({ result, variants, maxConnections = null }: {
 
   return (
     <article
-      className={`animate-rise-in rounded-2xl border p-4 sm:p-7 ${
+      ref={cardRef}
+      // scroll-mt clears the 64px fixed header: without it, jumping to a
+      // card from the price views parked the resort name behind the bar.
+      className={`animate-rise-in scroll-mt-20 rounded-2xl border p-4 sm:p-7 transition-shadow duration-500 ${
         r.within_budget
           ? "border-line bg-surface"
           : "border-warn/40 bg-surface ring-1 ring-warn/20"
-      }`}
+      } ${arrived ? "ring-2 ring-signal" : ""}`}
     >
       {!r.within_budget && (
         <div className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-xs font-semibold text-warn">
@@ -255,7 +351,7 @@ export function ResultCard({ result, variants, maxConnections = null }: {
                 key={i}
                 type="button"
                 aria-pressed={i === dealIdx}
-                onClick={() => { setDealIdx(i); setTransferIdx(0); }}
+                onClick={() => { setDealIdx(i); setTransferIdx(0); setFlightIdx(0); setStayIdx(0); }}
                 className={`flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
                   i === dealIdx
                     ? "border-signal bg-signal font-semibold text-white"
@@ -275,9 +371,16 @@ export function ResultCard({ result, variants, maxConnections = null }: {
         </div>
       )}
 
-      <JourneyTimeline result={r} transferIndex={transferIdx} />
+      <JourneyTimeline result={r} transferIndex={transferIdx} flightIndex={flightIdx}   onNavigate={showDetail}
+      />
 
-      <CostInstrument result={r} />
+      <CostInstrument
+        result={r}
+        flightIndex={flightIdx}
+        transferIndex={transferIdx}
+        stayIndex={stayIdx}
+        onNavigate={showDetail}
+      />
 
       {/* EVIDENCE, behind one disclosure. Everything below used to be
           eight peer blocks making the card 2,662px tall at 1280px --
@@ -286,13 +389,26 @@ export function ResultCard({ result, variants, maxConnections = null }: {
           section it belongs to instead of a five-button cluster. */}
       <TripDetails
         result={r}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        tab={detailsTab}
+        onTabChange={setDetailsTab}
         gettingThere={
           <>
-            <FlightOptions options={r.flight_options} booking={booking} />
+            <FlightOptions
+              options={r.flight_options}
+              booking={booking}
+              selectedIndex={flightIdx}
+              onSelect={setFlightIdx}
+              tripTotalFor={(flightEur) => tripTotalWith(r.cost, {
+                flightEur, transferEur: chosenTransferEur, stayEur: chosenStayEur })}
+              defaultOpen
+            />
             <TransferOptions
               options={r.transfer_options ?? []}
               selectedIndex={transferIdx}
               onSelect={setTransferIdx}
+              defaultOpen
             />
             {r.transfer_info && (
               <p className="mt-2 text-[11px] leading-snug text-subtle"
@@ -320,7 +436,6 @@ export function ResultCard({ result, variants, maxConnections = null }: {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <HandoffLink href={r.flight_search_url} label={t("viewFlights")} />
               <HandoffLink href={r.transfer_search_url} label={t("viewTransfer")} />
-              <HandoffLink href={r.equipment_search_url} label={t("viewEquipment")} />
             </div>
             <MoreDates resortName={r.resort.name} alternatives={r.alternative_dates} />
           </>
@@ -334,10 +449,54 @@ export function ResultCard({ result, variants, maxConnections = null }: {
                 <span className="font-semibold text-ink">{r.accommodation_property_name}</span>
               </p>
             )}
-            <AccommodationOptions options={r.accommodation_options} />
+            {/* When a filter prices every real property out, the trip
+                falls back to a static ESTIMATE that may itself exceed
+                the budget that was set. Saying so is the difference
+                between an answer and a silent shrug. */}
+            {r.accommodation_choice?.priced_on_an_estimate && (
+              <p className="mt-2 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-snug text-warn">
+                {r.accommodation_choice.cheapest_available_eur_per_person != null
+                  ? t("accommodationNoneFitCheapest", {
+                      resort: r.resort.name,
+                      price: formatEUR(r.accommodation_choice.cheapest_available_eur_per_person, locale),
+                    })
+                  : t("accommodationNoneFit", { resort: r.resort.name })}
+              </p>
+            )}
+            {r.accommodation_choice
+              && !r.accommodation_choice.priced_on_an_estimate
+              && r.accommodation_choice.matched === 0
+              && r.accommodation_choice.provider_vetted > 0 && (
+              <p className="mt-2 text-[11px] leading-snug text-subtle">
+                {t("accommodationVettedNote", {
+                  n: String(r.accommodation_choice.provider_vetted),
+                })}
+              </p>
+            )}
+            {r.accommodation_choice?.fell_back_to_unrated && (
+              <p className="mt-2 text-[11px] leading-snug text-warn">
+                {t("accommodationFellBackUnrated", { resort: r.resort.name })}
+              </p>
+            )}
+            {r.accommodation_choice?.fell_back_below_floor && (
+              <p className="mt-2 text-[11px] leading-snug text-warn">
+                {t("accommodationFellBackBelow", { resort: r.resort.name })}
+              </p>
+            )}
+            <AccommodationOptions
+              options={r.accommodation_options}
+              selectedIndex={stayIdx}
+              onSelect={setStayIdx}
+              tripTotalFor={(stayEur) => tripTotalWith(r.cost, {
+                flightEur: chosenFlightEur, transferEur: chosenTransferEur, stayEur })}
+              defaultOpen
+            />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <HandoffLink href={r.accommodation_search_url} label={t("viewAccommodation")} />
-              <HandoffLink href={r.ski_pass_search_url} label={t("viewSkiPass")} />
+              <HandoffLink href={r.ski_pass_search_url} label={t("viewSkiPass")}
+                           flash={flash === "skiPass"} />
+              <HandoffLink href={r.equipment_search_url} label={t("viewEquipment")}
+                           flash={flash === "equipment"} />
             </div>
             <WhatsIncluded />
             <p className="mt-2 text-[11px] text-subtle">{t("searchLinkDisclaimer")}</p>

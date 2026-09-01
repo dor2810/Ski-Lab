@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n/context";
 import type { TransferOption } from "@/lib/api";
 import type { Dictionary } from "@/lib/i18n/languages";
 import { TransferIcon, ExternalLinkIcon } from "./icons";
+import { OptionRadioGroup, SelectableOptionRow } from "./SelectableOptionRow";
 
 /**
  * The real ways to get from the arrival airport to the resort --
@@ -49,7 +50,8 @@ function departureClock(iso: string | null | undefined): string {
   return match ? match[1] : "";
 }
 
-function RoleBadge({ role }: { role: string }) {
+function RoleBadge({ role }: { role: string
+}) {
   const { t } = useTranslation();
   const label =
     role === "cheapest" ? t("flightRoleCheapest")
@@ -67,16 +69,24 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 export function TransferOptions({
-  options, selectedIndex = 0, onSelect,
+  options, selectedIndex = 0, onSelect, defaultOpen = false,
 }: {
   options: TransferOption[];
   // The chosen option drives the journey timeline above, so selecting
   // here changes the icon and duration shown there.
   selectedIndex?: number;
   onSelect?: (index: number) => void;
+  /** Start expanded. Used inside the Trip details tabs, where the tab
+   *  already IS the disclosure, so a second shut layer only costs a
+   *  click -- and clicking a cost line would otherwise land you on a
+   *  closed panel. */
+  defaultOpen?: boolean;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // Inside the Trip details tabs the tab IS the disclosure, so a
+  // second collapsed layer just costs a click -- and clicking
+  // "Flight" in the cost breakdown would land you on a shut panel.
+  const [open, setOpen] = useState(defaultOpen);
 
   if (!options || options.length === 0) return null;
 
@@ -112,31 +122,16 @@ export function TransferOptions({
 
       {open && (
         <>
-          <ul className="mt-2.5 space-y-1.5">
+          <OptionRadioGroup label={t("transferOptionsTitle", { count: String(options.length) })}>
             {options.map((o, i) => (
-              <li
+              <SelectableOptionRow
                 key={`${o.kind}-${o.mode}-${o.price_eur_per_person}-${i}`}
-                className={`rounded-lg px-2 py-1.5 ${
-                  i === selectedIndex
-                    ? "bg-signal-soft ring-1 ring-signal/40"
-                    : o.roles.includes("cheapest") ? "bg-signal-soft/60" : ""
-                }`}
+                selected={i === selectedIndex}
+                onSelect={onSelect ? () => onSelect(i) : undefined}
+                selectedLabel={t("transferSelected")}
+                tint={o.roles.includes("cheapest") ? "bg-sunken" : undefined}
+                badges={o.roles.map((role) => <RoleBadge key={role} role={role} />)}
               >
-                {onSelect && (
-                  <button
-                    type="button"
-                    onClick={() => onSelect(i)}
-                    aria-pressed={i === selectedIndex}
-                    className="mb-1 text-[10px] font-semibold text-sky hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-signal"
-                  >
-                    {i === selectedIndex ? t("transferSelected") : t("transferUseThis")}
-                  </button>
-                )}
-                {o.roles.length > 0 && (
-                  <div className="mb-0.5 flex flex-wrap items-center gap-1">
-                    {o.roles.map((role) => <RoleBadge key={role} role={role} />)}
-                  </div>
-                )}
                 {/* Three compact lines, same as FlightOptions: what it
                     costs, what it is, then the detail and the action --
                     six data points in one row overflowed a 390px phone. */}
@@ -183,9 +178,9 @@ export function TransferOptions({
                     </a>
                   )}
                 </div>
-              </li>
+              </SelectableOptionRow>
             ))}
-          </ul>
+          </OptionRadioGroup>
           <p className="mt-2 text-[10px] leading-snug text-subtle">
             {t("transferOptionsNote")}
           </p>
