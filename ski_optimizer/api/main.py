@@ -23,7 +23,9 @@ migration; see git history).
 """
 import os
 
-from fastapi import FastAPI, Request, status
+import logging
+
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
@@ -42,6 +44,8 @@ SESSION_SECRET = os.environ.get("SECRET_KEY", "")
 # dies at startup instead of degrading quietly.
 if not SESSION_SECRET:
     raise RuntimeError("SECRET_KEY must be set (signs both JWTs and the OAuth state cookie)")  # required for Authlib's OAuth state; see security.py
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Ski Lab API")
 
@@ -104,6 +108,39 @@ def on_startup():
     init_db()
 
 
+def _database_ok() -> None:
+    """One trivial query. Raises if the database cannot answer."""
+    from sqlalchemy import text
+    from ..db.database import engine
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+
+
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health(response: Response):
+    """
+    Liveness that can actually fail.
+
+    This used to return {"status": "ok"} unconditionally -- a constant,
+    checking nothing. On 2026-09-01 registration was returning 500
+    because the pooled Postgres connection was dead, and this endpoint
+    reported "ok" throughout; an alarm wired to it would have been
+    theatre.
+
+    So it checks the dependency that broke, and the one every real
+    request needs. 503 rather than 200-with-a-sad-body, because uptime
+    checks watch the STATUS CODE and a monitor that has to parse JSON
+    to notice an outage is one nobody wires up correctly.
+    """
+    checks = {}
+    try:
+        _database_ok()
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001 -- the reason is the payload
+        logger.exception("health check: database unreachable")
+        checks["database"] = f"unavailable: {type(exc).__name__}"
+
+    healthy = all(v == "ok" for v in checks.values())
+    if not healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "ok" if healthy else "degraded", "checks": checks}
