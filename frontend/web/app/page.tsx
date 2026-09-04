@@ -8,6 +8,7 @@ import { SearchCard, type SearchOutcome } from "@/components/SearchCard";
 import { ResultCard } from "@/components/ResultCard";
 import { PriceExplorer } from "@/components/PriceExplorer";
 import { SearchProgress } from "@/components/SearchProgress";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhySkiLab } from "@/components/WhySkiLab";
 import { Footer } from "@/components/Footer";
 import {
@@ -227,52 +228,6 @@ export default function Home() {
           {fetchRealError && (
             <p className="mb-3 text-sm text-warn">{fetchRealError}</p>
           )}
-          {pendingFetch && (() => {
-            const est = outcome!.datePrices?.find(
-              (d) => d.resort_name === pendingFetch.resort && d.start_date === pendingFetch.date);
-            return (
-              <div role="dialog" aria-live="polite"
-                   className="mb-4 rounded-xl border border-signal/40 bg-signal-soft p-4">
-                <p className="text-sm font-semibold text-ink">{t("fetchConfirmTitle")}</p>
-                <p className="mt-1 text-sm text-muted">
-                  {t("fetchConfirmBody", {
-                    resort: pendingFetch.resort,
-                    date: new Date(pendingFetch.date + "T00:00:00")
-                      .toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" }),
-                    price: est ? formatEUR(est.total_eur, locale) : "\u2014",
-                  })}
-                </p>
-                {pendingCredits && (
-                  <p className="mt-1 text-xs text-subtle">
-                    {t("fetchConfirmRemaining", {
-                      n: String(pendingCredits.remaining),
-                      allowance: String(pendingCredits.daily_allowance),
-                    })}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const { resort, date } = pendingFetch;
-                      setPendingFetch(null);
-                      fetchRealPrice(resort, date);
-                    }}
-                    className="rounded-lg bg-signal px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal"
-                  >
-                    {t("fetchConfirmGo")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingFetch(null)}
-                    className="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-muted hover:text-ink"
-                  >
-                    {t("fetchConfirmCancel")}
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
           <PriceExplorer
             results={outcome!.results}
             datePrices={outcome!.datePrices}
@@ -338,6 +293,47 @@ export default function Home() {
           1440px viewport is the "small and bad on PC" problem. A
           sibling section is used instead of negative margins, which
           break the moment the parent's padding changes. */}
+      {/* Asked as a modal, deliberately: inline it pushed the grid
+          down the moment a day was clicked, so the page appeared to
+          jump and the question read as one more legend. Nothing is
+          spent, and nothing scrolls, until this is answered. */}
+      {pendingFetch && (() => {
+        const est = outcome?.datePrices?.find(
+          (d) => d.resort_name === pendingFetch.resort && d.start_date === pendingFetch.date);
+        return (
+          <ConfirmDialog
+            title={t("fetchConfirmTitle")}
+            confirmLabel={t("fetchConfirmGo")}
+            cancelLabel={t("fetchConfirmCancel")}
+            onCancel={() => setPendingFetch(null)}
+            onConfirm={() => {
+              const { resort, date } = pendingFetch;
+              setPendingFetch(null);
+              fetchRealPrice(resort, date);
+            }}
+          >
+            <p className="text-base font-semibold text-ink">
+              {pendingFetch.resort}
+              {"\u2003"}
+              {new Date(pendingFetch.date + "T00:00:00").toLocaleDateString(locale, {
+                weekday: "long", day: "numeric", month: "long" })}
+            </p>
+            <p>
+              {t("fetchConfirmEstimate", {
+                price: est ? formatEUR(est.total_eur, locale) : "\u2014" })}
+            </p>
+            <p className="font-semibold text-ink">{t("fetchConfirmCost")}</p>
+            {pendingCredits && (
+              <p className="text-xs text-subtle">
+                {t("fetchConfirmRemaining", {
+                  n: String(pendingCredits.remaining),
+                  allowance: String(pendingCredits.daily_allowance) })}
+              </p>
+            )}
+          </ConfirmDialog>
+        );
+      })()}
+
       <WhySkiLab />
       <Footer />
     </>
