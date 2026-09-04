@@ -883,6 +883,47 @@ def _accommodation_property_name(resort: Resort, checkin_date, nights: int,
     return live_accommodation_property_name(resort, checkin_date, nights, rooms_needed)
 
 
+def _date_prices_out(series, results, budget: float) -> List["DatePriceOut"]:
+    """
+    The calendar's grid, with every day that HAS a card taking its
+    figures from that card.
+
+    WHY THE OVERRIDE. `series` is snapshotted inside search_date_range,
+    but the displayed rows are repriced again afterwards, so the
+    snapshot holds intermediate numbers for exactly the days we know
+    best. Measured against production 2026-09-04: all 24 returned rows
+    disagreed with their own calendar cell -- Bansko 12 Dec showed
+    EUR1,047.29 on the calendar against EUR970.20 on the card, a EUR77
+    gap -- and twelve of them were additionally flagged as estimates
+    while their cards were fully live.
+
+    Two numbers for one trip on one screen is worse than a coarse
+    estimate: the estimate is at least labelled. So wherever a card
+    exists it wins, and the series only supplies the days it is the
+    only source for.
+    """
+    by_pair = {}
+    for r in results:
+        if getattr(r, "start_date", None) is not None:
+            by_pair[(r.resort.name, r.start_date)] = r
+
+    out: List[DatePriceOut] = []
+    for t in series:
+        card = by_pair.get((t.resort.name, t.start_date))
+        cost = card.cost if card is not None else t.cost
+        out.append(DatePriceOut(
+            resort_name=t.resort.name,
+            country=t.resort.country,
+            start_date=t.start_date,
+            total_eur=round(cost.total_eur, 2),
+            within_budget=(card.within_budget if card is not None
+                           else cost.total_eur <= budget),
+            price_is_live=bool(cost.flight_price_is_live
+                               and cost.accommodation_price_is_live),
+        ))
+    return out
+
+
 def _accommodation_choice_out(resort: Resort, checkin_date, nights: int, rooms_needed: int,
                               group_size: int, accommodation_filter,
                               property_type: str = "HOTELS"):
@@ -2058,18 +2099,7 @@ def search_trip_dates(payload: SearchDateRangeRequest, current_user: Optional[Us
         # Every date the search really evaluated. Without this the
         # calendar could only draw the handful of dates that survived
         # ranking -- three of twenty-four on a December search.
-        date_prices=[
-            DatePriceOut(
-                resort_name=t.resort.name,
-                country=t.resort.country,
-                start_date=t.start_date,
-                total_eur=round(t.cost.total_eur, 2),
-                within_budget=t.cost.total_eur <= prefs.budget_eur_per_person,
-                price_is_live=bool(t.cost.flight_price_is_live
-                                   and t.cost.accommodation_price_is_live),
-            )
-            for t in _date_series
-        ],
+        date_prices=_date_prices_out(_date_series, results, prefs.budget_eur_per_person),
     )
 
 
