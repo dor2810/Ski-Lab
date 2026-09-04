@@ -10,13 +10,17 @@ import { PriceExplorer } from "@/components/PriceExplorer";
 import { SearchProgress } from "@/components/SearchProgress";
 import { WhySkiLab } from "@/components/WhySkiLab";
 import { Footer } from "@/components/Footer";
-import { searchFixedDates, ApiError, type TripResult } from "@/lib/api";
+import {
+  searchFixedDates, getSearchCredits, ApiError,
+  type TripResult, type Credits,
+} from "@/lib/api";
 import { DEFAULT_RAW_WEIGHTS, normalizeWeights } from "@/components/PrioritySliders";
 import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/i18n/context";
+import { formatEUR } from "@/lib/format";
 
 export default function Home() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { accessToken, isLoading: authLoading, runAuthed } = useAuth();
   // Real search results from the form below (SearchCard always calls
   // /trips/search-dates -- see its own comment on why there's no
@@ -30,6 +34,12 @@ export default function Home() {
   // "resort|date" currently being re-priced for real, and the last
   // failure, so a spent credit never disappears without explanation.
   const [fetchingReal, setFetchingReal] = useState<string | null>(null);
+  // A click on an estimated day ASKS first. Spending someone's credit
+  // is not something a single click on a small square should do, and
+  // the cost has to be on screen before they agree to it -- not only
+  // in a tooltip they may never open.
+  const [pendingFetch, setPendingFetch] = useState<{ resort: string; date: string } | null>(null);
+  const [pendingCredits, setPendingCredits] = useState<Credits | null>(null);
   const [fetchRealError, setFetchRealError] = useState<string | null>(null);
 
   /**
@@ -42,6 +52,19 @@ export default function Home() {
    * at exactly one credit (cost_for_candidate_dates(1)), and folds the
    * answer back in so the day becomes a real, openable trip.
    */
+  /** Step one: ask. Fetches the CURRENT balance so the number quoted
+   *  is the real one at the moment of asking, not a stale copy. */
+  function askBeforeSpending(resort: string, date: string) {
+    if (fetchingReal) return;
+    setFetchRealError(null);
+    setPendingCredits(null);
+    setPendingFetch({ resort, date });
+    runAuthed((token) => getSearchCredits(token))
+      .then(setPendingCredits)
+      .catch(() => setPendingCredits(null));  // the ask still stands
+  }
+
+  /** Step two: they said yes. */
   async function fetchRealPrice(resort: string, date: string) {
     const params = outcome?.refineParams;
     if (!params || fetchingReal) return;
@@ -204,10 +227,56 @@ export default function Home() {
           {fetchRealError && (
             <p className="mb-3 text-sm text-warn">{fetchRealError}</p>
           )}
+          {pendingFetch && (() => {
+            const est = outcome!.datePrices?.find(
+              (d) => d.resort_name === pendingFetch.resort && d.start_date === pendingFetch.date);
+            return (
+              <div role="dialog" aria-live="polite"
+                   className="mb-4 rounded-xl border border-signal/40 bg-signal-soft p-4">
+                <p className="text-sm font-semibold text-ink">{t("fetchConfirmTitle")}</p>
+                <p className="mt-1 text-sm text-muted">
+                  {t("fetchConfirmBody", {
+                    resort: pendingFetch.resort,
+                    date: new Date(pendingFetch.date + "T00:00:00")
+                      .toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" }),
+                    price: est ? formatEUR(est.total_eur, locale) : "\u2014",
+                  })}
+                </p>
+                {pendingCredits && (
+                  <p className="mt-1 text-xs text-subtle">
+                    {t("fetchConfirmRemaining", {
+                      n: String(pendingCredits.remaining),
+                      allowance: String(pendingCredits.daily_allowance),
+                    })}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { resort, date } = pendingFetch;
+                      setPendingFetch(null);
+                      fetchRealPrice(resort, date);
+                    }}
+                    className="rounded-lg bg-signal px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+                  >
+                    {t("fetchConfirmGo")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingFetch(null)}
+                    className="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-muted hover:text-ink"
+                  >
+                    {t("fetchConfirmCancel")}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
           <PriceExplorer
             results={outcome!.results}
             datePrices={outcome!.datePrices}
-            onFetchReal={outcome!.refineParams ? fetchRealPrice : undefined}
+            onFetchReal={outcome!.refineParams ? askBeforeSpending : undefined}
             fetching={fetchingReal}
             onPick={(resort, date) => setPick((p) => ({ resort, date, seq: (p?.seq ?? 0) + 1 }))}
           />
