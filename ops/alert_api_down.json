@@ -1,0 +1,30 @@
+{
+  "displayName": "Ski Lab API is down or degraded",
+  "documentation": {
+    "content": "The /health uptime check failed. It runs one query against Postgres, so a failure means either Cloud Run is not serving or the database is unreachable -- both of which break every real request (registration, login, search).\n\nFirst look: gcloud logging read 'resource.labels.service_name=\"ski-lab-api\" AND severity>=ERROR' --limit 5 --freshness=15m",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "/health failing from multiple regions",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"ski-lab-api-health-NPNgmn_nvjU\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": ["resource.label.host"]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "300s",
+        "trigger": {"count": 1}
+      }
+    }
+  ],
+  "alertStrategy": {"autoClose": "1800s"},
+  "notificationChannels": ["projects/ski-lab-app/notificationChannels/17627768031781594706"]
+}
